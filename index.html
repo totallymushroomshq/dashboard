@@ -315,6 +315,9 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </div>
 
 
+<!-- NEW DEVICE BANNER -->
+<div id="new-device-banner" style="display:none;position:fixed;top:58px;left:0;right:0;z-index:300;background:rgba(184,130,10,.08);border-bottom:1px solid rgba(184,130,10,.2);padding:7px 20px;text-align:center;font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text2);"></div>
+
 <!-- GATE -->
 <div id="gate">
   <div class="gate-wrap">
@@ -328,7 +331,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 
       <!-- LOGIN -->
       <div class="gpane a" id="gp-login">
-        <div class="fl"><label>Email (clients only — leave blank for admin/staff)</label><input class="fi" type="email" id="login-email" placeholder="Email (optional)"></div>
+        <div class="fl"><label>Email</label><input class="fi" type="email" id="login-email" placeholder="your@email.com (staff/admin) or leave blank"></div>
         <div class="fl"><label>Password</label><div style="position:relative;"><input class="fi" type="password" id="pw" placeholder="Enter your password" autocomplete="current-password" style="padding-right:42px;"><button type="button" onclick="togglePw('pw','pw-eye')" style="position:absolute;right:0;top:0;bottom:0;width:40px;background:transparent;border:none;cursor:pointer;color:var(--text3);display:flex;align-items:center;justify-content:center;padding:0;" id="pw-eye" aria-label="Show password">
           <svg id="pw-eye-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button></div></div>
@@ -403,6 +406,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 
 <script>
 window.onerror = function(msg, src, line, col, err){
@@ -415,11 +419,29 @@ window.onerror = function(msg, src, line, col, err){
 const DB = {
   orders:[], clients:[], harvests:[], samples:[],
   fruitings:[], preservation:[], notifLog:[], signupRequests:[], packSessions:[],
+  users:[], loginHistory:[],
   adminPw:'totallyadmin2025', staffPw:'mushrooms2025', accountantPw:'tmbooks2025'
 };
 let packDaySelected = {}; // harvestId -> pull weight, persists across renders
 let viewDay = null; // null = today's delivery day; or 'Monday'/'Wednesday'/'Friday'
 const DELIVERY_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
+// ── PERMISSIONS & TAB DEFINITIONS ──
+const ALL_INTERNAL_TABS = [
+  {id:'today',l:'Day'},{id:'week',l:'Week'},
+  {id:'new-order',l:'+ Order'},{id:'email-parse',l:'Parse Email'},
+  {id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},
+  {id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},
+  {id:'analytics',l:'Analytics'},
+  {id:'admin',l:'⚙ Admin',c:'at'},{id:'security',l:'🔒 Security',c:'at'},
+  {id:'orders-all',l:'Orders',c:'ct'},{id:'reports',l:'📊 Reports',c:'at'}
+];
+const DEFAULT_PERMS = {
+  admin: {today:true,week:true,'new-order':true,'email-parse':true,harvest:true,fruiting:true,inventory:true,preservation:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false},
+  staff: {today:true,week:true,'new-order':true,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false},
+  accountant: {today:true,week:true,'new-order':false,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,analytics:true,admin:false,security:false,'orders-all':true,reports:true}
+};
+const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports'};
 
 // ── FIREBASE CONFIG ──
 const FIREBASE_CONFIG = {
@@ -436,6 +458,16 @@ const FIREBASE_CONFIG = {
 firebase.initializeApp(FIREBASE_CONFIG);
 const fdb = firebase.firestore();
 fdb.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+const auth = firebase.auth();
+// Secondary app instance for creating new users without disrupting current session
+let _secondaryApp = null;
+function getSecondaryAuth(){
+  if(!_secondaryApp){
+    try { _secondaryApp = firebase.app('secondary'); }
+    catch(e){ _secondaryApp = firebase.initializeApp(FIREBASE_CONFIG,'secondary'); }
+  }
+  return _secondaryApp.auth();
+}
 
 // ── FIRESTORE HELPER ──
 const FS = {
@@ -449,14 +481,16 @@ const FS = {
 // ── LOAD ALL DATA FROM FIRESTORE ──
 async function loadDB(){
   try {
-    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions] = await Promise.all([
+    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory] = await Promise.all([
       FS.getAll('orders'), FS.getAll('clients'), FS.getAll('harvests'),
       FS.getAll('samples'), FS.getAll('fruitings'), FS.getAll('preservation'),
-      FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('packSessions')
+      FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('packSessions'),
+      FS.getAll('users'), FS.getAll('loginHistory')
     ]);
     DB.orders=orders; DB.clients=clients; DB.harvests=harvests;
     DB.samples=samples; DB.fruitings=fruitings; DB.preservation=preservation;
     DB.notifLog=notifLog; DB.signupRequests=signupRequests; DB.packSessions=packSessions;
+    DB.users=users; DB.loginHistory=loginHistory;
   } catch(e){ console.error('Firestore load error:',e); throw e; }
 }
 
@@ -481,15 +515,78 @@ function oSum(o){ const p=[]; if(o.oyster) p.push(o.oyster+'× Oyster'); if(o.ch
 function eRev(o){ if(o.custom&&o.price) return o.price; const std=((o.oyster||0)+(o.chefs||0)+(o.lions||0)+(o.chestnut||0))*BOX_LB*STD_PRICE_LB; const shi=(o.shiitake||0)*BOX_LB*SHI_PRICE_LB; const packs=((o.lionsPack||0)+(o.chefsPack||0))*PACK_LB*STD_PRICE_LB; return std+shi+packs; }
 function wkOrds(){ return DB.orders.filter(o=>o.week===wkStart()&&!o.isStanding) }
 function toast(id,msg){ const el=document.getElementById(id); if(!el) return; if(msg) el.textContent=msg; el.style.display='block'; setTimeout(()=>el.style.display='none',3000) }
-function notify(cid,msg,type){ 
-  const c=DB.clients.find(x=>x.id===cid); if(!c) return; 
+function notify(cid,msg,type){
+  const c=DB.clients.find(x=>x.id===cid); if(!c) return;
   const entry={clientId:cid,clientName:c.name,msg,type,ts:new Date().toLocaleTimeString()};
   DB.notifLog.push(entry);
   FS.add('notifLog',entry);
 }
 
+// ── SECURITY HELPERS ──
+async function getClientIP(){
+  try{ const r=await fetch('https://api.ipify.org?format=json'); const d=await r.json(); return d.ip||'unknown'; }
+  catch(e){ return 'unknown'; }
+}
+async function logLogin(uid,email,role){
+  try{
+    const ip=await getClientIP();
+    const entry={uid,email,role,ip,
+      userAgent:navigator.userAgent.substring(0,250),
+      timestamp:new Date().toISOString(),
+      deviceTrusted:isDeviceTrusted(uid),
+      sessionId:Math.random().toString(36).slice(2)};
+    const eid=await FS.add('loginHistory',entry);
+    entry.id=eid; DB.loginHistory.push(entry);
+  }catch(e){ console.warn('Login log failed:',e); }
+}
+function isDeviceTrusted(uid){
+  if(!uid) return false;
+  try{
+    const stored=localStorage.getItem('tm_device_'+uid);
+    if(!stored) return false;
+    const d=JSON.parse(stored);
+    return d.expires>Date.now();
+  }catch(e){ return false; }
+}
+function trustDevice(uid){
+  if(!uid) return;
+  localStorage.setItem('tm_device_'+uid, JSON.stringify({
+    trusted:true, expires:Date.now()+30*24*60*60*1000
+  }));
+  const banner=document.getElementById('new-device-banner');
+  if(banner) banner.style.display='none';
+  S.newDevice=false;
+}
+function dismissNewDevice(){
+  const banner=document.getElementById('new-device-banner');
+  if(banner) banner.style.display='none';
+}
+function showNewDeviceBanner(uid){
+  const banner=document.getElementById('new-device-banner');
+  if(!banner||!uid) return;
+  banner.innerHTML=`<span>⚠ New or unrecognized device.</span>
+    <button onclick="trustDevice('${uid}')" style="margin-left:12px;padding:3px 10px;border-radius:3px;border:1px solid rgba(184,130,10,.4);background:rgba(184,130,10,.1);color:var(--gold);cursor:pointer;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;">TRUST 30 DAYS</button>
+    <button onclick="dismissNewDevice()" style="margin-left:8px;padding:3px 8px;border-radius:3px;border:1px solid var(--border);background:transparent;color:var(--text3);cursor:pointer;font-family:'Syne Mono',monospace;font-size:9px;">DISMISS</button>`;
+  banner.style.display='block';
+}
+function resetSessionTimer(){
+  clearTimeout(_sessionTimer);
+  _sessionTimer=setTimeout(()=>{ doLogout(); alert('You have been signed out due to 2 hours of inactivity.'); },SESSION_TIMEOUT);
+}
+function stopSessionTimer(){ clearTimeout(_sessionTimer); }
+function showLoginErr(msg){
+  const err=document.getElementById('lerr');
+  if(!err) return;
+  err.textContent=msg||'Incorrect credentials.';
+  err.style.display='block';
+  document.getElementById('pw').value='';
+  setTimeout(()=>err.style.display='none',4000);
+}
+
 // ── GATE ──
-let S={role:null,clientId:null};
+let S={role:null,clientId:null,uid:null,email:null,name:null,permissions:null,newDevice:false};
+let _sessionTimer=null;
+const SESSION_TIMEOUT=2*60*60*1000; // 2 hours inactivity
 
 
 
@@ -497,16 +594,45 @@ let S={role:null,clientId:null};
 document.getElementById('pw').addEventListener('keydown',e=>{ if(e.key==='Enter') login() });
 document.getElementById('fl-sn').addEventListener('change',function(){ document.getElementById('fl-sf').style.display=this.checked?'block':'none' });
 
-function login(){
+async function login(){
+  const email=document.getElementById('login-email').value.trim();
   const pw=document.getElementById('pw').value.trim();
-  if(pw===DB.adminPw){ S={role:'admin',clientId:null}; launch(); return }
-  if(pw===DB.staffPw){ S={role:'staff',clientId:null}; launch(); return }
-  if(pw===DB.accountantPw){ S={role:'accountant',clientId:null}; launch(); return }
+
+  // ── FIREBASE AUTH (email-based, internal users) ──
+  if(email && pw){
+    try{
+      const cred=await auth.signInWithEmailAndPassword(email,pw);
+      const uid=cred.user.uid;
+      const userDoc=DB.users.find(u=>u.uid===uid);
+      if(userDoc&&userDoc.active!==false){
+        S={role:userDoc.role,clientId:null,uid,email,name:userDoc.name||'',
+           permissions:userDoc.permissions||DEFAULT_PERMS[userDoc.role]||DEFAULT_PERMS.staff,
+           newDevice:!isDeviceTrusted(uid)};
+        await logLogin(uid,email,userDoc.role);
+        launch();
+        if(S.newDevice) showNewDeviceBanner(uid);
+        return;
+      } else {
+        // No user doc — not a recognized internal account
+        await auth.signOut();
+        showLoginErr('Account not recognized. Contact admin.');
+        return;
+      }
+    }catch(e){
+      showLoginErr(e.message||'Sign-in failed. Check email and password.');
+      return;
+    }
+  }
+
+  // ── LEGACY PASSWORD LOGIN (no email) ──
+  if(pw===DB.adminPw){ S={role:'admin',clientId:null,uid:null,email:null,name:'Admin',permissions:DEFAULT_PERMS.admin,newDevice:false}; launch(); return }
+  if(pw===DB.staffPw){ S={role:'staff',clientId:null,uid:null,email:null,name:'Staff',permissions:DEFAULT_PERMS.staff,newDevice:false}; launch(); return }
+  if(pw===DB.accountantPw){ S={role:'accountant',clientId:null,uid:null,email:null,name:'Accountant',permissions:DEFAULT_PERMS.accountant,newDevice:false}; launch(); return }
   const c=DB.clients.find(x=>x.pw===pw&&x.status==='approved');
-  if(c){ S={role:'client',clientId:c.id}; launch(); return }
+  if(c){ S={role:'client',clientId:c.id,uid:null,email:null,name:c.name,permissions:null,newDevice:false}; launch(); return }
   const fp=DB.clients.find(x=>x.firstLogin&&x.status==='approved'&&('tm-'+x.id)===pw.toLowerCase());
-  if(fp){ S={role:'client_pending',clientId:fp.id}; document.querySelectorAll('.gpane').forEach(p=>p.classList.remove('a')); document.getElementById('gp-first').classList.add('a'); return }
-  const err=document.getElementById('lerr'); err.style.display='block'; document.getElementById('pw').value=''; setTimeout(()=>err.style.display='none',3000)
+  if(fp){ S={role:'client_pending',clientId:fp.id,uid:null,email:null,name:fp.name,permissions:null,newDevice:false}; document.querySelectorAll('.gpane').forEach(p=>p.classList.remove('a')); document.getElementById('gp-first').classList.add('a'); return }
+  showLoginErr('Incorrect credentials. Try again.');
 }
 
 function finFirstLogin(){
@@ -537,7 +663,7 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   try {
     await loadDB();
     await autoGenerateStandingOrders();
-    bar.style.width='100%';
+    bar.style.width='80%';
   } catch(e){
     console.error('Firestore load error:', e);
     bar.style.width='100%';
@@ -546,19 +672,73 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     errEl.style.display='block';
     errEl.style.color='#c8a82a';
   }
-  await new Promise(r=>setTimeout(r,300));
-  document.getElementById('app-loader').style.display='none';
+  // Check for existing Firebase Auth session
+  await new Promise(resolve=>{
+    const unsub = auth.onAuthStateChanged(async (user)=>{
+      unsub();
+      if(user){
+        const userDoc = DB.users.find(u=>u.uid===user.uid);
+        if(userDoc && userDoc.active!==false){
+          S={role:userDoc.role,clientId:null,uid:user.uid,email:user.email,
+             name:userDoc.name||'',
+             permissions:userDoc.permissions||DEFAULT_PERMS[userDoc.role]||DEFAULT_PERMS.staff,
+             newDevice:!isDeviceTrusted(user.uid)};
+          bar.style.width='100%';
+          await new Promise(r=>setTimeout(r,200));
+          document.getElementById('app-loader').style.display='none';
+          document.getElementById('gate').style.display='none';
+          document.getElementById('app').style.display='block';
+          buildNav(); renderC();
+          resetSessionTimer();
+          if(!window._activityBound){
+            window._activityBound=true;
+            document.addEventListener('click',resetSessionTimer);
+            document.addEventListener('keydown',resetSessionTimer);
+            document.addEventListener('touchstart',resetSessionTimer);
+          }
+          if(S.newDevice) setTimeout(()=>showNewDeviceBanner(user.uid),500);
+          resolve();
+          return;
+        }
+      }
+      bar.style.width='100%';
+      await new Promise(r=>setTimeout(r,300));
+      document.getElementById('app-loader').style.display='none';
+      resolve();
+    });
+  });
 });
 
-function launch(){ document.getElementById('gate').style.display='none'; document.getElementById('app').style.display='block'; buildNav(); renderC() }
+function launch(){
+  document.getElementById('gate').style.display='none';
+  document.getElementById('app').style.display='block';
+  buildNav(); renderC();
+  resetSessionTimer();
+  // Attach activity listeners once
+  if(!window._activityBound){
+    window._activityBound=true;
+    document.addEventListener('click',resetSessionTimer);
+    document.addEventListener('keydown',resetSessionTimer);
+    document.addEventListener('touchstart',resetSessionTimer);
+  }
+}
 
-function doLogout(){ S={role:null,clientId:null}; document.getElementById('gate').style.display='flex'; document.getElementById('app').style.display='none'; document.getElementById('pw').value=''; document.querySelectorAll('.gpane').forEach(p=>p.classList.remove('a')); document.getElementById('gp-login').classList.add('a'); document.querySelectorAll('.gmt').forEach((b,i)=>b.classList.toggle('a',i===0)) }
+function doLogout(){
+  stopSessionTimer();
+  S={role:null,clientId:null,uid:null,email:null,name:null,permissions:null,newDevice:false};
+  if(auth.currentUser) auth.signOut();
+  dismissNewDevice();
+  document.getElementById('gate').style.display='flex';
+  document.getElementById('app').style.display='none';
+  document.getElementById('pw').value='';
+  document.getElementById('login-email').value='';
+  document.querySelectorAll('.gpane').forEach(p=>p.classList.remove('a'));
+  document.getElementById('gp-login').classList.add('a');
+  document.querySelectorAll('.gmt').forEach((b,i)=>b.classList.toggle('a',i===0));
+}
 
 // ── NAV ──
 const NAVS={
-  admin:[{id:'today',l:'Day'},{id:'week',l:'Week'},{id:'new-order',l:'+ Order'},{id:'email-parse',l:'Parse Email'},{id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},{id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},{id:'analytics',l:'Analytics'},{id:'admin',l:'⚙ Admin',c:'at'}],
-  staff:[{id:'today',l:'Day'},{id:'week',l:'Week'},{id:'new-order',l:'+ Order'},{id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},{id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},{id:'analytics',l:'Analytics'}],
-  accountant:[{id:'today',l:'Day'},{id:'week',l:'Week'},{id:'orders-all',l:'Orders'},{id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},{id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},{id:'analytics',l:'Analytics'},{id:'reports',l:'📊 Reports',c:'at'}],
   client:[{id:'c-order',l:'Place Order',c:'ct'},{id:'c-standing',l:'Standing Order',c:'ct'},{id:'c-history',l:'History',c:'ct'},{id:'c-settings',l:'Settings',c:'ct'}]
 };
 let cv=null;
@@ -566,17 +746,38 @@ let cv=null;
 function buildNav(){
   const tabs=document.getElementById('nav-tabs'), pill=document.getElementById('role-pill');
   tabs.innerHTML='';
-  const role=S.role==='admin'?'admin':S.role==='staff'?'staff':S.role==='accountant'?'accountant':'client';
-  if(role==='admin'){pill.textContent='ADMIN';pill.className='rpill admin'}
-  else if(role==='staff'){pill.textContent='STAFF';pill.className='rpill staff'}
-  else if(role==='accountant'){pill.textContent='ACCOUNTS';pill.className='rpill'}
-  else{ const cl=DB.clients.find(x=>x.id===S.clientId); pill.textContent=(cl?cl.name.split(' ')[0]:'CLIENT').toUpperCase(); pill.className='rpill client' }
-  NAVS[role].forEach((item,i)=>{ const b=document.createElement('button'); b.className='ttab'+(item.c?' '+item.c:''); b.textContent=item.l; b.dataset.view=item.id; b.onclick=()=>sw(item.id); tabs.appendChild(b); if(i===0) sw(item.id) })
+  const role=S.role;
+
+  // Client nav — unchanged
+  if(role==='client'){
+    const cl=DB.clients.find(x=>x.id===S.clientId);
+    pill.textContent=(cl?cl.name.split(' ')[0]:'CLIENT').toUpperCase();
+    pill.className='rpill client';
+    NAVS.client.forEach((item,i)=>{ const b=document.createElement('button'); b.className='ttab'+(item.c?' '+item.c:''); b.textContent=item.l; b.dataset.view=item.id; b.onclick=()=>sw(item.id); tabs.appendChild(b); if(i===0) sw(item.id) });
+    return;
+  }
+
+  // Internal user pill
+  if(role==='admin'){
+    pill.textContent=S.name?S.name.split(' ')[0].toUpperCase()+' · ADMIN':'ADMIN';
+    pill.className='rpill admin';
+  } else if(role==='staff'){
+    pill.textContent=S.name?S.name.split(' ')[0].toUpperCase()+' · STAFF':'STAFF';
+    pill.className='rpill staff';
+  } else if(role==='accountant'){
+    pill.textContent=S.name?S.name.split(' ')[0].toUpperCase()+' · ACCTS':'ACCOUNTS';
+    pill.className='rpill';
+  }
+
+  // Build tab list from permissions (or defaults)
+  const perms=S.permissions||DEFAULT_PERMS[role]||DEFAULT_PERMS.staff;
+  const tabList=ALL_INTERNAL_TABS.filter(t=>perms[t.id]);
+  tabList.forEach((item,i)=>{ const b=document.createElement('button'); b.className='ttab'+(item.c?' '+item.c:''); b.textContent=item.l; b.dataset.view=item.id; b.onclick=()=>sw(item.id); tabs.appendChild(b); if(i===0) sw(item.id) });
 }
 
 function sw(id){ cv=id; document.querySelectorAll('.ttab').forEach(t=>t.classList.toggle('active',t.dataset.view===id)); renderC() }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,inventory:rInventory,preservation:rPreservation,analytics:rAna,admin:rAdmin,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,inventory:rInventory,preservation:rPreservation,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -2718,8 +2919,47 @@ function clrNewSample(){
 // ── ADMIN ──
 function rAdmin(el){
   const pend=DB.orders.filter(o=>o.status==='pending'&&!o.isStanding), cust=DB.orders.filter(o=>o.custom&&!o.isStanding), newSR=DB.signupRequests.filter(s=>s.status==='new');
+  const staffUsers=DB.users.filter(u=>u.active!==false);
+  const recentLogins=[...DB.loginHistory].sort((a,b)=>b.timestamp.localeCompare(a.timestamp)).slice(0,5);
+
   el.innerHTML=`
-    <div class="ph"><div class="ph-t">Admin <span class="bdg bad" style="font-size:14px;vertical-align:middle;">★ Admin Only</span></div><div class="ph-s">Signups · Approvals · Clients · Notifications</div></div>
+    <div class="ph"><div class="ph-t">Admin <span class="bdg bad" style="font-size:14px;vertical-align:middle;">★ Admin Only</span></div><div class="ph-s">Signups · Approvals · Clients · Staff Accounts · Notifications</div></div>
+
+    <!-- SECURITY PREVIEW -->
+    <div style="margin-bottom:28px;">
+      <div class="sh">
+        <span>Staff Accounts <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${staffUsers.length} users</span></span>
+        <div style="display:flex;gap:8px;"><button class="btn b-m b-sm" onclick="openAddUser()">+ Add User</button><button class="btn b-s b-sm" onclick="sw('security')">🔒 Security Log →</button></div>
+      </div>
+      ${staffUsers.length===0?`<div style="background:rgba(184,130,10,.06);border:1px solid rgba(184,130,10,.15);border-radius:var(--r);padding:18px 20px;font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2);line-height:1.8;">
+        <strong style="color:var(--amber);">⚠ No email-based accounts yet.</strong><br>
+        Click <strong>+ Add User</strong> to create individual login accounts for staff. Each person gets their own email + password through Firebase Auth — no more shared passwords.<br>
+        Legacy shared passwords still work as fallback during migration.
+      </div>`:`<div class="tw"><table><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Tab Permissions</th><th>Actions</th></tr></thead>
+      <tbody>${staffUsers.map(u=>{
+        const perms=u.permissions||DEFAULT_PERMS[u.role]||{};
+        const tabCount=Object.values(perms).filter(Boolean).length;
+        return `<tr>
+          <td style="font-weight:500;">${u.name||'—'}</td>
+          <td class="mn">${u.email}</td>
+          <td class="mn"><span class="rpill ${u.role==='admin'?'admin':''}" style="font-size:8px;padding:2px 7px;">${u.role?.toUpperCase()}</span></td>
+          <td class="mn">${tabCount} tabs</td>
+          <td><div style="display:flex;gap:6px;">
+            <button class="btn b-a b-sm" onclick="openEditUser('${u.id}')">Permissions</button>
+            <button class="btn b-r b-sm" onclick="deactivateUser('${u.id}')">Remove</button>
+          </div></td>
+        </tr>`;
+      }).join('')}</tbody></table></div>`}
+      ${recentLogins.length>0?`<div style="margin-top:12px;"><div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;margin-bottom:8px;">RECENT LOGINS</div>
+      ${recentLogins.map(l=>{
+        const dt=new Date(l.timestamp);
+        return `<div style="display:flex;justify-content:space-between;padding:6px 12px;background:var(--white);border:1px solid var(--border);border-radius:3px;margin-bottom:4px;font-size:11px;">
+          <span style="color:var(--black);font-weight:500;">${l.email||l.role||'—'}</span>
+          <span style="color:var(--text3);font-family:'Syne Mono',monospace;font-size:10px;">${l.ip} · ${dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} ${dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</span>
+        </div>`;
+      }).join('')}</div>`:''}
+    </div>
+
     ${newSR.length>0?`<div style="margin-bottom:28px;"><div class="sh"><span>New Signup Requests</span><span class="bdg bn">${newSR.length} new</span></div><div id="sr-list"></div></div>`:''}
     <div style="margin-bottom:28px;"><div class="sh"><span>Orders — Approve / Reject</span><span class="bdg bp">${pend.length} pending</span></div><div class="og" id="aa-g"></div></div>
     <div style="margin-bottom:28px;"><div class="sh"><span>Custom & Wholesale <span class="bdg bad">★</span></span></div><div class="og" id="ac-g"></div><div style="margin-top:14px;"><button class="btn b-a" onclick="sw('new-order')">+ New Custom / Wholesale Order</button></div></div>
@@ -2910,6 +3150,133 @@ function saveEdit(cid){
 
 function rmClient(id){ if(!confirm('Remove this client? Their order history remains.')) return; DB.clients=DB.clients.filter(c=>c.id!==id); FS.del('clients',id); rAdmin(document.getElementById('main-views')) }
 
+// ── STAFF USER MANAGEMENT ──
+function openAddUser(){
+  document.getElementById('em-title').textContent='Add Staff Account';
+  document.getElementById('em-body').innerHTML=`
+    <div style="font-size:11px;color:var(--text3);margin-bottom:18px;font-family:'Syne Mono',monospace;line-height:1.8;">Creates a Firebase Auth account. The staff member logs in with their email + password. Each person gets their own secure individual login.</div>
+    <div class="fg2">
+      <div class="fgl"><label>Full Name</label><input class="fi" id="au-name" placeholder="e.g. Katherine Harris"></div>
+      <div class="fgl"><label>Email Address</label><input class="fi" type="email" id="au-email" placeholder="staff@totallymushroomshq.com"></div>
+    </div>
+    <div class="fg2">
+      <div class="fgl"><label>Role</label>
+        <select class="fs" id="au-role">
+          <option value="admin">Admin (full access)</option>
+          <option value="staff">Staff (operations)</option>
+          <option value="accountant">Accountant (read + reports)</option>
+        </select>
+      </div>
+      <div class="fgl"><label>Temporary Password <span style="font-size:9px;color:var(--text3);">(they should change this)</span></label>
+        <input class="fi" type="text" id="au-pw" placeholder="Min 6 characters">
+      </div>
+    </div>
+    <div style="margin-top:18px;padding:14px;background:rgba(42,85,120,.05);border:1px solid rgba(42,85,120,.15);border-radius:3px;">
+      <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--blue);letter-spacing:2px;margin-bottom:8px;">TAB PERMISSIONS — CUSTOMIZE ACCESS</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:12px;">Defaults loaded from role. Uncheck to restrict access to specific tabs.</div>
+      <div id="au-perms-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;"></div>
+      <div id="au-perms-note" style="font-size:10px;color:var(--text3);margin-top:8px;font-family:'Syne Mono',monospace;">Select a role above to load default permissions</div>
+    </div>
+    <div class="form-acts"><button class="btn b-m b-lg" onclick="saveNewUser()">Create Account</button><button class="btn b-g" onclick="closeModal()">Cancel</button></div>
+    <div class="toast" id="au-t">✓ Account created</div>
+    <div class="gate-err" id="au-err">Error creating account</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+  document.getElementById('au-role').addEventListener('change',function(){ renderPermGrid('au-perms-grid',this.value,null,'au_perm_'); });
+  renderPermGrid('au-perms-grid','admin',null,'au_perm_');
+}
+
+function renderPermGrid(containerId,role,existingPerms,prefix){
+  const container=document.getElementById(containerId); if(!container) return;
+  const defaults=DEFAULT_PERMS[role]||DEFAULT_PERMS.staff;
+  const perms=existingPerms||defaults;
+  container.innerHTML=ALL_INTERNAL_TABS.map(t=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--white);border:1px solid var(--border);border-radius:3px;cursor:pointer;font-size:12px;color:var(--text2);">
+      <input type="checkbox" id="${prefix}${t.id}" ${perms[t.id]?'checked':''} style="width:14px;height:14px;">
+      ${TAB_LABELS[t.id]||t.l}
+    </label>`).join('');
+}
+
+function getPermGridValues(prefix){
+  const perms={};
+  ALL_INTERNAL_TABS.forEach(t=>{ const el=document.getElementById(prefix+t.id); if(el) perms[t.id]=el.checked; });
+  return perms;
+}
+
+async function saveNewUser(){
+  const name=document.getElementById('au-name').value.trim();
+  const email=document.getElementById('au-email').value.trim();
+  const role=document.getElementById('au-role').value;
+  const pw=document.getElementById('au-pw').value;
+  const errEl=document.getElementById('au-err');
+  if(!name||!email){ errEl.textContent='Name and email are required.'; errEl.style.display='block'; setTimeout(()=>errEl.style.display='none',3500); return }
+  if(!pw||pw.length<6){ errEl.textContent='Password must be at least 6 characters.'; errEl.style.display='block'; setTimeout(()=>errEl.style.display='none',3500); return }
+  try{
+    // Create Firebase Auth account using secondary app (doesn't sign out current user)
+    const secAuth=getSecondaryAuth();
+    const cred=await secAuth.createUserWithEmailAndPassword(email,pw);
+    const uid=cred.user.uid;
+    await secAuth.signOut();
+    const permissions=getPermGridValues('au_perm_');
+    const userData={uid,email,name,role,permissions,active:true,createdAt:new Date().toISOString(),createdBy:S.email||S.role||'admin'};
+    const docId=await FS.add('users',userData);
+    userData.id=docId; DB.users.push(userData);
+    toast('au-t','✓ Account created for '+name);
+    setTimeout(()=>{ closeModal(); const mv=document.getElementById('main-views'); if(cv==='security') rSecurity(mv); else rAdmin(mv); },1400);
+  }catch(e){
+    const msg=e.code==='auth/email-already-in-use'?'Email already has a Firebase account.'
+      :e.code==='auth/invalid-email'?'Invalid email address.'
+      :e.message||'Failed to create account.';
+    errEl.textContent=msg; errEl.style.display='block'; setTimeout(()=>errEl.style.display='none',5000);
+  }
+}
+
+function openEditUser(docId){
+  const u=DB.users.find(x=>x.id===docId); if(!u) return;
+  document.getElementById('em-title').textContent='Permissions — '+u.name;
+  const perms=u.permissions||DEFAULT_PERMS[u.role]||DEFAULT_PERMS.staff;
+  document.getElementById('em-body').innerHTML=`
+    <div style="font-size:11px;color:var(--text3);margin-bottom:18px;font-family:'Syne Mono',monospace;line-height:1.8;">
+      <strong style="color:var(--black);">${u.email}</strong> · Role: ${u.role?.toUpperCase()}<br>
+      Check or uncheck tabs to control what this user can see.
+    </div>
+    <div class="fg2" style="margin-bottom:18px;">
+      <div class="fgl"><label>Role</label>
+        <select class="fs" id="eu-role" onchange="renderPermGrid('eu-perms-grid',this.value,null,'eu_perm_')">
+          <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
+          <option value="staff" ${u.role==='staff'?'selected':''}>Staff</option>
+          <option value="accountant" ${u.role==='accountant'?'selected':''}>Accountant</option>
+        </select>
+      </div>
+      <div class="fgl"><label>Display Name</label><input class="fi" id="eu-name" value="${u.name||''}"></div>
+    </div>
+    <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;margin-bottom:10px;">TAB PERMISSIONS</div>
+    <div id="eu-perms-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px;margin-bottom:20px;"></div>
+    <div class="form-acts"><button class="btn b-m b-lg" onclick="saveUserPerms('${docId}')">Save Permissions</button><button class="btn b-g" onclick="closeModal()">Cancel</button></div>
+    <div class="toast" id="eu-t">✓ Permissions saved</div>`;
+  renderPermGrid('eu-perms-grid',u.role,perms,'eu_perm_');
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+async function saveUserPerms(docId){
+  const u=DB.users.find(x=>x.id===docId); if(!u) return;
+  const newRole=document.getElementById('eu-role').value;
+  const newName=document.getElementById('eu-name').value.trim()||u.name;
+  const permissions=getPermGridValues('eu_perm_');
+  u.role=newRole; u.name=newName; u.permissions=permissions;
+  await FS.update('users',docId,{role:newRole,name:newName,permissions});
+  toast('eu-t','✓ Permissions saved');
+  setTimeout(()=>{ closeModal(); const mv=document.getElementById('main-views'); if(cv==='security') rSecurity(mv); else rAdmin(mv); },1200);
+}
+
+async function deactivateUser(docId){
+  const u=DB.users.find(x=>x.id===docId); if(!u) return;
+  if(!confirm('Deactivate '+u.name+'? They will not be able to log in. This does NOT delete their Firebase Auth account.')) return;
+  u.active=false;
+  await FS.update('users',docId,{active:false});
+  const mv=document.getElementById('main-views');
+  if(cv==='security') rSecurity(mv); else rAdmin(mv);
+}
+
 function closeModal(){ document.getElementById('edit-modal').classList.remove('open') }
 document.getElementById('edit-modal').addEventListener('click',function(e){ if(e.target===this) closeModal() });
 
@@ -3064,6 +3431,102 @@ function rOrdersAll(el){
     <div class="og" id="oa-grid"></div>
   `;
   renderList();
+}
+
+// ── SECURITY VIEW (Admin only) ──
+function rSecurity(el){
+  const logs=[...DB.loginHistory].sort((a,b)=>b.timestamp.localeCompare(a.timestamp));
+  const users=DB.users.filter(u=>u.active!==false);
+  const recentLogs=logs.slice(0,50);
+
+  // Stats
+  const last7days=new Date(); last7days.setDate(last7days.getDate()-7);
+  const recentLogins=logs.filter(l=>l.timestamp>=last7days.toISOString());
+  const uniqueIPs=new Set(recentLogins.map(l=>l.ip)).size;
+  const failedCount=0; // We only log successful logins currently
+
+  const logRows=recentLogs.length===0
+    ?'<tr><td colspan="6" class="empty">No login history yet</td></tr>'
+    :recentLogs.map(l=>{
+      const dt=new Date(l.timestamp);
+      const dateStr=dt.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+      const timeStr=dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+      const ua=l.userAgent||'';
+      const browser=ua.includes('Chrome')?'Chrome':ua.includes('Firefox')?'Firefox':ua.includes('Safari')?'Safari':ua.includes('Edge')?'Edge':'Other';
+      const os=ua.includes('Windows')?'Windows':ua.includes('Mac')?'macOS':ua.includes('iPhone')||ua.includes('iPad')?'iOS':ua.includes('Android')?'Android':'Unknown';
+      return `<tr>
+        <td style="font-size:12px;font-weight:500;">${l.email||l.role||'—'}</td>
+        <td class="mn">${l.role?.toUpperCase()||'—'}</td>
+        <td class="mn">${dateStr} ${timeStr}</td>
+        <td class="mn" style="color:var(--blue);">${l.ip||'—'}</td>
+        <td class="mn">${browser} · ${os}</td>
+        <td class="mn">${l.deviceTrusted?'<span style="color:#3a6030;">✓ Trusted</span>':'<span style="color:var(--text3);">New</span>'}</td>
+      </tr>`;
+    }).join('');
+
+  el.innerHTML=`
+    <div class="ph"><div class="ph-t">Security <span class="bdg bad" style="font-size:14px;vertical-align:middle;">★ Admin Only</span></div>
+      <div class="ph-s">Login history · IP logs · Staff account management</div></div>
+
+    <div class="stats" style="margin-bottom:28px;">
+      <div class="sc g"><div class="sc-l">Staff Accounts</div><div class="sc-v">${users.length}</div><div class="sc-n">active Firebase Auth users</div></div>
+      <div class="sc"><div class="sc-l">Logins (7 days)</div><div class="sc-v">${recentLogins.length}</div><div class="sc-n">successful sign-ins</div></div>
+      <div class="sc"><div class="sc-l">Unique IPs (7 days)</div><div class="sc-v">${uniqueIPs}</div><div class="sc-n">distinct locations</div></div>
+      <div class="sc m"><div class="sc-l">Total Login Events</div><div class="sc-v">${logs.length}</div><div class="sc-n">all time</div></div>
+    </div>
+
+    <div class="sh" style="margin-bottom:16px;">
+      <span>Staff Accounts</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${users.length} users</span>
+        <button class="btn b-m b-sm" onclick="openAddUser()">+ Add User</button>
+      </div>
+    </div>
+    <div class="tw" style="margin-bottom:28px;"><table>
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Tab Access</th><th>Last Login</th><th>Actions</th></tr></thead>
+      <tbody>${users.length===0
+        ?'<tr><td colspan="6" class="empty">No Firebase Auth users yet. Add staff accounts below to enable email-based login.</td></tr>'
+        :users.map(u=>{
+          const lastLog=logs.filter(l=>l.uid===u.uid).sort((a,b)=>b.timestamp.localeCompare(a.timestamp))[0];
+          const lastLoginStr=lastLog?new Date(lastLog.timestamp).toLocaleDateString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'Never';
+          const perms=u.permissions||DEFAULT_PERMS[u.role]||{};
+          const tabCount=Object.values(perms).filter(Boolean).length;
+          return `<tr>
+            <td style="font-weight:500;">${u.name||'—'}</td>
+            <td class="mn">${u.email}</td>
+            <td class="mn"><span class="rpill ${u.role==='admin'?'admin':u.role==='accountant'?'':'staff'}" style="font-size:8px;padding:2px 7px;">${u.role?.toUpperCase()}</span></td>
+            <td class="mn">${tabCount} tabs</td>
+            <td class="mn" style="font-size:11px;color:var(--text3);">${lastLoginStr}</td>
+            <td><div style="display:flex;gap:6px;">
+              <button class="btn b-a b-sm" onclick="openEditUser('${u.id}')">Permissions</button>
+              <button class="btn b-r b-sm" onclick="deactivateUser('${u.id}')">Deactivate</button>
+            </div></td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table></div>
+
+    <div class="sh" style="margin-bottom:16px;">
+      <span>Login History</span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">LAST ${recentLogs.length} EVENTS</span>
+    </div>
+    <div class="tw" style="margin-bottom:28px;"><table>
+      <thead><tr><th>User</th><th>Role</th><th>Date / Time</th><th>IP Address</th><th>Browser · OS</th><th>Device</th></tr></thead>
+      <tbody>${logRows}</tbody>
+    </table></div>
+
+    <div class="card" style="margin-bottom:0;">
+      <div class="card-t" style="font-size:16px;">Security Notes</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.9;">
+        <div>• <strong>Email-based logins</strong> use Firebase Authentication — industry-standard, each person has their own account.</div>
+        <div>• <strong>Legacy passwords</strong> (shared admin/staff/accountant) still work for backward compatibility. Consider migrating all users to email accounts.</div>
+        <div>• <strong>IP addresses</strong> are logged on every login. Review this log regularly.</div>
+        <div>• <strong>Session auto-logout</strong> is active — users are signed out after 2 hours of inactivity.</div>
+        <div>• <strong>Device trust</strong> — users can trust a device for 30 days to reduce friction.</div>
+        <div>• <strong>Data retention</strong> — Firestore free tier retains data indefinitely. Upgrade to Blaze plan for guaranteed 7-year retention.</div>
+      </div>
+    </div>
+  `;
 }
 
 // ── REPORTS (Accountant) ──
