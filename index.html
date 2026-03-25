@@ -407,6 +407,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 
 <script>
 window.onerror = function(msg, src, line, col, err){
@@ -420,7 +421,8 @@ const DB = {
   orders:[], clients:[], harvests:[], samples:[],
   fruitings:[], preservation:[], notifLog:[], signupRequests:[], packSessions:[],
   users:[], loginHistory:[],
-  adminPw:'totallyadmin2025', staffPw:'mushrooms2025', accountantPw:'tmbooks2025'
+  adminPw:'totallyadmin2025', staffPw:'mushrooms2025', accountantPw:'tmbooks2025',
+  emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false}
 };
 let packDaySelected = {}; // harvestId -> pull weight, persists across renders
 let viewDay = null; // null = today's delivery day; or 'Monday'/'Wednesday'/'Friday'
@@ -491,6 +493,13 @@ async function loadDB(){
     DB.samples=samples; DB.fruitings=fruitings; DB.preservation=preservation;
     DB.notifLog=notifLog; DB.signupRequests=signupRequests; DB.packSessions=packSessions;
     DB.users=users; DB.loginHistory=loginHistory;
+    // Load EmailJS config from appConfig
+    try{
+      const cfgDoc=await fdb.collection('appConfig').doc('emailjs').get();
+      if(cfgDoc.exists){ Object.assign(DB.emailjs,cfgDoc.data()); }
+    }catch(e){ console.warn('EmailJS config not found'); }
+    // Init EmailJS if configured
+    if(DB.emailjs.publicKey){ emailjs.init({publicKey:DB.emailjs.publicKey}); }
   } catch(e){ console.error('Firestore load error:',e); throw e; }
 }
 
@@ -574,6 +583,36 @@ function resetSessionTimer(){
   _sessionTimer=setTimeout(()=>{ doLogout(); alert('You have been signed out due to 2 hours of inactivity.'); },SESSION_TIMEOUT);
 }
 function stopSessionTimer(){ clearTimeout(_sessionTimer); }
+// ── EMAIL HELPERS ──
+async function sendWelcomeEmail(toEmail,toName,role,tempPassword){
+  if(!DB.emailjs.enabled||!DB.emailjs.serviceId||!DB.emailjs.templateId||!DB.emailjs.publicKey){
+    console.warn('EmailJS not configured — skipping welcome email');
+    return false;
+  }
+  try{
+    await emailjs.send(DB.emailjs.serviceId, DB.emailjs.templateId,{
+      to_email: toEmail,
+      to_name: toName,
+      role: role.charAt(0).toUpperCase()+role.slice(1),
+      temp_password: tempPassword,
+      portal_url: 'https://totallymushroomshq.github.io/dashboard/',
+      from_name: 'Totally Mushrooms'
+    });
+    return true;
+  }catch(e){ console.error('EmailJS send failed:',e); return false; }
+}
+async function saveEmailJSConfig(){
+  const svc=document.getElementById('ejs-svc')?.value.trim();
+  const tpl=document.getElementById('ejs-tpl')?.value.trim();
+  const pk=document.getElementById('ejs-pk')?.value.trim();
+  const en=document.getElementById('ejs-en')?.checked;
+  if(!svc||!tpl||!pk){ alert('Please fill in all three EmailJS fields.'); return }
+  DB.emailjs={serviceId:svc,templateId:tpl,publicKey:pk,enabled:!!en};
+  await fdb.collection('appConfig').doc('emailjs').set(DB.emailjs);
+  emailjs.init({publicKey:pk});
+  toast('ejs-t','✓ EmailJS settings saved');
+}
+
 function showLoginErr(msg){
   const err=document.getElementById('lerr');
   if(!err) return;
@@ -2978,7 +3017,33 @@ function rAdmin(el){
     <div style="margin-bottom:28px;"><div class="sh">Notification Log</div>
       ${DB.notifLog.length===0?'<div class="empty">No notifications sent this session</div>':DB.notifLog.slice().reverse().map(n=>`<div style="padding:10px 14px;background:var(--bark);border:1px solid rgba(196,168,130,.08);border-radius:3px;margin-bottom:6px;font-size:12px;"><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--spore);margin-right:12px;">${n.ts}</span><span style="color:var(--amber);">${n.clientName}</span><span style="color:var(--spore);"> · ${n.type}</span><div style="color:var(--warm);margin-top:4px;font-size:11px;">${n.msg}</div></div>`).join('')}
     </div>
-    <div><div class="sh">Google Sheets Sync</div><div class="card" style="margin-bottom:0;"><div style="font-family:'Syne Mono',monospace;font-size:12px;color:var(--sage);line-height:2.2;"><div>📋 Sheet ID: <span style="color:var(--warm);">[ Add your Google Sheet ID here ]</span></div><div>🔗 Status: <span style="color:var(--rust);">Not connected — see integration guide</span></div></div></div></div>`;
+    <div style="margin-bottom:28px;">
+      <div class="sh"><span>Email Settings</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:${DB.emailjs.enabled?'#3a6030':'var(--rust)'};">${DB.emailjs.enabled?'✓ EMAILJS ACTIVE':'NOT CONFIGURED'}</span></div>
+      <div class="card" style="margin-bottom:0;">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:18px;line-height:1.7;">
+          Connects to <strong>EmailJS</strong> to automatically send welcome emails when new staff accounts are created.
+          <a href="https://www.emailjs.com" target="_blank" style="color:var(--blue);text-decoration:none;"> → Set up free account at emailjs.com</a>
+        </div>
+        <div class="fg2">
+          <div class="fgl"><label>Service ID</label><input class="fi" id="ejs-svc" value="${DB.emailjs.serviceId||''}" placeholder="e.g. service_xxxxxxx"></div>
+          <div class="fgl"><label>Template ID</label><input class="fi" id="ejs-tpl" value="${DB.emailjs.templateId||''}" placeholder="e.g. template_xxxxxxx"></div>
+          <div class="fgl"><label>Public Key</label><input class="fi" id="ejs-pk" value="${DB.emailjs.publicKey||''}" placeholder="Your EmailJS public key"></div>
+        </div>
+        <div class="tog" style="margin-top:14px;">
+          <label class="tsw"><input type="checkbox" id="ejs-en" ${DB.emailjs.enabled?'checked':''}><div class="ttr"></div></label>
+          <label for="ejs-en" style="font-size:13px;color:var(--text2);">Enable automatic welcome emails</label>
+        </div>
+        <div style="margin-top:6px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);line-height:1.8;">
+          Email template variables to use in EmailJS:<br>
+          <code style="color:var(--gold);">{{to_name}}</code> · <code style="color:var(--gold);">{{to_email}}</code> · <code style="color:var(--gold);">{{role}}</code> · <code style="color:var(--gold);">{{temp_password}}</code> · <code style="color:var(--gold);">{{portal_url}}</code> · <code style="color:var(--gold);">{{from_name}}</code>
+        </div>
+        <div class="form-acts" style="margin-top:16px;">
+          <button class="btn b-m" onclick="saveEmailJSConfig()">Save Email Settings</button>
+          ${DB.emailjs.enabled?`<button class="btn b-s" onclick="sendWelcomeEmail('${S.email||''}','${S.name||''}','${S.role||''}','[test]').then(ok=>alert(ok?'✓ Test email sent to ${S.email}':'✗ Send failed — check console'))">Send Test Email</button>`:''}
+        </div>
+        <div class="toast" id="ejs-t">✓ Saved</div>
+      </div>
+    </div>`;
 
   if(newSR.length>0){ const srl=el.querySelector('#sr-list'); newSR.forEach(sr=>rSR(sr,srl)) }
   const ag=el.querySelector('#aa-g'); const std=DB.orders.filter(o=>!o.custom&&!o.isStanding); if(std.length===0) ag.innerHTML='<div class="empty">No standard orders</div>'; else std.forEach(o=>rOC(o,ag,o.status==='pending'));
@@ -3220,8 +3285,11 @@ async function saveNewUser(){
     const userData={uid,email,name,role,permissions,active:true,createdAt:new Date().toISOString(),createdBy:S.email||S.role||'admin'};
     const docId=await FS.add('users',userData);
     userData.id=docId; DB.users.push(userData);
-    toast('au-t','✓ Account created for '+name);
-    setTimeout(()=>{ closeModal(); const mv=document.getElementById('main-views'); if(cv==='security') rSecurity(mv); else rAdmin(mv); },1400);
+    // Send welcome email
+    const emailSent=await sendWelcomeEmail(email,name,role,pw);
+    const emailNote=emailSent?' · Welcome email sent ✓':DB.emailjs.enabled?' · Email failed — check EmailJS config':' · Configure EmailJS to send welcome emails automatically';
+    toast('au-t','✓ Account created for '+name+emailNote);
+    setTimeout(()=>{ closeModal(); const mv=document.getElementById('main-views'); if(cv==='security') rSecurity(mv); else rAdmin(mv); },emailSent?1800:1400);
   }catch(e){
     const msg=e.code==='auth/email-already-in-use'?'Email already has a Firebase account.'
       :e.code==='auth/invalid-email'?'Invalid email address.'
