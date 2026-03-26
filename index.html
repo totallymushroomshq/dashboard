@@ -3039,7 +3039,7 @@ function rAdmin(el){
         </div>
         <div class="form-acts" style="margin-top:16px;">
           <button class="btn b-m" onclick="saveEmailJSConfig()">Save Email Settings</button>
-          ${DB.emailjs.enabled?`<button class="btn b-s" onclick="sendWelcomeEmail('${S.email||''}','${S.name||''}','${S.role||''}','[test]').then(ok=>alert(ok?'✓ Test email sent to ${S.email}':'✗ Send failed — check console'))">Send Test Email</button>`:''}
+          ${DB.emailjs.enabled?`<button class="btn b-s" onclick="(function(){const addr=prompt('Send test email to:','${S.email||'your@email.com'}');if(!addr)return;sendWelcomeEmail(addr,'Test User','Admin','TempPass123').then(ok=>alert(ok?'✓ Test email sent to '+addr:'✗ Send failed — check console'));})()">Send Test Email</button>`:''}
         </div>
         <div class="toast" id="ejs-t">✓ Saved</div>
       </div>
