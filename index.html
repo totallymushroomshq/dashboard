@@ -536,16 +536,32 @@ async function getClientIP(){
   try{ const r=await fetch('https://api.ipify.org?format=json'); const d=await r.json(); return d.ip||'unknown'; }
   catch(e){ return 'unknown'; }
 }
-async function logLogin(uid,email,role){
+async function logLogin(uid,email,role,name,isNewDevice){
   try{
     const ip=await getClientIP();
+    // Parse browser and OS from userAgent
+    const ua=navigator.userAgent;
+    let browser='Unknown';
+    if(/Edg\//.test(ua)) browser='Edge';
+    else if(/OPR\/|Opera/.test(ua)) browser='Opera';
+    else if(/Chrome\//.test(ua)&&!/Chromium\//.test(ua)) browser='Chrome';
+    else if(/Firefox\//.test(ua)) browser='Firefox';
+    else if(/Safari\//.test(ua)&&!/Chrome\//.test(ua)) browser='Safari';
+    let os='Unknown';
+    if(/Windows NT/.test(ua)) os='Windows';
+    else if(/Mac OS X/.test(ua)) os='macOS';
+    else if(/iPhone|iPad/.test(ua)) os='iOS';
+    else if(/Android/.test(ua)) os='Android';
+    else if(/Linux/.test(ua)) os='Linux';
     const entry={uid,email,role,ip,
-      userAgent:navigator.userAgent.substring(0,250),
+      userAgent:ua.substring(0,250),
       timestamp:new Date().toISOString(),
       deviceTrusted:isDeviceTrusted(uid),
       sessionId:Math.random().toString(36).slice(2)};
     const eid=await FS.add('loginHistory',entry);
     entry.id=eid; DB.loginHistory.push(entry);
+    // Fire login alert email — non-blocking, runs in background
+    sendLoginAlert(email, name||email, role, ip, browser, os, !!isNewDevice);
   }catch(e){ console.warn('Login log failed:',e); }
 }
 function isDeviceTrusted(uid){
@@ -584,6 +600,20 @@ function resetSessionTimer(){
 }
 function stopSessionTimer(){ clearTimeout(_sessionTimer); }
 // ── EMAIL HELPERS ──
+const PORTAL_URL = 'https://totallymushroomshq.github.io/dashboard/';
+const ADMIN_ALERT_EMAIL = 'totallymushroomshq@gmail.com';
+
+async function getLocation(ip){
+  if(!ip||ip==='unknown') return 'Unknown location';
+  try{
+    const r=await fetch('https://ipapi.co/'+ip+'/json/');
+    const d=await r.json();
+    if(d.city&&d.country_name) return d.city+', '+d.country_name;
+    if(d.country_name) return d.country_name;
+    return ip;
+  }catch(e){ return ip; }
+}
+
 async function sendWelcomeEmail(toEmail,toName,role,tempPassword){
   if(!DB.emailjs.enabled||!DB.emailjs.serviceId||!DB.emailjs.templateId||!DB.emailjs.publicKey){
     console.warn('EmailJS not configured — skipping welcome email');
@@ -595,22 +625,76 @@ async function sendWelcomeEmail(toEmail,toName,role,tempPassword){
       to_name: toName,
       role: role.charAt(0).toUpperCase()+role.slice(1),
       temp_password: tempPassword,
-      portal_url: 'https://totallymushroomshq.github.io/dashboard/',
+      portal_url: PORTAL_URL,
       from_name: 'Totally Mushrooms'
     });
     return true;
   }catch(e){ console.error('EmailJS send failed:',e); return false; }
 }
+
+async function sendLoginAlert(toEmail, toName, role, ip, browser, os, isNewDevice){
+  if(!DB.emailjs.enabled||!DB.emailjs.alertTemplateId||!DB.emailjs.serviceId) return;
+  // Respect alert mode setting
+  if(DB.emailjs.alertMode==='new_device'&&!isNewDevice) return;
+  const location=await getLocation(ip);
+  const now=new Date();
+  const timeStr=now.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'})+' at '+now.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',timeZoneName:'short'});
+  const resetLink=PORTAL_URL+'?reset_for='+encodeURIComponent(toEmail);
+  const deviceLabel=isNewDevice?'⚠ NEW / UNRECOGNIZED DEVICE':'Trusted Device';
+  const params={
+    account_email: toEmail,
+    account_name: toName,
+    role: role?.charAt(0).toUpperCase()+role?.slice(1)||'Staff',
+    login_time: timeStr,
+    login_ip: ip||'Unknown',
+    login_location: location,
+    login_browser: browser,
+    login_os: os,
+    device_status: deviceLabel,
+    yes_link: PORTAL_URL,
+    no_link: resetLink,
+    from_name: 'Totally Mushrooms Security'
+  };
+  try{
+    // Send to the user who logged in
+    await emailjs.send(DB.emailjs.serviceId, DB.emailjs.alertTemplateId,{...params, to_email:toEmail});
+    // Send copy to admin (only if different from user)
+    if(toEmail.toLowerCase()!==ADMIN_ALERT_EMAIL.toLowerCase()){
+      await emailjs.send(DB.emailjs.serviceId, DB.emailjs.alertTemplateId,{...params, to_email:ADMIN_ALERT_EMAIL, account_name:'[ADMIN COPY] '+toName});
+    }
+  }catch(e){ console.warn('Login alert failed:',e); }
+}
+
 async function saveEmailJSConfig(){
   const svc=document.getElementById('ejs-svc')?.value.trim();
   const tpl=document.getElementById('ejs-tpl')?.value.trim();
+  const atpl=document.getElementById('ejs-atpl')?.value.trim();
   const pk=document.getElementById('ejs-pk')?.value.trim();
   const en=document.getElementById('ejs-en')?.checked;
-  if(!svc||!tpl||!pk){ alert('Please fill in all three EmailJS fields.'); return }
-  DB.emailjs={serviceId:svc,templateId:tpl,publicKey:pk,enabled:!!en};
+  const am=document.getElementById('ejs-am')?.value||'new_device';
+  if(!svc||!tpl||!pk){ alert('Please fill in Service ID, Welcome Template ID, and Public Key.'); return }
+  DB.emailjs={serviceId:svc,templateId:tpl,alertTemplateId:atpl||'',publicKey:pk,enabled:!!en,alertMode:am};
   await fdb.collection('appConfig').doc('emailjs').set(DB.emailjs);
   emailjs.init({publicKey:pk});
   toast('ejs-t','✓ EmailJS settings saved');
+}
+
+// ── PASSWORD RESET VIA URL PARAM ──
+function checkResetParam(){
+  try{
+    const params=new URLSearchParams(window.location.search);
+    const resetFor=params.get('reset_for');
+    if(resetFor){
+      // Clean URL without reload
+      window.history.replaceState({},'',window.location.pathname);
+      auth.sendPasswordResetEmail(resetFor).then(()=>{
+        document.getElementById('lerr').style.display='none';
+        const ok=document.getElementById('su-ok');
+        if(ok){ ok.textContent='✓ Password reset email sent to '+resetFor+'. Check your inbox.'; ok.style.display='block'; }
+        else{ alert('✓ Password reset email sent to '+resetFor+'. Check your inbox.'); }
+      }).catch(e=>{ alert('Could not send reset: '+e.message); });
+    }
+  }catch(e){}
 }
 
 function showLoginErr(msg){
@@ -644,10 +728,11 @@ async function login(){
       const uid=cred.user.uid;
       const userDoc=DB.users.find(u=>u.uid===uid);
       if(userDoc&&userDoc.active!==false){
+        const _isNewDev=!isDeviceTrusted(uid);
         S={role:userDoc.role,clientId:null,uid,email,name:userDoc.name||'',
            permissions:userDoc.permissions||DEFAULT_PERMS[userDoc.role]||DEFAULT_PERMS.staff,
-           newDevice:!isDeviceTrusted(uid)};
-        await logLogin(uid,email,userDoc.role);
+           newDevice:_isNewDev};
+        await logLogin(uid,email,userDoc.role,userDoc.name||'',_isNewDev);
         launch();
         if(S.newDevice) showNewDeviceBanner(uid);
         return;
@@ -696,6 +781,8 @@ async function subSignup(){
 }
 
 window.addEventListener('DOMContentLoaded', async ()=>{
+  // Handle ?reset_for=EMAIL param from login alert "No, it wasn't me" link
+  checkResetParam();
   const bar = document.getElementById('load-bar');
   const errEl = document.getElementById('load-err');
   bar.style.width='30%';
@@ -3021,25 +3108,41 @@ function rAdmin(el){
       <div class="sh"><span>Email Settings</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:${DB.emailjs.enabled?'#3a6030':'var(--rust)'};">${DB.emailjs.enabled?'✓ EMAILJS ACTIVE':'NOT CONFIGURED'}</span></div>
       <div class="card" style="margin-bottom:0;">
         <div style="font-size:12px;color:var(--text2);margin-bottom:18px;line-height:1.7;">
-          Connects to <strong>EmailJS</strong> to automatically send welcome emails when new staff accounts are created.
+          Connects to <strong>EmailJS</strong> to send welcome emails to new staff and login alert emails ("Was this you?") to staff + admin when a sign-in is detected.
           <a href="https://www.emailjs.com" target="_blank" style="color:var(--blue);text-decoration:none;"> → Set up free account at emailjs.com</a>
         </div>
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">Core Settings</div>
         <div class="fg2">
           <div class="fgl"><label>Service ID</label><input class="fi" id="ejs-svc" value="${DB.emailjs.serviceId||''}" placeholder="e.g. service_xxxxxxx"></div>
-          <div class="fgl"><label>Template ID</label><input class="fi" id="ejs-tpl" value="${DB.emailjs.templateId||''}" placeholder="e.g. template_xxxxxxx"></div>
           <div class="fgl"><label>Public Key</label><input class="fi" id="ejs-pk" value="${DB.emailjs.publicKey||''}" placeholder="Your EmailJS public key"></div>
         </div>
-        <div class="tog" style="margin-top:14px;">
-          <label class="tsw"><input type="checkbox" id="ejs-en" ${DB.emailjs.enabled?'checked':''}><div class="ttr"></div></label>
-          <label for="ejs-en" style="font-size:13px;color:var(--text2);">Enable automatic welcome emails</label>
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin:16px 0 10px;">Welcome Email Template</div>
+        <div class="fg2">
+          <div class="fgl"><label>Welcome Template ID</label><input class="fi" id="ejs-tpl" value="${DB.emailjs.templateId||''}" placeholder="e.g. template_gy3gxaq"></div>
         </div>
         <div style="margin-top:6px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);line-height:1.8;">
-          Email template variables to use in EmailJS:<br>
-          <code style="color:var(--gold);">{{to_name}}</code> · <code style="color:var(--gold);">{{to_email}}</code> · <code style="color:var(--gold);">{{role}}</code> · <code style="color:var(--gold);">{{temp_password}}</code> · <code style="color:var(--gold);">{{portal_url}}</code> · <code style="color:var(--gold);">{{from_name}}</code>
+          Welcome email variables: <code style="color:var(--gold);">{{to_name}}</code> · <code style="color:var(--gold);">{{to_email}}</code> · <code style="color:var(--gold);">{{role}}</code> · <code style="color:var(--gold);">{{temp_password}}</code> · <code style="color:var(--gold);">{{portal_url}}</code> · <code style="color:var(--gold);">{{from_name}}</code>
+        </div>
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin:16px 0 10px;">🔒 Login Alert Template <span style="color:var(--gold);font-size:8px;">("Was This You?")</span></div>
+        <div class="fg2">
+          <div class="fgl"><label>Alert Template ID</label><input class="fi" id="ejs-atpl" value="${DB.emailjs.alertTemplateId||''}" placeholder="e.g. template_xxxxxxx"></div>
+          <div class="fgl"><label>Send Alert When</label>
+            <select class="fs" id="ejs-am">
+              <option value="new_device" ${(!DB.emailjs.alertMode||DB.emailjs.alertMode==='new_device')?'selected':''}>New / unrecognized device only</option>
+              <option value="always" ${DB.emailjs.alertMode==='always'?'selected':''}>Every login (all devices)</option>
+            </select>
+          </div>
+        </div>
+        <div style="margin-top:6px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);line-height:1.8;">
+          Alert email variables: <code style="color:var(--gold);">{{to_email}}</code> · <code style="color:var(--gold);">{{account_name}}</code> · <code style="color:var(--gold);">{{account_email}}</code> · <code style="color:var(--gold);">{{role}}</code> · <code style="color:var(--gold);">{{login_time}}</code> · <code style="color:var(--gold);">{{login_ip}}</code> · <code style="color:var(--gold);">{{login_location}}</code> · <code style="color:var(--gold);">{{login_browser}}</code> · <code style="color:var(--gold);">{{login_os}}</code> · <code style="color:var(--gold);">{{device_status}}</code> · <code style="color:var(--gold);">{{yes_link}}</code> · <code style="color:var(--gold);">{{no_link}}</code> · <code style="color:var(--gold);">{{from_name}}</code>
+        </div>
+        <div class="tog" style="margin-top:16px;">
+          <label class="tsw"><input type="checkbox" id="ejs-en" ${DB.emailjs.enabled?'checked':''}><div class="ttr"></div></label>
+          <label for="ejs-en" style="font-size:13px;color:var(--text2);">Enable EmailJS (welcome + login alert emails)</label>
         </div>
         <div class="form-acts" style="margin-top:16px;">
           <button class="btn b-m" onclick="saveEmailJSConfig()">Save Email Settings</button>
-          ${DB.emailjs.enabled?`<button class="btn b-s" onclick="(function(){const addr=prompt('Send test email to:','${S.email||'your@email.com'}');if(!addr)return;sendWelcomeEmail(addr,'Test User','Admin','TempPass123').then(ok=>alert(ok?'✓ Test email sent to '+addr:'✗ Send failed — check console'));})()">Send Test Email</button>`:''}
+          ${DB.emailjs.enabled?`<button class="btn b-s" onclick="(function(){const addr=prompt('Send test welcome email to:','${S.email||'your@email.com'}');if(!addr)return;sendWelcomeEmail(addr,'Test User','Admin','TempPass123').then(ok=>alert(ok?'✓ Test sent to '+addr:'✗ Failed — check console'));})()">Test Welcome Email</button>`:''}
         </div>
         <div class="toast" id="ejs-t">✓ Saved</div>
       </div>
