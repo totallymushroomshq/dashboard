@@ -420,11 +420,14 @@ window.onerror = function(msg, src, line, col, err){
 const DB = {
   orders:[], clients:[], harvests:[], samples:[],
   fruitings:[], preservation:[], notifLog:[], signupRequests:[], packSessions:[],
-  users:[], loginHistory:[],
+  users:[], loginHistory:[], transfers:[], productMovements:[], auditLog:[],
+  facilities:[...ALL_FACILITIES], containerOverrides:{},
   adminPw:'totallyadmin2025', staffPw:'mushrooms2025', accountantPw:'tmbooks2025',
   emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false}
 };
 let packDaySelected = {}; // harvestId -> pull weight, persists across renders
+// Audit session ID — unique per page load, groups all changes made in one sitting
+const _auditSession = Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 let viewDay = null; // null = today's delivery day; or 'Monday'/'Wednesday'/'Friday'
 const DELIVERY_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 
@@ -483,21 +486,32 @@ const FS = {
 // ── LOAD ALL DATA FROM FIRESTORE ──
 async function loadDB(){
   try {
-    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory] = await Promise.all([
+    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog] = await Promise.all([
       FS.getAll('orders'), FS.getAll('clients'), FS.getAll('harvests'),
       FS.getAll('samples'), FS.getAll('fruitings'), FS.getAll('preservation'),
       FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('packSessions'),
-      FS.getAll('users'), FS.getAll('loginHistory')
+      FS.getAll('users'), FS.getAll('loginHistory'), FS.getAll('transfers'), FS.getAll('productMovements'),
+      FS.getAll('auditLog')
     ]);
     DB.orders=orders; DB.clients=clients; DB.harvests=harvests;
     DB.samples=samples; DB.fruitings=fruitings; DB.preservation=preservation;
     DB.notifLog=notifLog; DB.signupRequests=signupRequests; DB.packSessions=packSessions;
-    DB.users=users; DB.loginHistory=loginHistory;
+    DB.users=users; DB.loginHistory=loginHistory; DB.transfers=transfers; DB.productMovements=productMovements; DB.auditLog=auditLog;
     // Load EmailJS config from appConfig
     try{
       const cfgDoc=await fdb.collection('appConfig').doc('emailjs').get();
       if(cfgDoc.exists){ Object.assign(DB.emailjs,cfgDoc.data()); }
     }catch(e){ console.warn('EmailJS config not found'); }
+    // Load active facilities config from appConfig
+    try{
+      const facDoc=await fdb.collection('appConfig').doc('facilities').get();
+      if(facDoc.exists&&facDoc.data().active){ DB.facilities=facDoc.data().active; }
+    }catch(e){ console.warn('Facilities config not found — using defaults'); }
+    // Load container active/inactive overrides from appConfig
+    try{
+      const conDoc=await fdb.collection('appConfig').doc('containers').get();
+      if(conDoc.exists){ DB.containerOverrides=conDoc.data()||{}; }
+    }catch(e){ console.warn('Container overrides not found — using defaults'); }
     // Init EmailJS if configured
     if(DB.emailjs.publicKey){ emailjs.init({publicKey:DB.emailjs.publicKey}); }
   } catch(e){ console.error('Firestore load error:',e); throw e; }
@@ -564,6 +578,31 @@ async function logLogin(uid,email,role,name,isNewDevice){
     sendLoginAlert(email, name||email, role, ip, browser, os, !!isNewDevice);
   }catch(e){ console.warn('Login log failed:',e); }
 }
+// ── AUDIT LOG ──
+// Action constants for readability / filtering
+const AUDIT_ICONS = {
+  harvest_logged:'🌾', order_created:'🛒', order_confirmed:'✅', order_status:'📦',
+  pack_session_closed:'📋', product_moved:'🚛', preservation_logged:'🧊',
+  client_added:'👤', user_added:'👤', user_perms_changed:'🔑', user_deactivated:'🚫',
+  container_toggled:'📦', other:'📝'
+};
+async function logAudit(action, detail){
+  if(!S.role) return; // not logged in — don't log
+  try{
+    const entry={
+      ts: new Date().toISOString(),
+      session: _auditSession,
+      userId: S.uid||'',
+      userName: S.name||S.role||'unknown',
+      role: S.role||'',
+      action,
+      detail
+    };
+    const eid=await FS.add('auditLog',entry);
+    entry.id=eid; DB.auditLog.push(entry);
+  }catch(e){ console.warn('Audit log failed:',e); }
+}
+
 function isDeviceTrusted(uid){
   if(!uid) return false;
   try{
@@ -663,6 +702,15 @@ async function sendLoginAlert(toEmail, toName, role, ip, browser, os, isNewDevic
       await emailjs.send(DB.emailjs.serviceId, DB.emailjs.alertTemplateId,{...params, to_email:ADMIN_ALERT_EMAIL, account_name:'[ADMIN COPY] '+toName});
     }
   }catch(e){ console.warn('Login alert failed:',e); }
+}
+
+async function toggleFacility(name, active){
+  if(active){ if(!DB.facilities.includes(name)) DB.facilities.push(name); }
+  else { DB.facilities=DB.facilities.filter(f=>f!==name); }
+  try{
+    await fdb.collection('appConfig').doc('facilities').set({active:DB.facilities});
+    toast('fac-t');
+  }catch(e){ console.warn('Could not save facility config:',e); }
 }
 
 async function saveEmailJSConfig(){
@@ -1285,10 +1333,12 @@ async function closePackSession(sessionId){
   sess.status='closed'; sess.closedAt=new Date().toISOString(); sess.totalUsedByVariety=totalUsedByVariety;
   updates.push(FS.update('packSessions',sessionId,{status:'closed',closedAt:sess.closedAt,totalUsedByVariety}));
   await Promise.all(updates);
+  const usedSummary=Object.entries(totalUsedByVariety).map(([v,w])=>`${w}lb ${v}`).join(', ')||'no deductions';
+  logAudit('pack_session_closed',`Closed pack session — ${usedSummary}`);
   renderC();
 }
 
-function appOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!o) return; o.status='confirmed'; FS.update('orders',id,{status:'confirmed'}); const c=DB.clients.find(x=>x.id===o.clientId); notify(o.clientId,`Hi ${c?.contact||'there'}, your ${o.day} order is confirmed! ${oSum(o)}.`,'approval'); renderC() }
+function appOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!o) return; o.status='confirmed'; FS.update('orders',id,{status:'confirmed'}); const c=DB.clients.find(x=>x.id===o.clientId); notify(o.clientId,`Hi ${c?.contact||'there'}, your ${o.day} order is confirmed! ${oSum(o)}.`,'approval'); logAudit('order_confirmed',`Confirmed order for ${o.client} — ${o.day}`); renderC() }
 function rejOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!o||!confirm('Reject order for '+o.client+'?')) return; notify(o.clientId,`Hi ${DB.clients.find(x=>x.id===o.clientId)?.contact||'there'}, we can't fulfil your ${o.day} order this week. Please contact us.`,'rejection'); DB.orders=DB.orders.filter(x=>x.id!==id); FS.del('orders',id); renderC() }
 function delOrd(id){ if(!confirm('Delete order?')) return; DB.orders=DB.orders.filter(x=>x.id!==id); FS.del('orders',id); renderC() }
 function subOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!o) return; const note=prompt('Substitution note for '+o.client+':'); if(!note) return; o.subNote=note; const req=confirm('Does client need to approve this sub?'); if(req){ o.status='pending'; notify(o.clientId,`Hi, we need to change your ${o.day} order: ${note}. Please log in to approve.`,'sub-approval') } else { o.status='confirmed'; notify(o.clientId,`Hi, a small update to your ${o.day} order: ${note}. All confirmed!`,'sub-notify') } renderC() }
@@ -1307,6 +1357,7 @@ function advStatus(id, newStatus){
     o.invoicedAt=new Date().toLocaleString();
     FS.update('orders',id,{status:newStatus,invoicedAt:o.invoicedAt});
   }
+  logAudit('order_status',`Marked order #${id.slice(-4)} for ${o.client} as ${newStatus}`);
   renderC();
 }
 
@@ -1770,6 +1821,7 @@ async function subNewOrd(){
   const oId=await FS.add('orders',o);
   o.id=oId;
   DB.orders.push(o);
+  logAudit('order_created',`Created ${o.isStanding?'standing':rt} order for ${client} — ${o.day||'no day'}`);
   const toastEl=document.getElementById('no-t');
   if(toastEl){toastEl.textContent='✓ Order submitted — awaiting farm approval';toastEl.style.background='';toastEl.style.borderColor='';toastEl.style.color='';}
   toast('no-t'); clrNewOrd();
@@ -1815,6 +1867,67 @@ function importP(){ if(!pBuf) return; sw('new-order'); setTimeout(()=>{ const p=
 
 // ── HARVEST ──
 const VARIETIES = ['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Cumberland Oyster','Black Pearl','Chestnut','Shiitake',"Lion's Mane",'Gold Enoki','White Enoki','Lynx Paw','Coral Tooth'];
+
+// ── FACILITY & CONTAINER DATA (from Katherine's sheet) ──
+// Update container facilities here when containers move — just change the facility value.
+// To reorder the dropdown, move rows within each group below.
+const ALL_FACILITIES = ["Hyde's Ferry Pike",'Opryland','Carthage','Missouri','Owner','CGF'];
+// active:true = shows in harvest dropdown & inventory filter by default
+// To move a container between facilities: change facility value
+// To temporarily deactivate: use Admin → Container Management toggles
+const CONTAINERS = [
+  // ── Hyde's Ferry Pike — Greenhouse (GH codes, Allen's order) ──
+  {code:'GH-03-01', farm:"Wheeler/Barnett Farm",    facility:"Hyde's Ferry Pike", active:true},
+  {code:'GH-04-01', farm:"Mighty Coosa Farms LLC",  facility:"Hyde's Ferry Pike", active:true},
+  {code:'GH-10-01', farm:"Sydney Barrow Farm",      facility:"Hyde's Ferry Pike", active:true},
+  {code:'GH-09-01', farm:"Cordell farms",           facility:"Hyde's Ferry Pike", active:true},
+  {code:'GH-04-02', farm:"Mighty Coosa Farms LLC",  facility:"Hyde's Ferry Pike", active:true},
+  {code:'GH-08-01', farm:"Buysse farm",             facility:"Hyde's Ferry Pike", active:true},
+  {code:'GH-02-02', farm:"Egloff Farms",            facility:"Hyde's Ferry Pike", active:true},
+  {code:'GH-02-01', farm:"Egloff Farms",            facility:"Hyde's Ferry Pike", active:true},
+  {code:'GH-05-01', farm:"Savannah Barrow Farm",    facility:"Hyde's Ferry Pike", active:true},
+  {code:'GH-06-01', farm:"Carrol Farms",            facility:"Hyde's Ferry Pike", active:true},
+  {code:'GH-01-01', farm:"The InnStead Farm",       facility:"Hyde's Ferry Pike", active:true},
+  {code:'GH-07-01', farm:"Yamauchi Farms",          facility:"Hyde's Ferry Pike", active:true},
+  // ── Hyde's Ferry Pike — Rice Farms (CA-01 codes) ──
+  {code:'CA-01-1',  farm:"Rice Farms",              facility:"Hyde's Ferry Pike", active:true},
+  {code:'CA-01-2',  farm:"Rice Farms",              facility:"Hyde's Ferry Pike", active:true},
+  {code:'CA-01-3',  farm:"Rice Farms",              facility:"Hyde's Ferry Pike", active:true},
+  {code:'CA-01-4',  farm:"Rice Farms",              facility:"Hyde's Ferry Pike", active:true},
+  {code:'CA-01-5',  farm:"Rice Farms",              facility:"Hyde's Ferry Pike", active:true},
+  // ── Opryland ──
+  {code:'MO-02-01', farm:"Innovative Garden",       facility:'Opryland',          active:true},
+  {code:'MO-02-02', farm:"Innovative Garden",       facility:'Opryland',          active:true},
+  // ── Carthage ──
+  {code:'CA-03-01', farm:"D&D Interests LLC",       facility:'Carthage',          active:true},
+  {code:'CA-03-02', farm:"D&D Interests LLC",       facility:'Carthage',          active:true},
+  {code:'CA-02-01', farm:"Kessler",                 facility:'Carthage',          active:true},
+  {code:'CA-04-01', farm:"Covington Farm",          facility:'Carthage',          active:true},
+  {code:'MO-08-01', farm:"S&A Hillis Farm",         facility:'Carthage',          active:true},
+  {code:'MO-01-01', farm:"Throckmorton Farm",       facility:'Carthage',          active:true},
+  {code:'MO-03-01', farm:"Herdes Farm",             facility:'Carthage',          active:true},
+  {code:'MO-05-01', farm:"K&D Farms",               facility:'Carthage',          active:true},
+  {code:'MO-04-01', farm:"Judy's Mushroom Farm",    facility:'Carthage',          active:true},
+  {code:'MO-04-02', farm:"Judy's Mushroom Farm",    facility:'Carthage',          active:true},
+  {code:'MO-06-01', farm:"MAD Mushroom Farm",       facility:'Carthage',          active:true},
+  {code:'MO-07-01', farm:"Monarch Mushrooms",       facility:'Carthage',          active:true},
+  {code:'MO-09-01', farm:"Westyn McKinley Farm",    facility:'Carthage',          active:true},
+  {code:'MO-10-01', farm:"R Barrow Farms",          facility:'Carthage',          active:true},
+  {code:'MO-11-01', farm:"Buysse Farms",            facility:'Carthage',          active:true},
+  // ── Missouri (inactive) ──
+  {code:'MO-00-01', farm:"TM Missouri LLC",         facility:'Missouri',          active:false},
+  {code:'MO-00-02', farm:"TM Missouri LLC",         facility:'Missouri',          active:false},
+  {code:'MO-00-03', farm:"TM Missouri LLC",         facility:'Missouri',          active:false},
+  {code:'MO-00-04', farm:"TM Missouri LLC",         facility:'Missouri',          active:false},
+  {code:'MO-00-05', farm:"TM Missouri LLC",         facility:'Missouri',          active:false},
+  // ── Owner / TM (inactive) ──
+  {code:'TM-02-1',  farm:"Malone Farms",            facility:'Owner',             active:false},
+  {code:'TM-03-1',  farm:"Noe Farms",               facility:'Owner',             active:false},
+  {code:'TM-05-1',  farm:"Noe Farms",               facility:'Owner',             active:false},
+  // ── CGF (inactive) ──
+  {code:'TM-04-1',  farm:"Stonewall Meadows",       facility:'CGF',               active:false},
+  {code:'TM-04-2',  farm:"Stonewall Meadows",       facility:'CGF',               active:false}
+];
 
 // ── FRUITING ──
 
@@ -2052,14 +2165,75 @@ function delFruiting(id){
   renderC();
 }
 
+// Returns containers that are active (respects admin overrides)
+function getActiveContainers(){
+  return CONTAINERS.filter(c=>{
+    const ov=DB.containerOverrides[c.code];
+    return ov!==undefined ? ov : c.active;
+  });
+}
+
+async function toggleContainer(code, active){
+  DB.containerOverrides[code]=active;
+  try{
+    await fdb.collection('appConfig').doc('containers').set(DB.containerOverrides);
+    logAudit('container_toggled',`Container ${code} set to ${active?'active':'inactive'}`);
+    toast('con-t');
+  }catch(e){ console.warn('Could not save container config:',e); }
+}
+
+function onContainerSelect(code){
+  const c=CONTAINERS.find(x=>x.code===code);
+  const facEl=document.getElementById('hl-fac');
+  const infoEl=document.getElementById('hl-farm-info');
+  if(c){
+    if(facEl) facEl.value=c.facility;
+    if(infoEl){
+      infoEl.innerHTML=`
+        <div style="display:grid;grid-template-columns:auto 1fr 1fr;gap:16px;align-items:start;">
+          <div><div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px;">Farm Code</div>
+            <div style="font-family:'Syne Mono',monospace;font-size:15px;font-weight:700;color:var(--gold);">${c.code}</div></div>
+          <div><div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px;">Location</div>
+            <div style="font-size:13px;font-weight:600;">${c.facility}</div></div>
+          <div><div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:3px;">Farm Name</div>
+            <div style="font-size:13px;color:var(--text2);">${c.farm}</div></div>
+        </div>`;
+      infoEl.style.display='block';
+    }
+  } else {
+    if(facEl) facEl.value='';
+    if(infoEl) infoEl.style.display='none';
+  }
+}
+
 function rHarvest(el){
   const s=[...DB.harvests].sort((a,b)=>b.date.localeCompare(a.date));
+  const activeContainers=getActiveContainers();
   el.innerHTML=`
     <div class="ph"><div class="ph-t">Harvest Log</div><div class="ph-s">Record each lot from the grow room</div></div>
     ${canEdit()?'<div class="card"><div class="card-t">Log a Harvest</div>':'<div style="display:none"><div>'}
     <div class="fg2">
       <div class="fgl"><label>Date</label><input class="fi" type="date" id="hl-dt" value="${tday()}"></div>
-      <div class="fgl"><label>Container</label><input class="fi" id="hl-c" placeholder="e.g. Container 1, Block A"></div>
+      <div class="fgl"><label>Container</label>
+        <select class="fs" id="hl-c" onchange="onContainerSelect(this.value)">
+          <option value="">Select container...</option>
+          ${DB.facilities.map(fac=>{
+            const fc=activeContainers.filter(c=>c.facility===fac);
+            if(!fc.length) return '';
+            return `<optgroup label="── ${fac} ──">${fc.map(c=>`<option value="${c.code}">${c.code} · ${c.farm}</option>`).join('')}</optgroup>`;
+          }).join('')}
+          <option value="__other__">— Other / not listed —</option>
+        </select>
+      </div>
+      <div class="fgl"><label>Facility</label>
+        <select class="fs" id="hl-fac">
+          <option value="">Auto-filled from container</option>
+          ${DB.facilities.map(f=>`<option value="${f}">${f}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div id="hl-farm-info" style="display:none;background:rgba(184,130,10,.05);border:1px solid rgba(184,130,10,.2);border-radius:3px;padding:12px 16px;margin-bottom:18px;"></div>
+    <div class="fg2">
       <div class="fgl"><label>Lot Number</label><input class="fi" id="hl-lot" placeholder="e.g. LOT-001"></div>
       <div class="fgl"><label>Variety</label>
         <select class="fs" id="hl-v">
@@ -2081,12 +2255,13 @@ function rHarvest(el){
     <div class="form-acts"><button class="btn b-m b-lg" onclick="logHarv()">Log Harvest</button></div>
     <div class="toast" id="hl-t">✓ Harvest recorded</div></div>
     <div class="tw"><table>
-      <thead><tr><th>Date</th><th>Container</th><th>Lot Number</th><th>Variety</th><th>Grade</th><th>Harvested</th><th>On Hand</th><th>Notes</th></tr></thead>
+      <thead><tr><th>Date</th><th>Container</th><th>Facility</th><th>Lot Number</th><th>Variety</th><th>Grade</th><th>Harvested</th><th>On Hand</th><th>Notes</th></tr></thead>
       <tbody>${s.length===0
-        ? '<tr><td colspan="8" class="empty">No harvests logged yet</td></tr>'
-        : s.map(h=>{ const onHand=Math.max(0,(h.weight||0)-(h.usedWeight||0)); const pct=h.weight>0?onHand/h.weight:0; const col=pct>0.5?'#3a6030':pct>0.2?'#b8820a':'#b84c20'; return `<tr>
+        ? '<tr><td colspan="9" class="empty">No harvests logged yet</td></tr>'
+        : s.map(h=>{ const onHand=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); const pct=h.weight>0?onHand/h.weight:0; const col=pct>0.5?'#3a6030':pct>0.2?'#b8820a':'#b84c20'; return `<tr>
             <td class="mn">${fDate(h.date)}</td>
             <td>${h.container}</td>
+            <td class="mn"><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:2px 6px;">${h.facility||'—'}</span></td>
             <td class="mn" style="font-weight:600;color:var(--gold)">${h.lotNumber||'—'}</td>
             <td>${h.variety}</td>
             <td class="mn">${h.grade}</td>
@@ -2100,21 +2275,26 @@ function rHarvest(el){
 
 async function logHarv(){
   const date=document.getElementById('hl-dt').value;
-  const container=document.getElementById('hl-c').value.trim();
+  const containerRaw=document.getElementById('hl-c').value;
+  const container=containerRaw==='__other__'?'Other':containerRaw;
+  const facility=document.getElementById('hl-fac').value;
   const lotNumber=document.getElementById('hl-lot').value.trim();
   const variety=document.getElementById('hl-v').value;
   const grade=document.getElementById('hl-g').value;
   const weight=parseFloat(document.getElementById('hl-w').value)||0;
   const notes=document.getElementById('hl-n').value.trim();
-  if(!date||!container||!lotNumber||!variety||!grade){
-    alert('Date, container, lot number, variety and grade are all required.'); return;
+  if(!date||!container||!facility||!lotNumber||!variety||!grade){
+    alert('Date, container, facility, lot number, variety and grade are all required.'); return;
   }
   if(!weight||weight<=0){ alert('Weight (lbs) is required.'); return; }
-  const hData={date,container,lotNumber,variety,grade,weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes};
+  const hData={date,container,facility,lotNumber,variety,grade,weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes};
   const hId=await FS.add('harvests',hData);
   DB.harvests.push({id:hId,...hData});
+  logAudit('harvest_logged',`Logged ${weight}lb ${variety} — Lot ${lotNumber} — ${container} @ ${facility}`);
   toast('hl-t');
-  ['hl-c','hl-lot','hl-w','hl-n'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value='' });
+  ['hl-lot','hl-w','hl-n'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value='' });
+  document.getElementById('hl-c').value='';
+  document.getElementById('hl-fac').value='';
   document.getElementById('hl-v').value='';
   document.getElementById('hl-g').value='';
   rHarvest(document.getElementById('main-views'));
@@ -2122,6 +2302,24 @@ async function logHarv(){
 
 // ── INVENTORY ──
 const LOW_STOCK_LBS = 6;
+let _invFacility = 'all'; // current inventory filter: 'all' or a facility name
+
+function filterInventory(fac){
+  _invFacility=fac;
+  rInventory(document.getElementById('main-views'));
+}
+
+// Returns facility-adjusted on-hand for a single harvest lot
+function facLotOnHand(h, fac){
+  const total=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0));
+  if(fac==='all') return total;
+  let atFac=(h.facility===fac)?total:0;
+  DB.transfers.filter(t=>t.harvestId===h.id).forEach(t=>{
+    if(t.toFacility===fac) atFac+=t.weight;
+    if(t.fromFacility===fac) atFac-=t.weight;
+  });
+  return Math.max(0,atFac);
+}
 
 // ── FRUITING CONSTANTS ──
 const WILD_SPORE_LOTS={
@@ -2185,21 +2383,23 @@ function rInventory(el){
       </div>`;
   }
 
-  // Lot-level on-hand (fresh only — preservation and samples deduct separately)
+  const _fac=_invFacility||'all';
+
+  // Lot-level on-hand — facility-adjusted when a filter is active
   const lots = DB.harvests.map(h=>({
     ...h,
-    onHand: Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0))
+    onHand: facLotOnHand(h,_fac)
   })).sort((a,b)=>b.date.localeCompare(a.date));
 
-  // By-variety rollup
+  // By-variety rollup — uses facility-adjusted onHand
   const byVariety={};
-  DB.harvests.forEach(h=>{
+  lots.forEach(h=>{
     if(!byVariety[h.variety]) byVariety[h.variety]={harvested:0,used:0,sampled:0,preserved:0,lots:[]};
-    byVariety[h.variety].harvested += (h.weight||0);
+    byVariety[h.variety].harvested += (_fac==='all'?h.weight||0:h.onHand+(h.usedWeight||0)+(h.sampleWeight||0)+(h.preservedWeight||0));
     byVariety[h.variety].used      += (h.usedWeight||0);
     byVariety[h.variety].sampled   += (h.sampleWeight||0);
     byVariety[h.variety].preserved += (h.preservedWeight||0);
-    byVariety[h.variety].lots.push({...h, onHand:Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0))});
+    byVariety[h.variety].lots.push(h);
   });
 
   // Week packed usage
@@ -2234,13 +2434,14 @@ function rInventory(el){
 
     // Nested lot rows for this variety
     const lotSubRows = d.lots.sort((a,b)=>b.date.localeCompare(a.date)).map(h=>{
-      const loh = Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0));
+      const loh = h.onHand; // already facility-adjusted
       const lPct = h.weight>0 ? loh/h.weight : 0;
       const lCol = lPct>0.5?'#3a6030':lPct>0.2?'#b8820a':'#b84c20';
       const isEmpty = loh<=0;
+      const hasMultiFac = DB.facilities.length>1;
       return `<tr class="lot-sub-${vid}" style="display:none;background:#fafaf7;">
         <td style="padding:6px 12px 6px 32px;font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);">${h.lotNumber}</td>
-        <td style="padding:6px 12px;font-size:11px;color:var(--text3);">${h.container}</td>
+        <td style="padding:6px 12px;font-size:11px;color:var(--text3);">${h.container}<br><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:1px 5px;">${h.facility||'—'}</span></td>
         <td style="padding:6px 12px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);">${fDate(h.date)}</td>
         <td style="padding:6px 12px;font-size:11px;">${h.grade}</td>
         <td style="padding:6px 12px;font-family:'Syne Mono',monospace;font-size:11px;">${(h.weight||0).toFixed(1)} lb</td>
@@ -2252,7 +2453,8 @@ function rInventory(el){
         </td>
         <td style="padding:6px 12px;">
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            ${!isEmpty&&canEdit()?`<button class="btn b-a b-sm" onclick="openPreserveModal('${h.id}')">Move →</button>`:''}
+            ${!isEmpty&&canEdit()?`<button class="btn b-a b-sm" onclick="openPreserveModal('${h.id}')">Preserve →</button>`:''}
+            ${!isEmpty&&canEdit()&&hasMultiFac?`<button class="btn b-sm" style="background:rgba(42,85,120,.1);color:var(--blue);border:1px solid rgba(42,85,120,.25);" onclick="openTransferModal('${h.id}')">Transfer →</button>`:''}
             ${S.role==='admin'?`<button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="adminEditLot('${h.id}')">Edit</button>`:''}
             ${!canEdit()&&S.role!=='admin'?'<span style="font-size:10px;color:var(--text3);">—</span>':''}
           </div>
@@ -2288,6 +2490,11 @@ function rInventory(el){
 
   el.innerHTML=`
     <div class="ph"><div class="ph-t">Inventory</div><div class="ph-s">Live fresh stock — updates when orders are packed or lots are moved to preservation</div></div>
+
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;">
+      ${['all',...DB.facilities].map(f=>`<button onclick="filterInventory('${f}')" style="padding:6px 14px;border:1px solid ${_fac===f?'var(--gold)':'var(--border)'};background:${_fac===f?'rgba(184,130,10,.12)':'var(--white)'};color:${_fac===f?'var(--gold)':'var(--text3)'};border-radius:3px;cursor:pointer;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;font-weight:${_fac===f?'700':'400'};">${f==='all'?'All Facilities':f}</button>`).join('')}
+    </div>
+    ${_fac!=='all'?`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:16px;padding:8px 12px;background:rgba(184,130,10,.05);border:1px solid rgba(184,130,10,.15);border-radius:3px;">📍 FILTERED: ${_fac} — showing stock at this facility only</div>`:''}
 
     ${returnBanner}
 
@@ -2342,6 +2549,25 @@ function rInventory(el){
         </div>
       </div>
     </div>
+
+    <div style="margin-top:28px;">
+      <div class="sh"><span>Transfer Log</span><span style="font-size:10px;color:var(--text3);">${DB.transfers.length} total transfer${DB.transfers.length!==1?'s':''}</span></div>
+      <div class="tw"><table>
+        <thead><tr><th>Date</th><th>Lot</th><th>Variety</th><th>Weight</th><th>From</th><th>To</th><th>By</th></tr></thead>
+        <tbody>${DB.transfers.length===0
+          ?'<tr><td colspan="7" class="empty">No transfers logged yet</td></tr>'
+          :[...DB.transfers].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30).map(t=>`<tr>
+            <td class="mn">${fDate(t.date)}</td>
+            <td class="mn" style="font-weight:600;color:var(--gold);">${t.lotNumber||'—'}</td>
+            <td>${t.variety||'—'}</td>
+            <td class="mn">${(t.weight||0).toFixed(1)} lb</td>
+            <td class="mn"><span style="font-family:'Syne Mono',monospace;font-size:9px;background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:2px 6px;">${t.fromFacility}</span></td>
+            <td class="mn"><span style="font-family:'Syne Mono',monospace;font-size:9px;background:rgba(42,85,120,.07);border:1px solid rgba(42,85,120,.2);border-radius:3px;padding:2px 6px;color:var(--blue);">${t.toFacility}</span></td>
+            <td style="font-size:11px;color:var(--text3);">${t.transferredBy||'—'}</td>
+          </tr>`).join('')
+        }</tbody>
+      </table></div>
+    </div>
   `;
 }
 
@@ -2351,6 +2577,163 @@ function toggleLotRows(vid){
   const hidden = rows[0] && rows[0].style.display==='none';
   rows.forEach(r=>r.style.display=hidden?'':'none');
   if(arr) arr.textContent = hidden?'▼':'▶';
+}
+
+// ── PRODUCT MOVEMENT ──
+const PRODUCT_STATES = ['Fresh','Fresh Frozen','Freeze Dried','Air Dried / Dehydrated','Other'];
+
+function openTransferModal(harvestId){
+  const h=DB.harvests.find(x=>x.id===harvestId); if(!h) return;
+  const fromFac=h.facility||DB.facilities[0]||'Unknown';
+  const atFac=facLotOnHand(h,fromFac);
+  const farmInfo=CONTAINERS.find(c=>c.code===h.container)||{code:h.container||'—',farm:'—',facility:fromFac};
+  const now=new Date();
+  const timeStr=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+  document.getElementById('em-title').textContent='Log Product Movement';
+  document.getElementById('em-body').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;background:rgba(184,130,10,.05);border:1px solid rgba(184,130,10,.2);border-radius:3px;padding:12px 16px;margin-bottom:20px;">
+      <div><div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px;">Farm Code</div>
+        <div style="font-family:'Syne Mono',monospace;font-size:14px;font-weight:700;color:var(--gold);">${farmInfo.code}</div></div>
+      <div><div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px;">Farm Name</div>
+        <div style="font-size:12px;font-weight:600;">${farmInfo.farm}</div></div>
+      <div><div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:2px;">On Hand at Origin</div>
+        <div style="font-family:'Syne Mono',monospace;font-size:13px;font-weight:700;color:#3a6030;">${atFac.toFixed(1)} lb available</div></div>
+    </div>
+
+    <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">Product Being Moved</div>
+    <div class="fg2" style="margin-bottom:16px;">
+      <div class="fgl"><label>Variety</label>
+        <input class="fi" id="mv-variety" value="${h.variety}" readonly style="background:var(--paper);">
+      </div>
+      <div class="fgl"><label>Lot Number</label>
+        <input class="fi" id="mv-lot" value="${h.lotNumber||''}" readonly style="background:var(--paper);">
+      </div>
+      <div class="fgl"><label>Product State</label>
+        <select class="fs" id="mv-state">
+          ${PRODUCT_STATES.map(s=>`<option value="${s}">${s}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fgl"><label>Weight (lbs)</label>
+        <input class="fi" type="number" step="0.1" min="0.1" max="${atFac.toFixed(1)}" id="mv-weight" placeholder="lbs being moved">
+      </div>
+    </div>
+
+    <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">Origin → Destination</div>
+    <div class="fg2" style="margin-bottom:16px;">
+      <div class="fgl"><label>From Facility</label>
+        <input class="fi" value="${fromFac}" readonly style="background:var(--paper);">
+      </div>
+      <div class="fgl"><label>Destination Type</label>
+        <select class="fs" id="mv-dest-type" onchange="onMovDestType()">
+          <option value="internal">Internal Facility (Carthage etc.)</option>
+          <option value="external">External / Customer</option>
+        </select>
+      </div>
+      <div class="fgl" id="mv-tofac-wrap"><label>To Facility</label>
+        <select class="fs" id="mv-tofac">
+          ${DB.facilities.filter(f=>f!==fromFac).map(f=>`<option value="${f}">${f}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fgl" id="mv-toclient-wrap" style="display:none;"><label>Customer / Recipient</label>
+        <select class="fs" id="mv-toclient">
+          <option value="">Select client...</option>
+          ${DB.clients.filter(c=>c.status==='approved').map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+          <option value="__other__">Other (type below)</option>
+        </select>
+      </div>
+      <div class="fgl" id="mv-toclient-name-wrap" style="display:none;"><label>Recipient Name</label>
+        <input class="fi" id="mv-toclient-name" placeholder="Name or company">
+      </div>
+    </div>
+
+    <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;">Logistics</div>
+    <div class="fg2" style="margin-bottom:16px;">
+      <div class="fgl"><label>Date</label>
+        <input class="fi" type="date" id="mv-date" value="${tday()}">
+      </div>
+      <div class="fgl"><label>Time</label>
+        <input class="fi" type="time" id="mv-time" value="${timeStr}">
+      </div>
+      <div class="fgl"><label>Driver</label>
+        <input class="fi" id="mv-driver" placeholder="Driver name">
+      </div>
+      <div class="fgl"><label>Vehicle</label>
+        <input class="fi" id="mv-vehicle" placeholder="e.g. White Ram 1500">
+      </div>
+      <div class="fgl"><label>Temp at Pickup (°F)</label>
+        <input class="fi" type="number" step="1" id="mv-temp" placeholder="e.g. 38">
+      </div>
+      <div class="fgl"><label>Notes</label>
+        <input class="fi" id="mv-notes" placeholder="Route, PO#, special instructions...">
+      </div>
+    </div>
+
+    <div class="form-acts">
+      <button class="btn b-m b-lg" onclick="saveProductMovement('${harvestId}','${fromFac}',${atFac.toFixed(3)})">Log Movement</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function onMovDestType(){
+  const t=document.getElementById('mv-dest-type').value;
+  document.getElementById('mv-tofac-wrap').style.display=t==='internal'?'':'none';
+  document.getElementById('mv-toclient-wrap').style.display=t==='external'?'':'none';
+  const sel=document.getElementById('mv-toclient');
+  if(sel) sel.onchange=()=>{
+    document.getElementById('mv-toclient-name-wrap').style.display=sel.value==='__other__'?'':'none';
+  };
+}
+
+async function saveProductMovement(harvestId, fromFac, maxWeight){
+  const weight=parseFloat(document.getElementById('mv-weight').value)||0;
+  const date=document.getElementById('mv-date').value;
+  const time=document.getElementById('mv-time').value;
+  const destType=document.getElementById('mv-dest-type').value;
+  const state=document.getElementById('mv-state').value;
+  const driver=document.getElementById('mv-driver').value.trim();
+  const vehicle=document.getElementById('mv-vehicle').value.trim();
+  const temp=document.getElementById('mv-temp').value;
+  const notes=document.getElementById('mv-notes').value.trim();
+  if(!weight||weight<=0){ alert('Enter the weight being moved.'); return; }
+  if(weight>maxWeight+0.01){ alert('Max available at '+fromFac+' is '+parseFloat(maxWeight).toFixed(1)+' lb.'); return; }
+  if(!date){ alert('Date is required.'); return; }
+  const h=DB.harvests.find(x=>x.id===harvestId);
+  let toFacility='', toClient='', toClientName='';
+  if(destType==='internal'){
+    toFacility=document.getElementById('mv-tofac').value;
+  } else {
+    const sel=document.getElementById('mv-toclient');
+    toClient=sel?.value||'';
+    const clientRec=DB.clients.find(c=>c.id===toClient);
+    toClientName=toClient==='__other__'
+      ?document.getElementById('mv-toclient-name').value.trim()
+      :(clientRec?.name||toClient);
+  }
+  const mvData={
+    harvestId, lotNumber:h?.lotNumber||'', variety:h?.variety||'',
+    fromFacility:fromFac, fromContainer:h?.container||'',
+    destType, toFacility, toClient, toClientName,
+    productState:state, weight:parseFloat(weight.toFixed(2)),
+    date, time, driver, vehicle,
+    tempAtPickup:temp?Number(temp):null,
+    notes, status:'logged',
+    createdBy:S.name||S.email||'Staff',
+    timestamp:new Date().toISOString()
+  };
+  // Save to productMovements collection
+  const mid=await FS.add('productMovements',mvData);
+  DB.productMovements.push({id:mid,...mvData});
+  // Also save as a legacy transfer record so inventory filter still works
+  const tData={harvestId,lotNumber:mvData.lotNumber,variety:mvData.variety,
+    fromFacility:fromFac,toFacility:toFacility||toClientName,
+    weight:mvData.weight,date,notes,transferredBy:mvData.createdBy,timestamp:mvData.timestamp};
+  const tid=await FS.add('transfers',tData);
+  DB.transfers.push({id:tid,...tData});
+  const dest=destType==='internal'?`→ ${toFacility} (internal)`:(`→ ${toClientName||'external customer'}`);
+  logAudit('product_moved',`Moved ${mvData.weight}lb ${mvData.variety} (${mvData.productState}) from ${fromFac} ${dest}`);
+  closeModal();
+  rInventory(document.getElementById('main-views'));
 }
 
 function adminEditLot(harvestId){
@@ -2480,6 +2863,7 @@ async function savePreservation(harvestId, maxOnHand){
   const pData={date,harvestId,lotNumber:h.lotNumber,variety:h.variety,container:h.container,method,weightIn:wt,weightOut:wout||null,notes};
   const pId=await FS.add('preservation',pData);
   DB.preservation.push({id:pId,...pData});
+  logAudit('preservation_logged',`${method} — ${wt}lb ${h.variety} (Lot ${h.lotNumber})${wout?`, yield ${wout}lb`:''}`);
   closeModal();
   renderC();
 }
@@ -3105,6 +3489,34 @@ function rAdmin(el){
       ${DB.notifLog.length===0?'<div class="empty">No notifications sent this session</div>':DB.notifLog.slice().reverse().map(n=>`<div style="padding:10px 14px;background:var(--bark);border:1px solid rgba(196,168,130,.08);border-radius:3px;margin-bottom:6px;font-size:12px;"><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--spore);margin-right:12px;">${n.ts}</span><span style="color:var(--amber);">${n.clientName}</span><span style="color:var(--spore);"> · ${n.type}</span><div style="color:var(--warm);margin-top:4px;font-size:11px;">${n.msg}</div></div>`).join('')}
     </div>
     <div style="margin-bottom:28px;">
+      <div class="sh"><span>Container Management</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${getActiveContainers().length} ACTIVE · ${CONTAINERS.length} TOTAL</span></div>
+      <div class="card" style="margin-bottom:0;">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.7;">
+          Toggle individual containers on or off. Active containers appear in the Harvest form dropdown. Inactive ones are hidden from new entries but existing records are preserved.
+        </div>
+        ${ALL_FACILITIES.map(fac=>{
+          const facContainers=CONTAINERS.filter(c=>c.facility===fac);
+          if(!facContainers.length) return '';
+          const activeCount=facContainers.filter(c=>{const ov=DB.containerOverrides[c.code];return ov!==undefined?ov:c.active;}).length;
+          return `<div style="margin-bottom:18px;">
+            <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border);">${fac} — ${activeCount}/${facContainers.length} active</div>
+            <div style="display:flex;flex-direction:column;gap:5px;">
+              ${facContainers.map(c=>{
+                const isActive=(DB.containerOverrides[c.code]!==undefined)?DB.containerOverrides[c.code]:c.active;
+                return `<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:${isActive?'rgba(184,130,10,.04)':'var(--paper)'};border:1px solid ${isActive?'rgba(184,130,10,.2)':'var(--border)'};border-radius:3px;">
+                  <label class="tsw" style="flex-shrink:0;"><input type="checkbox" ${isActive?'checked':''} onchange="toggleContainer('${c.code}',this.checked)"><div class="ttr"></div></label>
+                  <div style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:${isActive?'var(--gold)':'var(--text3)'};min-width:80px;">${c.code}</div>
+                  <div style="font-size:12px;color:${isActive?'var(--text2)':'var(--text3)'};">${c.farm}</div>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>`;
+        }).join('')}
+        <div class="toast" id="con-t">✓ Container updated</div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:28px;">
       <div class="sh"><span>Email Settings</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:${DB.emailjs.enabled?'#3a6030':'var(--rust)'};">${DB.emailjs.enabled?'✓ EMAILJS ACTIVE':'NOT CONFIGURED'}</span></div>
       <div class="card" style="margin-bottom:0;">
         <div style="font-size:12px;color:var(--text2);margin-bottom:18px;line-height:1.7;">
@@ -3388,6 +3800,7 @@ async function saveNewUser(){
     const userData={uid,email,name,role,permissions,active:true,createdAt:new Date().toISOString(),createdBy:S.email||S.role||'admin'};
     const docId=await FS.add('users',userData);
     userData.id=docId; DB.users.push(userData);
+    logAudit('user_added',`Added ${name} (${role}) — ${email}`);
     // Send welcome email
     const emailSent=await sendWelcomeEmail(email,name,role,pw);
     const emailNote=emailSent?' · Welcome email sent ✓':DB.emailjs.enabled?' · Email failed — check EmailJS config':' · Configure EmailJS to send welcome emails automatically';
@@ -3435,6 +3848,7 @@ async function saveUserPerms(docId){
   const permissions=getPermGridValues('eu_perm_');
   u.role=newRole; u.name=newName; u.permissions=permissions;
   await FS.update('users',docId,{role:newRole,name:newName,permissions});
+  logAudit('user_perms_changed',`Updated permissions for ${newName} — role: ${newRole}`);
   toast('eu-t','✓ Permissions saved');
   setTimeout(()=>{ closeModal(); const mv=document.getElementById('main-views'); if(cv==='security') rSecurity(mv); else rAdmin(mv); },1200);
 }
@@ -3444,6 +3858,7 @@ async function deactivateUser(docId){
   if(!confirm('Deactivate '+u.name+'? They will not be able to log in. This does NOT delete their Firebase Auth account.')) return;
   u.active=false;
   await FS.update('users',docId,{active:false});
+  logAudit('user_deactivated',`Deactivated account for ${u.name} (${u.email})`);
   const mv=document.getElementById('main-views');
   if(cv==='security') rSecurity(mv); else rAdmin(mv);
 }
@@ -3635,6 +4050,68 @@ function rSecurity(el){
       </tr>`;
     }).join('');
 
+  // ── Audit log — group by session, newest first ──
+  const auditEntries=[...DB.auditLog].sort((a,b)=>b.ts.localeCompare(a.ts));
+  // Build session map: { sessionId -> { entries:[], firstTs, lastTs, user, role } }
+  const sessionMap={};
+  auditEntries.forEach(e=>{
+    if(!sessionMap[e.session]){
+      sessionMap[e.session]={entries:[],firstTs:e.ts,lastTs:e.ts,user:e.userName,role:e.role};
+    }
+    sessionMap[e.session].entries.push(e);
+    if(e.ts<sessionMap[e.session].firstTs) sessionMap[e.session].firstTs=e.ts;
+    if(e.ts>sessionMap[e.session].lastTs)  sessionMap[e.session].lastTs=e.ts;
+  });
+  const sessions=Object.entries(sessionMap).sort((a,b)=>b[1].lastTs.localeCompare(a[1].lastTs));
+  const auditSection=sessions.length===0
+  ?`<div class="sh" style="margin-bottom:16px;"><span>Changes &amp; Activity Log</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">0 SESSIONS</span></div>
+    <div class="card" style="margin-bottom:28px;color:var(--text3);font-size:13px;text-align:center;padding:24px;">No activity logged yet — actions you take will appear here.</div>`
+  :`<div class="sh" style="margin-bottom:16px;">
+      <span>Changes &amp; Activity Log</span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${sessions.length} SESSION${sessions.length===1?'':'S'} · ${auditEntries.length} EVENTS</span>
+    </div>
+    <div style="margin-bottom:28px;">
+    ${sessions.map(([sid,sess],si)=>{
+      const dt=new Date(sess.lastTs);
+      const dateLabel=dt.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
+      const timeLabel=dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+      const roleColor=sess.role==='admin'?'var(--gold)':sess.role==='accountant'?'#7aabcc':'var(--fern)';
+      const rows=sess.entries.map(e=>{
+        const et=new Date(e.ts);
+        const icon=AUDIT_ICONS[e.action]||AUDIT_ICONS.other;
+        return `<tr>
+          <td style="font-size:11px;color:var(--text3);white-space:nowrap;">${et.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}</td>
+          <td style="font-size:13px;padding:6px 8px;">${icon}</td>
+          <td style="font-size:11px;font-family:'Syne Mono',monospace;color:var(--text3);">${e.action}</td>
+          <td style="font-size:12px;">${e.detail}</td>
+        </tr>`;
+      }).join('');
+      return `<details ${si===0?'open':''} style="margin-bottom:8px;border:1px solid rgba(196,168,130,.15);border-radius:4px;overflow:hidden;">
+        <summary style="display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;background:rgba(255,255,255,.02);list-style:none;user-select:none;">
+          <span style="font-size:18px;">📋</span>
+          <div style="flex:1;">
+            <div style="font-weight:600;font-size:13px;">${sess.user}</div>
+            <div style="font-size:10px;color:var(--text3);font-family:'Syne Mono',monospace;">${dateLabel} · ${timeLabel}</div>
+          </div>
+          <span class="rpill ${sess.role==='admin'?'admin':sess.role==='accountant'?'':'staff'}" style="font-size:8px;padding:2px 7px;">${sess.role?.toUpperCase()}</span>
+          <span style="background:rgba(196,168,130,.12);border-radius:3px;padding:3px 10px;font-size:11px;font-family:'Syne Mono',monospace;color:var(--gold);">${sess.entries.length} change${sess.entries.length===1?'':'s'}</span>
+          <span style="color:var(--text3);font-size:18px;margin-left:4px;">›</span>
+        </summary>
+        <div style="padding:0 0 8px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <thead><tr style="background:rgba(0,0,0,.2);">
+              <th style="padding:6px 12px;font-size:9px;letter-spacing:1px;color:var(--text3);text-align:left;width:70px;">TIME</th>
+              <th style="padding:6px 8px;width:28px;"></th>
+              <th style="padding:6px 8px;font-size:9px;letter-spacing:1px;color:var(--text3);text-align:left;width:160px;">ACTION</th>
+              <th style="padding:6px 12px;font-size:9px;letter-spacing:1px;color:var(--text3);text-align:left;">DETAIL</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </details>`;
+    }).join('')}
+    </div>`;
+
   el.innerHTML=`
     <div class="ph"><div class="ph-t">Security <span class="bdg bad" style="font-size:14px;vertical-align:middle;">★ Admin Only</span></div>
       <div class="ph-s">Login history · IP logs · Staff account management</div></div>
@@ -3643,7 +4120,7 @@ function rSecurity(el){
       <div class="sc g"><div class="sc-l">Staff Accounts</div><div class="sc-v">${users.length}</div><div class="sc-n">active Firebase Auth users</div></div>
       <div class="sc"><div class="sc-l">Logins (7 days)</div><div class="sc-v">${recentLogins.length}</div><div class="sc-n">successful sign-ins</div></div>
       <div class="sc"><div class="sc-l">Unique IPs (7 days)</div><div class="sc-v">${uniqueIPs}</div><div class="sc-n">distinct locations</div></div>
-      <div class="sc m"><div class="sc-l">Total Login Events</div><div class="sc-v">${logs.length}</div><div class="sc-n">all time</div></div>
+      <div class="sc m"><div class="sc-l">Activity Events</div><div class="sc-v">${auditEntries.length}</div><div class="sc-n">${sessions.length} sessions logged</div></div>
     </div>
 
     <div class="sh" style="margin-bottom:16px;">
@@ -3685,6 +4162,8 @@ function rSecurity(el){
       <thead><tr><th>User</th><th>Role</th><th>Date / Time</th><th>IP Address</th><th>Browser · OS</th><th>Device</th></tr></thead>
       <tbody>${logRows}</tbody>
     </table></div>
+
+    ${auditSection}
 
     <div class="card" style="margin-bottom:0;">
       <div class="card-t" style="font-size:16px;">Security Notes</div>
