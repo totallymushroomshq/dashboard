@@ -625,19 +625,28 @@ async function startContainerTimer(containerCode, activity, employeeName){
     status:'active', createdBy:S.name||S.email||'Staff',
     timestamp:new Date().toISOString()
   };
-  const sid=await FS.add('containerSessions',session);
-  session.id=sid; DB.containerSessions.push(session);
+  if(DB._isDemoMode){
+    session.id='demo-cs-live-'+Date.now().toString(36);
+  } else {
+    const sid=await FS.add('containerSessions',session);
+    session.id=sid;
+  }
+  DB.containerSessions.push(session);
   logAudit('timer_started',`Started ${activity} in ${containerCode} — ${employeeName}`);
   renderC();
 }
 
 async function stopContainerTimer(sessionId){
   const s=DB.containerSessions.find(x=>x.id===sessionId); if(!s) return;
+  if(s.status==='closed'||s.status==='no-activity') return; // guard: don't double-stop
   const notes=document.getElementById('ctnotes-'+sessionId)?.value.trim()||'';
   const endTime=new Date().toISOString();
   const durationMinutes=Math.max(1,Math.round((new Date(endTime)-new Date(s.startTime))/60000));
   s.endTime=endTime; s.durationMinutes=durationMinutes; s.notes=notes; s.status='closed';
-  await FS.update('containerSessions',sessionId,{endTime,durationMinutes,notes,status:'closed'});
+  if(!DB._isDemoMode){
+    try{ await FS.update('containerSessions',sessionId,{endTime,durationMinutes,notes,status:'closed'}); }
+    catch(e){ console.warn('stopContainerTimer FS.update failed:',e); }
+  }
   logAudit('timer_stopped',`${s.activity} in ${s.containerCode} — ${fmtMins(durationMinutes)} (${s.employeeName})`);
   clearInterval(_timerInterval); _timerInterval=null;
   renderC();
@@ -655,8 +664,13 @@ async function logNoActivityContainer(containerCode, date, notes){
     status:'no-activity', createdBy:S.name||S.email||'Staff',
     timestamp:ts
   };
-  const sid=await FS.add('containerSessions',entry);
-  entry.id=sid; DB.containerSessions.push(entry);
+  if(DB._isDemoMode){
+    entry.id='demo-noa-'+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+  } else {
+    const sid=await FS.add('containerSessions',entry);
+    entry.id=sid;
+  }
+  DB.containerSessions.push(entry);
 }
 
 async function logManualTime(containerCode, activity, minutes, date, notes){
@@ -671,8 +685,13 @@ async function logManualTime(containerCode, activity, minutes, date, notes){
     notes:notes||'', status:'manual',
     createdBy:S.name||S.email||'Staff', timestamp:ts
   };
-  const sid=await FS.add('containerSessions',entry);
-  entry.id=sid; DB.containerSessions.push(entry);
+  if(DB._isDemoMode){
+    entry.id='demo-man-'+Date.now().toString(36);
+  } else {
+    const sid=await FS.add('containerSessions',entry);
+    entry.id=sid;
+  }
+  DB.containerSessions.push(entry);
   logAudit('manual_time',`Manual: ${activity} in ${containerCode} — ${fmtMins(parseInt(minutes)||0)}`);
   renderC();
 }
@@ -795,7 +814,7 @@ function openDayCloseout(){
       ${active.map(s=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
         <span style="font-family:'Syne Mono',monospace;font-weight:700;font-size:12px;">${s.containerCode}</span>
         <span style="font-size:11px;color:var(--text3);">${s.activity} · ${s.employeeName} · ${fmtDuration(Date.now()-new Date(s.startTime).getTime())}</span>
-        <button class="btn b-r b-sm" onclick="stopContainerTimer('${s.id}')">■ Stop Timer</button>
+        <button class="btn b-r b-sm" onclick="stopContainerTimer('${s.id}').then(openDayCloseout)">■ Stop Timer</button>
       </div>`).join('')}
     </div>`:''}
 
@@ -984,7 +1003,10 @@ async function saveSessionEdit(sessionId){
   if(durationMinutes!=null) updates.durationMinutes=durationMinutes;
 
   Object.assign(s,updates);
-  await FS.update('containerSessions',sessionId,updates);
+  if(!DB._isDemoMode){
+    try{ await FS.update('containerSessions',sessionId,updates); }
+    catch(e){ console.warn('saveSessionEdit FS.update failed:',e); }
+  }
   logAudit('session_corrected',`Corrected ${s.containerCode} session (${activity}, ${fmtMins(durationMinutes)}) — ${reason}`);
   clearInterval(_timerInterval); _timerInterval=null;
   closeModal();
