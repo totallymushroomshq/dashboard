@@ -420,7 +420,7 @@ window.onerror = function(msg, src, line, col, err){
 const DB = {
   orders:[], clients:[], harvests:[], samples:[],
   fruitings:[], preservation:[], notifLog:[], signupRequests:[], packSessions:[],
-  users:[], loginHistory:[], transfers:[], productMovements:[], auditLog:[],
+  users:[], loginHistory:[], transfers:[], productMovements:[], auditLog:[], containerSessions:[],
   facilities:[...ALL_FACILITIES], containerOverrides:{},
   adminPw:'totallyadmin2025', staffPw:'mushrooms2025', accountantPw:'tmbooks2025',
   emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false}
@@ -491,12 +491,12 @@ async function loadDB(){
       FS.getAll('samples'), FS.getAll('fruitings'), FS.getAll('preservation'),
       FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('packSessions'),
       FS.getAll('users'), FS.getAll('loginHistory'), FS.getAll('transfers'), FS.getAll('productMovements'),
-      FS.getAll('auditLog')
+      FS.getAll('auditLog'), FS.getAll('containerSessions')
     ]);
     DB.orders=orders; DB.clients=clients; DB.harvests=harvests;
     DB.samples=samples; DB.fruitings=fruitings; DB.preservation=preservation;
     DB.notifLog=notifLog; DB.signupRequests=signupRequests; DB.packSessions=packSessions;
-    DB.users=users; DB.loginHistory=loginHistory; DB.transfers=transfers; DB.productMovements=productMovements; DB.auditLog=auditLog;
+    DB.users=users; DB.loginHistory=loginHistory; DB.transfers=transfers; DB.productMovements=productMovements; DB.auditLog=auditLog; DB.containerSessions=containerSessions;
     // Load EmailJS config from appConfig
     try{
       const cfgDoc=await fdb.collection('appConfig').doc('emailjs').get();
@@ -584,8 +584,411 @@ const AUDIT_ICONS = {
   harvest_logged:'🌾', order_created:'🛒', order_confirmed:'✅', order_status:'📦',
   pack_session_closed:'📋', product_moved:'🚛', preservation_logged:'🧊',
   client_added:'👤', user_added:'👤', user_perms_changed:'🔑', user_deactivated:'🚫',
-  container_toggled:'📦', other:'📝'
+  container_toggled:'📦', timer_started:'▶', timer_stopped:'⏱', manual_time:'✏️', day_closeout:'📅', session_corrected:'🔧', other:'📝'
 };
+
+// ── CONTAINER LABOR TRACKING ──
+const CONTAINER_ACTIVITIES = ['Harvesting','Fruiting','Cleaning','Inspection','Maintenance'];
+let _timerInterval = null;
+
+function fmtDuration(ms){
+  if(ms<0) ms=0;
+  const t=Math.floor(ms/1000), h=Math.floor(t/3600), m=Math.floor((t%3600)/60), s=t%60;
+  return h>0?`${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`:`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+function fmtMins(mins){
+  if(!mins||mins<=0) return '—';
+  const h=Math.floor(mins/60), m=mins%60;
+  return h>0?(m>0?`${h}h ${m}m`:`${h}h`):`${m}m`;
+}
+function tickTimers(){
+  clearInterval(_timerInterval); _timerInterval=null;
+  const active=DB.containerSessions.filter(s=>s.status==='active');
+  if(!active.length) return;
+  _timerInterval=setInterval(()=>{
+    active.forEach(s=>{
+      const el=document.getElementById('ctimer-'+s.id);
+      if(el) el.textContent=fmtDuration(Date.now()-new Date(s.startTime).getTime());
+    });
+  },1000);
+}
+
+async function startContainerTimer(containerCode, activity, employeeName){
+  const c=CONTAINERS.find(x=>x.code===containerCode);
+  const session={
+    date:tday(), containerCode,
+    containerFarm:c?.farm||'', facility:c?.facility||'',
+    employeeName:employeeName||S.name||S.role||'Staff',
+    activity, startTime:new Date().toISOString(),
+    endTime:null, durationMinutes:null, notes:'',
+    status:'active', createdBy:S.name||S.email||'Staff',
+    timestamp:new Date().toISOString()
+  };
+  const sid=await FS.add('containerSessions',session);
+  session.id=sid; DB.containerSessions.push(session);
+  logAudit('timer_started',`Started ${activity} in ${containerCode} — ${employeeName}`);
+  renderC();
+}
+
+async function stopContainerTimer(sessionId){
+  const s=DB.containerSessions.find(x=>x.id===sessionId); if(!s) return;
+  const notes=document.getElementById('ctnotes-'+sessionId)?.value.trim()||'';
+  const endTime=new Date().toISOString();
+  const durationMinutes=Math.max(1,Math.round((new Date(endTime)-new Date(s.startTime))/60000));
+  s.endTime=endTime; s.durationMinutes=durationMinutes; s.notes=notes; s.status='closed';
+  await FS.update('containerSessions',sessionId,{endTime,durationMinutes,notes,status:'closed'});
+  logAudit('timer_stopped',`${s.activity} in ${s.containerCode} — ${fmtMins(durationMinutes)} (${s.employeeName})`);
+  clearInterval(_timerInterval); _timerInterval=null;
+  renderC();
+}
+
+async function logNoActivityContainer(containerCode, date, notes){
+  const c=CONTAINERS.find(x=>x.code===containerCode);
+  const ts=new Date().toISOString();
+  const entry={
+    date:date||tday(), containerCode,
+    containerFarm:c?.farm||'', facility:c?.facility||'',
+    employeeName:S.name||S.role||'Staff',
+    activity:'No Activity', startTime:ts, endTime:ts,
+    durationMinutes:0, notes:notes||'',
+    status:'no-activity', createdBy:S.name||S.email||'Staff',
+    timestamp:ts
+  };
+  const sid=await FS.add('containerSessions',entry);
+  entry.id=sid; DB.containerSessions.push(entry);
+}
+
+async function logManualTime(containerCode, activity, minutes, date, notes){
+  const c=CONTAINERS.find(x=>x.code===containerCode);
+  const ts=new Date().toISOString();
+  const entry={
+    date:date||tday(), containerCode,
+    containerFarm:c?.farm||'', facility:c?.facility||'',
+    employeeName:S.name||S.role||'Staff',
+    activity, startTime:ts, endTime:ts,
+    durationMinutes:parseInt(minutes)||0,
+    notes:notes||'', status:'manual',
+    createdBy:S.name||S.email||'Staff', timestamp:ts
+  };
+  const sid=await FS.add('containerSessions',entry);
+  entry.id=sid; DB.containerSessions.push(entry);
+  logAudit('manual_time',`Manual: ${activity} in ${containerCode} — ${fmtMins(parseInt(minutes)||0)}`);
+  renderC();
+}
+
+async function markAllNoActivity(facility, date){
+  const logged=new Set(DB.containerSessions.filter(s=>s.date===date).map(s=>s.containerCode));
+  const todo=getActiveContainers().filter(c=>c.facility===facility && !logged.has(c.code));
+  for(const c of todo) await logNoActivityContainer(c.code, date, '');
+  openDayCloseout();
+}
+
+function openStartTimerModal(defaultActivity){
+  const activeC=getActiveContainers();
+  document.getElementById('em-title').textContent='Start Container Timer';
+  document.getElementById('em-body').innerHTML=`
+    <div class="fg2" style="margin-bottom:14px;">
+      <div class="fgl"><label>Container</label>
+        <select class="fs" id="cst-con">
+          <option value="">Select container...</option>
+          ${DB.facilities.map(fac=>{
+            const fc=activeC.filter(c=>c.facility===fac);
+            if(!fc.length) return '';
+            return `<optgroup label="── ${fac} ──">${fc.map(c=>`<option value="${c.code}">${c.code} · ${c.farm}</option>`).join('')}</optgroup>`;
+          }).join('')}
+        </select>
+      </div>
+      <div class="fgl"><label>Activity</label>
+        <select class="fs" id="cst-act">
+          ${CONTAINER_ACTIVITIES.map(a=>`<option value="${a}"${a===defaultActivity?' selected':''}>${a}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="fgl" style="margin-bottom:18px;"><label>Your Name</label>
+      <input class="fi" id="cst-emp" value="${S.name||''}" placeholder="Your name...">
+    </div>
+    <div class="form-acts">
+      <button class="btn b-m b-lg" onclick="submitStartTimer()">▶ Start Timer</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function submitStartTimer(){
+  const c=document.getElementById('cst-con')?.value;
+  const a=document.getElementById('cst-act')?.value;
+  const e=document.getElementById('cst-emp')?.value.trim();
+  if(!c){ alert('Select a container.'); return; }
+  if(!e){ alert('Enter your name.'); return; }
+  closeModal();
+  startContainerTimer(c, a, e);
+}
+
+function buildContainerSessionPanel(defaultActivity){
+  const today=tday();
+  const todayS=DB.containerSessions.filter(s=>s.date===today);
+  const active=todayS.filter(s=>s.status==='active');
+  const closed=todayS.filter(s=>s.status!=='active').sort((a,b)=>b.startTime.localeCompare(a.startTime));
+  return `
+  <div style="margin-top:28px;">
+    <div class="sh" style="margin-bottom:14px;">
+      <span>⏱ Container Activity — Today</span>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${todayS.length} ENTRIES</span>
+        ${canEdit()?`<button class="btn b-m b-sm" onclick="openStartTimerModal('${defaultActivity||'Harvesting'}')">▶ Start Timer</button>`:''}
+      </div>
+    </div>
+    ${active.length>0?`
+    <div style="margin-bottom:16px;">
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--amber);letter-spacing:2px;margin-bottom:8px;">● RUNNING</div>
+      ${active.map(s=>`
+      <div style="background:rgba(196,168,130,.07);border:1px solid rgba(196,168,130,.3);border-radius:4px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <div style="font-family:'Syne Mono',monospace;font-size:24px;font-weight:700;color:var(--gold);min-width:88px;" id="ctimer-${s.id}">${fmtDuration(Date.now()-new Date(s.startTime).getTime())}</div>
+        <div style="flex:1;min-width:180px;">
+          <div style="font-weight:700;font-size:13px;">${s.containerCode} <span style="font-size:11px;font-weight:400;color:var(--text3);">· ${s.containerFarm}</span></div>
+          <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">${s.activity} · ${s.employeeName}</div>
+          <input class="fi" id="ctnotes-${s.id}" placeholder="Notes (optional)..." style="font-size:11px;padding:4px 8px;">
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <button class="btn b-r" onclick="stopContainerTimer('${s.id}')" style="font-size:12px;padding:8px 16px;">■ Stop</button>
+          ${S.role==='admin'?`<button class="btn b-g b-sm" onclick="openEditSessionModal('${s.id}')" style="font-size:10px;">✏️ Edit</button>`:''}
+        </div>
+      </div>`).join('')}
+    </div>`:''}
+    ${closed.length>0?`
+    <div class="tw" style="margin-bottom:8px;"><table>
+      <thead><tr><th>Container</th><th>Farm</th><th>Facility</th><th>Activity</th><th>Employee</th><th>Duration</th><th>Notes</th>${S.role==='admin'?'<th></th>':''}</tr></thead>
+      <tbody>${closed.map(s=>{
+        const actColor=s.status==='no-activity'?'var(--text3)':s.activity==='Harvesting'?'var(--fern)':s.activity==='Fruiting'?'var(--blue)':s.activity==='Cleaning'?'#7aabcc':s.activity==='Maintenance'?'var(--amber)':'var(--text2)';
+        const corrected=s.correctedAt?`<span title="Corrected by ${s.correctedBy||'admin'}: ${s.correctionReason||''}" style="color:var(--amber);font-size:9px;margin-left:4px;">✏️</span>`:'';
+        return `<tr>
+          <td style="font-family:'Syne Mono',monospace;font-size:12px;font-weight:700;">${s.containerCode}</td>
+          <td class="mn" style="font-size:11px;">${s.containerFarm||'—'}</td>
+          <td class="mn"><span style="font-size:9px;font-family:'Syne Mono',monospace;background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:2px 5px;">${s.facility||'—'}</span></td>
+          <td class="mn"><span style="font-size:10px;font-weight:600;color:${actColor};">${s.activity}</span>${corrected}</td>
+          <td class="mn" style="font-size:11px;">${s.employeeName||'—'}</td>
+          <td class="mn" style="font-weight:700;">${s.status==='no-activity'?'<span style="color:var(--text3);">No Visit</span>':fmtMins(s.durationMinutes||0)}</td>
+          <td class="mn" style="font-size:11px;color:var(--text3);">${s.notes||'—'}</td>
+          ${S.role==='admin'?`<td><button class="btn b-g b-sm" onclick="openEditSessionModal('${s.id}')" style="font-size:10px;padding:3px 8px;">✏️</button></td>`:''}
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`:`<div style="text-align:center;color:var(--text3);font-size:12px;padding:14px 0;">No activity logged today — start a timer above</div>`}
+  </div>`;
+}
+
+function openDayCloseout(){
+  const today=tday();
+  const todayS=DB.containerSessions.filter(s=>s.date===today);
+  const active=todayS.filter(s=>s.status==='active');
+  const logged=new Set(todayS.map(s=>s.containerCode));
+  const allActive=getActiveContainers();
+  const unlogged=allActive.filter(c=>!logged.has(c.code));
+  const byFac={};
+  unlogged.forEach(c=>{ if(!byFac[c.facility]) byFac[c.facility]=[]; byFac[c.facility].push(c); });
+
+  document.getElementById('em-title').textContent='Close Out Day — '+today;
+  document.getElementById('em-body').innerHTML=`
+    ${active.length>0?`
+    <div style="background:rgba(184,80,20,.08);border:1px solid rgba(184,80,20,.3);border-radius:4px;padding:14px;margin-bottom:18px;">
+      <div style="font-weight:700;color:var(--rust);margin-bottom:10px;">⚠ ${active.length} timer${active.length===1?'':'s'} still running — stop before closing</div>
+      ${active.map(s=>`<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap;">
+        <span style="font-family:'Syne Mono',monospace;font-weight:700;font-size:12px;">${s.containerCode}</span>
+        <span style="font-size:11px;color:var(--text3);">${s.activity} · ${s.employeeName} · ${fmtDuration(Date.now()-new Date(s.startTime).getTime())}</span>
+        <button class="btn b-r b-sm" onclick="stopContainerTimer('${s.id}')">■ Stop Timer</button>
+      </div>`).join('')}
+    </div>`:''}
+
+    <div style="margin-bottom:20px;">
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin-bottom:6px;">MANUAL TIME ENTRY</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Add cleaning, maintenance, or any time not captured by the timer.</div>
+      <div class="fg2" style="margin-bottom:10px;">
+        <div class="fgl"><label>Container</label>
+          <select class="fs" id="cman-c">
+            <option value="">Select...</option>
+            ${getActiveContainers().map(c=>`<option value="${c.code}">${c.code} · ${c.farm}</option>`).join('')}
+          </select>
+        </div>
+        <div class="fgl"><label>Activity</label>
+          <select class="fs" id="cman-a">
+            ${CONTAINER_ACTIVITIES.map(a=>`<option value="${a}">${a}</option>`).join('')}
+          </select>
+        </div>
+        <div class="fgl"><label>Duration (minutes)</label><input class="fi" id="cman-min" type="number" min="1" placeholder="e.g. 30"></div>
+        <div class="fgl"><label>Notes</label><input class="fi" id="cman-notes" placeholder="What was done..."></div>
+      </div>
+      <button class="btn b-s b-sm" onclick="submitManualEntry('${today}')">+ Add Entry</button>
+      <div class="toast" id="dc-t" style="display:inline-block;margin-left:10px;position:static;opacity:0;transition:opacity .3s;">✓ Added</div>
+    </div>
+
+    ${unlogged.length>0?`
+    <div style="margin-bottom:20px;">
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin-bottom:6px;">CONTAINERS WITH NO LOG TODAY (${unlogged.length})</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Each container needs an entry. Mark as No Activity if nothing happened.</div>
+      ${Object.entries(byFac).map(([fac,containers])=>`
+      <div style="margin-bottom:14px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <span style="font-size:12px;font-weight:600;color:var(--gold);">${fac}</span>
+          <button class="btn b-g b-sm" onclick="markAllNoActivity('${fac}','${today}')">All No Activity</button>
+        </div>
+        ${containers.map(c=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:3px;background:rgba(255,255,255,.02);border-radius:3px;" id="noact-row-${c.code.replace(/[^a-z0-9]/gi,'_')}">
+          <span style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;min-width:85px;">${c.code}</span>
+          <span style="font-size:11px;color:var(--text3);flex:1;">${c.farm}</span>
+          <button class="btn b-g b-sm" onclick="logNoActivityContainer('${c.code}','${today}','');document.getElementById('noact-row-${c.code.replace(/[^a-z0-9]/gi,'_')}').style.opacity='.35';this.textContent='✓ Logged'">No Activity</button>
+        </div>`).join('')}
+      </div>`).join('')}
+    </div>`:`<div style="color:var(--fern);font-weight:600;font-size:13px;margin-bottom:18px;">✓ All ${allActive.length} containers accounted for today</div>`}
+
+    <div class="form-acts">
+      <button class="btn b-m" onclick="finalizeDayCloseout('${today}')">✓ Done — Auto-log Remaining</button>
+      <div style="font-size:10px;color:var(--text3);margin-top:6px;text-align:center;">Any containers without an entry today will be automatically marked No Activity.</div>
+    </div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+async function finalizeDayCloseout(date){
+  // Block closeout if any timers still running
+  const stillActive=DB.containerSessions.filter(s=>s.date===date&&s.status==='active');
+  if(stillActive.length){
+    alert(`${stillActive.length} timer${stillActive.length===1?' is':'s are'} still running. Stop ${stillActive.length===1?'it':'them'} before closing out.`);
+    return;
+  }
+  // Auto-log No Activity for every container with nothing logged today
+  const logged=new Set(DB.containerSessions.filter(s=>s.date===date).map(s=>s.containerCode));
+  const unlogged=getActiveContainers().filter(c=>!logged.has(c.code));
+  for(const c of unlogged) await logNoActivityContainer(c.code, date, 'Auto-logged at day closeout');
+  const autoCount=unlogged.length;
+  closeModal();
+  logAudit('day_closeout',`Day closed out for ${date} — ${autoCount} container${autoCount===1?'':'s'} auto-logged as No Activity`);
+  renderC();
+  if(autoCount>0){
+    const t=document.createElement('div');
+    t.textContent=`✓ Day closed — ${autoCount} container${autoCount===1?'':'s'} auto-logged No Activity`;
+    t.style.cssText='position:fixed;bottom:24px;right:24px;background:var(--moss);color:#fff;padding:12px 20px;border-radius:4px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(),4000);
+  }
+}
+
+function submitManualEntry(date){
+  const c=document.getElementById('cman-c')?.value;
+  const a=document.getElementById('cman-a')?.value;
+  const m=document.getElementById('cman-min')?.value;
+  const n=document.getElementById('cman-notes')?.value.trim();
+  if(!c||!m){ alert('Container and duration are required.'); return; }
+  logManualTime(c,a,m,date,n);
+  const t=document.getElementById('dc-t');
+  if(t){ t.style.opacity='1'; setTimeout(()=>t.style.opacity='0',2000); }
+}
+
+function openEditSessionModal(sessionId){
+  const s=DB.containerSessions.find(x=>x.id===sessionId); if(!s) return;
+  const isActive=s.status==='active';
+  // Format local datetime string for input[type=datetime-local]
+  const toLocalDT=iso=>{
+    if(!iso) return '';
+    const d=new Date(iso);
+    const pad=n=>String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  document.getElementById('em-title').textContent=`✏️ Correct Session — ${s.containerCode}`;
+  document.getElementById('em-body').innerHTML=`
+    <div style="background:rgba(184,130,10,.06);border:1px solid rgba(184,130,10,.2);border-radius:4px;padding:10px 14px;margin-bottom:18px;font-size:11px;color:var(--text3);">
+      Admin correction — all edits are saved to the audit log with your name and reason.
+    </div>
+    <div class="fg2" style="margin-bottom:14px;">
+      <div class="fgl"><label>Activity</label>
+        <select class="fs" id="es-act">
+          ${CONTAINER_ACTIVITIES.map(a=>`<option value="${a}"${a===s.activity?' selected':''}>${a}</option>`).join('')}
+          <option value="No Activity"${s.activity==='No Activity'?' selected':''}>No Activity</option>
+        </select>
+      </div>
+      <div class="fgl"><label>Employee Name</label>
+        <input class="fi" id="es-emp" value="${s.employeeName||''}">
+      </div>
+    </div>
+    <div class="fg2" style="margin-bottom:14px;">
+      <div class="fgl"><label>Start Time</label>
+        <input class="fi" type="datetime-local" id="es-start" value="${toLocalDT(s.startTime)}">
+        <div style="font-size:10px;color:var(--text3);margin-top:3px;">Backdate if timer was started late</div>
+      </div>
+      ${isActive?`
+      <div class="fgl"><label>Force Stop — End Time</label>
+        <input class="fi" type="datetime-local" id="es-end" value="${toLocalDT(new Date().toISOString())}">
+        <div style="font-size:10px;color:var(--text3);margin-top:3px;">Leave blank to keep timer running</div>
+      </div>`:`
+      <div class="fgl"><label>End Time</label>
+        <input class="fi" type="datetime-local" id="es-end" value="${toLocalDT(s.endTime)}">
+      </div>`}
+    </div>
+    <div class="fg2" style="margin-bottom:14px;">
+      <div class="fgl"><label>Duration Override (minutes)</label>
+        <input class="fi" type="number" id="es-dur" min="0" value="${s.durationMinutes||''}" placeholder="Auto from start/end — or override directly">
+        <div style="font-size:10px;color:var(--text3);margin-top:3px;">If set, this overrides the start/end calculation</div>
+      </div>
+      <div class="fgl"><label>Notes</label>
+        <input class="fi" id="es-notes" value="${s.notes||''}">
+      </div>
+    </div>
+    <div class="fgl" style="margin-bottom:18px;"><label>Reason for Correction <span style="color:var(--rust);">*</span></label>
+      <input class="fi" id="es-reason" placeholder="e.g. Employee forgot to stop timer, actual end was 3pm...">
+    </div>
+    <div class="form-acts">
+      <button class="btn b-m b-lg" onclick="saveSessionEdit('${sessionId}')">Save Correction</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="es-t">✓ Saved</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+async function saveSessionEdit(sessionId){
+  const s=DB.containerSessions.find(x=>x.id===sessionId); if(!s) return;
+  const reason=document.getElementById('es-reason')?.value.trim();
+  if(!reason){ alert('Correction reason is required.'); return; }
+
+  const activity=document.getElementById('es-act')?.value||s.activity;
+  const employeeName=document.getElementById('es-emp')?.value.trim()||s.employeeName;
+  const notes=document.getElementById('es-notes')?.value.trim();
+  const startVal=document.getElementById('es-start')?.value;
+  const endVal=document.getElementById('es-end')?.value;
+  const durVal=document.getElementById('es-dur')?.value;
+
+  const startTime=startVal?new Date(startVal).toISOString():s.startTime;
+  const isActive=s.status==='active';
+  const forceStop=isActive&&endVal;
+
+  let endTime=s.endTime;
+  let durationMinutes=s.durationMinutes;
+  let newStatus=s.status;
+
+  if(forceStop){
+    endTime=new Date(endVal).toISOString();
+    newStatus='closed';
+  } else if(!isActive&&endVal){
+    endTime=new Date(endVal).toISOString();
+  }
+
+  // Duration: explicit override wins, else recalculate from start/end
+  if(durVal&&parseInt(durVal)>=0){
+    durationMinutes=parseInt(durVal);
+  } else if(startTime&&endTime){
+    durationMinutes=Math.max(0,Math.round((new Date(endTime)-new Date(startTime))/60000));
+  }
+
+  const updates={activity,employeeName,notes,startTime,status:newStatus,
+    correctedBy:S.name||S.email||'admin',
+    correctionReason:reason,
+    correctedAt:new Date().toISOString()};
+  if(endTime) updates.endTime=endTime;
+  if(durationMinutes!=null) updates.durationMinutes=durationMinutes;
+
+  Object.assign(s,updates);
+  await FS.update('containerSessions',sessionId,updates);
+  logAudit('session_corrected',`Corrected ${s.containerCode} session (${activity}, ${fmtMins(durationMinutes)}) — ${reason}`);
+  clearInterval(_timerInterval); _timerInterval=null;
+  closeModal();
+  renderC();
+}
 async function logAudit(action, detail){
   if(!S.role) return; // not logged in — don't log
   try{
@@ -1052,6 +1455,7 @@ function rToday(el){
         <button onclick="navDay(-1)" class="btn b-g b-sm" style="padding:6px 12px;font-size:16px;line-height:1;">‹</button>
         <button onclick="navDay(1)" class="btn b-g b-sm" style="padding:6px 12px;font-size:16px;line-height:1;">›</button>
         ${!isActualToday?`<button onclick="resetToday()" class="btn b-s b-sm" style="padding:6px 12px;font-size:11px;">↩ Today</button>`:''}
+        ${isActualToday&&canEdit()?`<button onclick="openDayCloseout()" class="btn b-sm" style="padding:6px 12px;font-size:11px;background:rgba(184,130,10,.12);color:var(--gold);border:1px solid rgba(184,130,10,.3);">📅 Close Out Day</button>`:''}
       </div>
     </div>
     <div class="stats">
@@ -1098,6 +1502,13 @@ function rToday(el){
   `;
   if(ap.length>0){ const pg=el.querySelector('#pg'); ap.forEach(o=>rOC(o,pg,true)) }
   if(todaySamps.length>0){ const sg=el.querySelector('#samp-today-cards'); todaySamps.forEach(s=>{ const d=document.createElement('div'); d.innerHTML=rSampCardHTML(s,true); sg.appendChild(d) }) }
+  // Append container activity panel if today
+  if(isActualToday && (S.role==='admin'||S.role==='staff')){
+    const cPanel=document.createElement('div');
+    cPanel.innerHTML=buildContainerSessionPanel('Harvesting');
+    el.appendChild(cPanel);
+    tickTimers();
+  }
 }
 
 // ── WEEK ──
@@ -2120,7 +2531,8 @@ function rFruiting(el){
         </tr>`).join('')}</tbody>
       </table>
     </div>`:''}
-  `;
+    ${buildContainerSessionPanel('Fruiting')}`;
+  tickTimers();
 }
 
 async function subFruiting(){
@@ -2270,7 +2682,9 @@ function rHarvest(el){
             <td style="font-size:11px;color:var(--text3)">${h.notes||'—'}</td>
           </tr>`}).join('')
       }</tbody>
-    </table></div>`;
+    </table></div>
+    ${buildContainerSessionPanel('Harvesting')}`;
+  tickTimers();
 }
 
 async function logHarv(){
@@ -4187,6 +4601,86 @@ function markInvoiced(id){
   renderC();
 }
 
+function buildLaborReport(){
+  const sessions=DB.containerSessions.filter(s=>s.status!=='active');
+  if(!sessions.length) return `
+    <div class="sh" style="margin-bottom:14px;"><span>Labor Summary — Container Billing</span></div>
+    <div class="card" style="text-align:center;color:var(--text3);font-size:13px;padding:24px;">No labor data yet — start using the container timers in Harvest and Fruiting views.</div>`;
+
+  // Get date range from query controls or default to current month
+  const allDates=sessions.map(s=>s.date).sort();
+  const defaultFrom=allDates[0]||tday().slice(0,7)+'-01';
+  const defaultTo=tday();
+
+  const fromEl=document.getElementById('lr-from');
+  const toEl=document.getElementById('lr-to');
+  const fromDate=fromEl?.value||defaultFrom;
+  const toDate=toEl?.value||defaultTo;
+
+  const filtered=sessions.filter(s=>s.date>=fromDate&&s.date<=toDate&&s.status!=='no-activity');
+  const noAct=sessions.filter(s=>s.date>=fromDate&&s.date<=toDate&&s.status==='no-activity');
+
+  // Group by container → activity → total minutes
+  const byContainer={};
+  filtered.forEach(s=>{
+    if(!byContainer[s.containerCode]) byContainer[s.containerCode]={farm:s.containerFarm,facility:s.facility,total:0,activities:{}};
+    byContainer[s.containerCode].total+=(s.durationMinutes||0);
+    const act=s.activity;
+    byContainer[s.containerCode].activities[act]=(byContainer[s.containerCode].activities[act]||0)+(s.durationMinutes||0);
+  });
+
+  const sortedContainers=Object.entries(byContainer).sort((a,b)=>b[1].total-a[1].total);
+  const grandTotal=sortedContainers.reduce((s,[,d])=>s+d.total,0);
+
+  const actColors={Harvesting:'var(--fern)',Fruiting:'var(--blue)',Cleaning:'#7aabcc',Inspection:'var(--amber)',Maintenance:'var(--rust)',Manual:'var(--text2)'};
+
+  return `
+  <div class="sh" style="margin-bottom:14px;">
+    <span>Labor Summary — Container Billing</span>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span style="font-size:11px;color:var(--text3);">From</span>
+      <input type="date" class="fi" id="lr-from" value="${fromDate}" style="padding:4px 8px;font-size:11px;width:130px;" onchange="renderC()">
+      <span style="font-size:11px;color:var(--text3);">To</span>
+      <input type="date" class="fi" id="lr-to" value="${toDate}" style="padding:4px 8px;font-size:11px;width:130px;" onchange="renderC()">
+      <button class="btn b-m b-sm" onclick="dlLaborCSV(document.getElementById('lr-from')?.value, document.getElementById('lr-to')?.value)">Export CSV ↓</button>
+    </div>
+  </div>
+  <div class="stats" style="margin-bottom:20px;">
+    <div class="sc g"><div class="sc-l">Total Time</div><div class="sc-v">${fmtMins(grandTotal)}</div><div class="sc-n">across all containers</div></div>
+    <div class="sc"><div class="sc-l">Containers Active</div><div class="sc-v">${sortedContainers.length}</div><div class="sc-n">in this period</div></div>
+    <div class="sc"><div class="sc-l">Sessions</div><div class="sc-v">${filtered.length}</div><div class="sc-n">timed entries</div></div>
+    <div class="sc m"><div class="sc-l">No-Activity Logs</div><div class="sc-v">${noAct.length}</div><div class="sc-n">containers checked, nothing to do</div></div>
+  </div>
+  ${sortedContainers.length===0?`<div class="card" style="text-align:center;color:var(--text3);padding:20px;">No activity in this date range.</div>`:`
+  <div class="tw" style="margin-bottom:28px;"><table>
+    <thead><tr>
+      <th>Container</th><th>Farm</th><th>Facility</th>
+      ${CONTAINER_ACTIVITIES.map(a=>`<th style="font-size:9px;">${a}</th>`).join('')}
+      <th>Total</th>
+    </tr></thead>
+    <tbody>
+      ${sortedContainers.map(([code,d])=>`<tr>
+        <td style="font-family:'Syne Mono',monospace;font-size:12px;font-weight:700;">${code}</td>
+        <td class="mn" style="font-size:11px;">${d.farm}</td>
+        <td class="mn"><span style="font-size:9px;font-family:'Syne Mono',monospace;background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:2px 5px;">${d.facility}</span></td>
+        ${CONTAINER_ACTIVITIES.map(a=>{
+          const mins=d.activities[a]||0;
+          return `<td class="mn" style="color:${actColors[a]||'var(--text2)'};font-weight:${mins>0?'600':'400'};">${mins>0?fmtMins(mins):'—'}</td>`;
+        }).join('')}
+        <td class="mn" style="font-weight:700;font-family:'Syne Mono',monospace;">${fmtMins(d.total)}</td>
+      </tr>`).join('')}
+      <tr style="font-weight:700;background:rgba(84,116,72,.06);">
+        <td colspan="3" style="font-family:'Syne Mono',monospace;font-size:11px;">TOTAL</td>
+        ${CONTAINER_ACTIVITIES.map(a=>{
+          const tot=filtered.filter(s=>s.activity===a).reduce((s,x)=>s+(x.durationMinutes||0),0);
+          return `<td class="mn" style="font-weight:700;">${tot>0?fmtMins(tot):'—'}</td>`;
+        }).join('')}
+        <td class="mn" style="font-family:'Syne Mono',monospace;color:var(--moss);">${fmtMins(grandTotal)}</td>
+      </tr>
+    </tbody>
+  </table></div>`}`;
+}
+
 function rReports(el){
   // Helper: trigger CSV download via data URI
   function dlCSV(filename, rows){
@@ -4198,6 +4692,16 @@ function rReports(el){
     a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
     a.download=filename; a.click();
   }
+
+  // Labor CSV
+  window.dlLaborCSV=function(dateFrom, dateTo){
+    const rows=[['Date','Container','Farm','Facility','Activity','Employee','Duration (min)','Status','Notes']];
+    [...DB.containerSessions]
+      .filter(s=>(!dateFrom||s.date>=dateFrom)&&(!dateTo||s.date<=dateTo))
+      .sort((a,b)=>a.date.localeCompare(b.date)||a.containerCode.localeCompare(b.containerCode))
+      .forEach(s=>rows.push([s.date,s.containerCode,s.containerFarm,s.facility,s.activity,s.employeeName,s.durationMinutes||0,s.status,s.notes||'']));
+    dlCSV('tm-labor-'+tday()+'.csv',rows);
+  };
 
   // Orders CSV
   window.dlOrdersCSV=function(){
@@ -4352,6 +4856,11 @@ function rReports(el){
         <div style="font-size:13px;font-weight:600;color:var(--black);">Download ↓</div>
         <div style="font-size:11px;color:var(--text3);">${DB.preservation.length} batches</div>
       </button>
+      <button style="${btnStyle}" onclick="dlLaborCSV()">
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--amber);text-transform:uppercase;">Labor Log</div>
+        <div style="font-size:13px;font-weight:600;color:var(--black);">Download ↓</div>
+        <div style="font-size:11px;color:var(--text3);">${DB.containerSessions.filter(s=>s.status!=='active').length} entries</div>
+      </button>
     </div>
 
     <div class="sh"><span>Weekly Revenue Summary</span><button class="btn b-m b-sm" onclick="dlRevenueCSV()" style="margin-left:12px;">Export CSV ↓</button></div>
@@ -4370,11 +4879,13 @@ function rReports(el){
       </tbody>
     </table></div>
 
+    ${buildLaborReport()}
+
     <div class="sh"><span>About These Reports</span></div>
     <div class="card" style="font-size:12px;color:var(--text2);line-height:1.9;">
       <div>CSV files open in <strong>Excel</strong> or <strong>Google Sheets</strong> — just double-click after download.</div>
       <div style="margin-top:8px;">Revenue figures are <em>estimates</em> based on per-box pricing. Wholesale orders show $0 until pricing is configured per client.</div>
-      <div style="margin-top:8px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);">Data is live from this session. Once connected to a real database, exports will reflect all historical records.</div>
+      <div style="margin-top:8px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);">Labor data comes from container session timers and manual entries. Hours are not automatically billed — export and apply your hourly rates in accounting.</div>
     </div>
   `;
 }
