@@ -421,7 +421,7 @@ const DB = {
   orders:[], clients:[], harvests:[], samples:[],
   fruitings:[], preservation:[], notifLog:[], signupRequests:[], packSessions:[],
   users:[], loginHistory:[], transfers:[], productMovements:[], auditLog:[], containerSessions:[],
-  facilities:[...ALL_FACILITIES], containerOverrides:{},
+  facilities:[], containerOverrides:{},
   adminPw:'totallyadmin2025', staffPw:'mushrooms2025', accountantPw:'tmbooks2025',
   emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false}
 };
@@ -2283,6 +2283,7 @@ const VARIETIES = ['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','C
 // Update container facilities here when containers move — just change the facility value.
 // To reorder the dropdown, move rows within each group below.
 const ALL_FACILITIES = ["Hyde's Ferry Pike",'Opryland','Carthage','Missouri','Owner','CGF'];
+DB.facilities = [...ALL_FACILITIES]; // backfill — DB was initialized before this const
 // active:true = shows in harvest dropdown & inventory filter by default
 // To move a container between facilities: change facility value
 // To temporarily deactivate: use Admin → Container Management toggles
