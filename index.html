@@ -421,6 +421,7 @@ const DB = {
   orders:[], clients:[], harvests:[], samples:[],
   fruitings:[], preservation:[], notifLog:[], signupRequests:[], packSessions:[],
   users:[], loginHistory:[], transfers:[], productMovements:[], auditLog:[], containerSessions:[],
+  preservationBatches:[],
   facilities:[], containerOverrides:{},
   adminPw:'totallyadmin2025', staffPw:'mushrooms2025', accountantPw:'tmbooks2025',
   emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false}
@@ -486,17 +487,17 @@ const FS = {
 // ── LOAD ALL DATA FROM FIRESTORE ──
 async function loadDB(){
   try {
-    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog,containerSessions] = await Promise.all([
+    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog,containerSessions,preservationBatches] = await Promise.all([
       FS.getAll('orders'), FS.getAll('clients'), FS.getAll('harvests'),
       FS.getAll('samples'), FS.getAll('fruitings'), FS.getAll('preservation'),
       FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('packSessions'),
       FS.getAll('users'), FS.getAll('loginHistory'), FS.getAll('transfers'), FS.getAll('productMovements'),
-      FS.getAll('auditLog'), FS.getAll('containerSessions')
+      FS.getAll('auditLog'), FS.getAll('containerSessions'), FS.getAll('preservationBatches')
     ]);
     DB.orders=orders; DB.clients=clients; DB.harvests=harvests;
     DB.samples=samples; DB.fruitings=fruitings; DB.preservation=preservation;
     DB.notifLog=notifLog; DB.signupRequests=signupRequests; DB.packSessions=packSessions;
-    DB.users=users; DB.loginHistory=loginHistory; DB.transfers=transfers; DB.productMovements=productMovements; DB.auditLog=auditLog; DB.containerSessions=containerSessions;
+    DB.users=users; DB.loginHistory=loginHistory; DB.transfers=transfers; DB.productMovements=productMovements; DB.auditLog=auditLog; DB.containerSessions=containerSessions; DB.preservationBatches=preservationBatches;
     // Load EmailJS config from appConfig
     try{
       const cfgDoc=await fdb.collection('appConfig').doc('emailjs').get();
@@ -3288,175 +3289,395 @@ async function savePreservation(harvestId, maxOnHand){
 const PRESERVE_METHODS=['Dehydrate','Freeze Dry','Freeze (Fresh Frozen)','Waste / Spoilage','Other'];
 const PRESERVE_COLORS={'Dehydrate':'#b8820a','Freeze Dry':'#2a5578','Freeze (Fresh Frozen)':'#3a7aaa','Waste / Spoilage':'#b84c20','Other':'#5a4a30'};
 
+let _prvSources = []; // [{harvestId, lotNumber, variety, weightIn}]
+
+function nextPRSVNumber(){
+  const yr = new Date().getFullYear();
+  const existing = DB.preservationBatches
+    .filter(b=>b.batchNumber&&b.batchNumber.startsWith('PRSV-'+yr+'-'))
+    .map(b=>parseInt(b.batchNumber.slice(-3))||0);
+  const next = (existing.length ? Math.max(...existing) : 0) + 1;
+  return 'PRSV-'+yr+'-'+String(next).padStart(3,'0');
+}
+
+function renderPrvSourceList(){
+  const el = document.getElementById('prv-source-list');
+  if(!el) return;
+  if(_prvSources.length===0){
+    el.innerHTML='<div style="color:var(--text3);font-size:12px;font-style:italic;padding:8px 0;">No lots added yet — use the picker above.</div>';
+    const tot = document.getElementById('prv-total-in');
+    if(tot) tot.textContent='0.0 lb';
+    return;
+  }
+  const total = _prvSources.reduce((s,x)=>s+(x.weightIn||0),0);
+  el.innerHTML = _prvSources.map((src,i)=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--paper);border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px;">
+      <div>
+        <span style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:var(--gold);">${src.lotNumber}</span>
+        <span style="font-size:12px;color:var(--text2);margin-left:8px;">${src.variety}</span>
+        <span style="font-size:12px;font-weight:600;color:var(--moss);margin-left:8px;">${(src.weightIn||0).toFixed(1)} lb</span>
+      </div>
+      <button onclick="removePrvSource(${i})" style="background:none;border:none;color:var(--rust);font-size:14px;cursor:pointer;padding:2px 8px;line-height:1;">✕</button>
+    </div>`).join('');
+  const tot = document.getElementById('prv-total-in');
+  if(tot) tot.textContent = total.toFixed(1)+' lb';
+}
+
+function addPrvSource(){
+  const lotSel = document.getElementById('prv-add-lot');
+  const wtIn = parseFloat(document.getElementById('prv-add-wt').value)||0;
+  if(!lotSel||!lotSel.value){ alert('Select a harvest lot.'); return; }
+  if(wtIn<=0){ alert('Enter a weight greater than 0.'); return; }
+  const h = DB.harvests.find(x=>x.id===lotSel.value); if(!h) return;
+  const alreadyAdded = _prvSources.reduce((s,x)=>x.harvestId===h.id?s+(x.weightIn||0):s, 0);
+  const maxOH = Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0)) - alreadyAdded;
+  if(wtIn>maxOH+0.01){ alert(`Only ${maxOH.toFixed(1)} lb available on ${h.lotNumber}.`); return; }
+  _prvSources.push({ harvestId:h.id, lotNumber:h.lotNumber, variety:h.variety, weightIn:wtIn });
+  document.getElementById('prv-add-wt').value='';
+  lotSel.value='';
+  renderPrvSourceList();
+}
+
+function removePrvSource(idx){
+  _prvSources.splice(idx,1);
+  renderPrvSourceList();
+}
+
 function rPreservation(el){
-  const logs = [...DB.preservation].sort((a,b)=>b.date.localeCompare(a.date));
+  _prvSources = []; // reset in-progress form state on each render
 
-  // Totals by method
-  const byMethod={};
-  PRESERVE_METHODS.forEach(m=>byMethod[m]={in:0,out:0,count:0});
-  logs.forEach(p=>{
-    if(!byMethod[p.method]) byMethod[p.method]={in:0,out:0,count:0};
-    byMethod[p.method].in  += (p.weightIn||0);
-    byMethod[p.method].out += (p.weightOut||0);
-    byMethod[p.method].count++;
-  });
+  const batches = [...DB.preservationBatches].sort((a,b)=>b.date.localeCompare(a.date));
+  const legacy  = [...DB.preservation].sort((a,b)=>b.date.localeCompare(a.date));
 
-  // Totals by variety
-  const byVariety={};
-  logs.forEach(p=>{
-    if(!byVariety[p.variety]) byVariety[p.variety]={};
-    if(!byVariety[p.variety][p.method]) byVariety[p.variety][p.method]=0;
-    byVariety[p.variety][p.method] += (p.weightIn||0);
-  });
+  // Stats
+  const totalBatches   = batches.length;
+  const totalIn        = batches.reduce((s,b)=>s+(b.totalWeightIn||0),0);
+  const totalOut       = batches.reduce((s,b)=>s+(b.weightOut||0),0);
+  const totalOnHand    = batches.reduce((s,b)=>s+(b.onHandWeight||0),0);
+  const totalDispatched= batches.reduce((s,b)=>s+Math.max(0,(b.weightOut||0)-(b.onHandWeight||0)),0);
+  const onHandBatches  = batches.filter(b=>(b.onHandWeight||0)>0.009);
 
-  const totalIn  = logs.reduce((s,p)=>s+(p.weightIn||0),0);
-  const totalOut = logs.reduce((s,p)=>s+(p.weightOut||0),0);
-  const wasteTotal = (byMethod['Waste / Spoilage']||{in:0}).in;
+  // Available harvest lots for picker
+  const availLots = DB.harvests
+    .filter(h=>Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0))>0)
+    .sort((a,b)=>b.date.localeCompare(a.date));
 
-  // Method summary cards
-  const methodCards = PRESERVE_METHODS.filter(m=>byMethod[m]&&byMethod[m].count>0).map(m=>{
-    const d = byMethod[m];
-    const col = PRESERVE_COLORS[m]||'#5a4a30';
-    const yieldPct = d.in>0&&d.out>0 ? ((d.out/d.in)*100).toFixed(0)+'%' : '—';
-    return `<div style="background:white;border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;border-left:3px solid ${col};box-shadow:var(--shadow);">
-      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:${col};margin-bottom:8px;">${m}</div>
-      <div style="font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:700;color:var(--black);line-height:1;">${d.in.toFixed(1)}<span style="font-size:14px;font-family:'Syne',sans-serif;font-weight:400;color:var(--text3);"> lb in</span></div>
-      <div style="font-size:11px;color:var(--text3);margin-top:4px;">${d.count} batch${d.count!==1?'es':''} · yield ${yieldPct}</div>
-    </div>`;
-  }).join('');
+  const nextBatch = nextPRSVNumber();
 
-  // Log table rows
-  const logRows = logs.length===0
-    ? '<tr><td colspan="8" class="empty">No preservation batches logged yet</td></tr>'
-    : logs.map(p=>{
-        const col = PRESERVE_COLORS[p.method]||'#5a4a30';
-        const yPct = p.weightIn>0&&p.weightOut ? ((p.weightOut/p.weightIn)*100).toFixed(0)+'%' : '—';
+  // On-hand inventory rows
+  const onHandRows = onHandBatches.length===0
+    ? '<tr><td colspan="7" class="empty">No preserved inventory on hand — log a batch below to create sellable stock</td></tr>'
+    : onHandBatches.map(b=>{
+        const col = PRESERVE_COLORS[b.method]||'#5a4a30';
+        const varieties = [...new Set((b.sources||[]).map(s=>s.variety))].join(', ')||'—';
         return `<tr>
-          <td class="mn">${fDate(p.date)}</td>
-          <td class="mn" style="font-weight:700;color:var(--gold);">${p.lotNumber}</td>
-          <td>${p.variety}</td>
-          <td class="mn">${p.container}</td>
-          <td><span style="font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;color:${col};background:${col}18;border:1px solid ${col}44;border-radius:2px;padding:2px 7px;letter-spacing:1px;">${p.method}</span></td>
-          <td class="mn">${(p.weightIn||0).toFixed(1)} lb</td>
-          <td class="mn">${p.weightOut?p.weightOut.toFixed(1)+' lb':'—'}</td>
-          <td class="mn">${yPct}</td>
-          <td style="font-size:11px;color:var(--text3);">${p.notes||'—'}</td>
+          <td style="font-family:'Syne Mono',monospace;font-size:12px;font-weight:700;color:var(--fern);">${b.batchNumber}</td>
+          <td class="mn">${fDate(b.date)}</td>
+          <td><span style="font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;color:${col};background:${col}18;border:1px solid ${col}44;border-radius:2px;padding:2px 7px;letter-spacing:1px;">${b.method}</span></td>
+          <td style="font-size:12px;">${varieties}</td>
+          <td class="mn">${(b.weightOut||0).toFixed(1)} lb</td>
+          <td class="mn" style="font-weight:700;color:var(--moss);">${(b.onHandWeight||0).toFixed(1)} lb</td>
+          <td><button class="btn b-m b-sm" onclick="openDispatchModal('${b.id}')">Dispatch →</button></td>
         </tr>`;
       }).join('');
 
-  // Variety breakdown table
-  const varBkRows = Object.entries(byVariety).map(([v,methods])=>{
-    const methodCells = PRESERVE_METHODS.map(m=>`<td class="mn">${methods[m]?methods[m].toFixed(1)+' lb':'—'}</td>`).join('');
-    const total = Object.values(methods).reduce((s,x)=>s+x,0);
-    return `<tr><td style="font-weight:500;">${v}</td>${methodCells}<td class="mn" style="font-weight:700;">${total.toFixed(1)} lb</td></tr>`;
+  // All batches history rows
+  const batchRows = batches.length===0
+    ? '<tr><td colspan="8" class="empty">No PRSV batches yet — log the first one below</td></tr>'
+    : batches.map(b=>{
+        const col = PRESERVE_COLORS[b.method]||'#5a4a30';
+        const varieties = [...new Set((b.sources||[]).map(s=>s.variety))].join(', ')||'—';
+        const yPct = b.totalWeightIn>0&&b.weightOut ? ((b.weightOut/b.totalWeightIn)*100).toFixed(0)+'%' : '—';
+        const st = b.status||'in-stock';
+        const statusBadge = st==='in-stock'
+          ? `<span style="font-size:9px;background:rgba(84,116,72,.1);color:var(--moss);border:1px solid rgba(84,116,72,.3);border-radius:2px;padding:2px 6px;font-family:'Syne Mono',monospace;letter-spacing:.5px;">IN STOCK</span>`
+          : st==='dispatched'
+          ? `<span style="font-size:9px;background:rgba(42,85,120,.1);color:var(--blue);border:1px solid rgba(42,85,120,.3);border-radius:2px;padding:2px 6px;font-family:'Syne Mono',monospace;letter-spacing:.5px;">DISPATCHED</span>`
+          : `<span style="font-size:9px;background:rgba(196,168,130,.1);color:var(--amber);border:1px solid rgba(196,168,130,.4);border-radius:2px;padding:2px 6px;font-family:'Syne Mono',monospace;letter-spacing:.5px;">PARTIAL</span>`;
+        const srcCount = (b.sources||[]).length;
+        return `<tr>
+          <td style="font-family:'Syne Mono',monospace;font-size:12px;font-weight:700;color:var(--fern);">${b.batchNumber}</td>
+          <td class="mn">${fDate(b.date)}</td>
+          <td><span style="font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;color:${col};background:${col}18;border:1px solid ${col}44;border-radius:2px;padding:2px 7px;letter-spacing:1px;">${b.method}</span></td>
+          <td style="font-size:12px;">${varieties}<span style="font-size:10px;color:var(--text3);margin-left:5px;">(${srcCount} lot${srcCount!==1?'s':''})</span></td>
+          <td class="mn">${(b.totalWeightIn||0).toFixed(1)} lb</td>
+          <td class="mn">${b.weightOut?b.weightOut.toFixed(1)+' lb':'—'}</td>
+          <td class="mn">${yPct}</td>
+          <td>${statusBadge}</td>
+        </tr>`;
+      }).join('');
+
+  // Legacy log rows (collapsed)
+  const legacyRows = legacy.map(p=>{
+    const col = PRESERVE_COLORS[p.method]||'#5a4a30';
+    return `<tr>
+      <td class="mn">${fDate(p.date)}</td>
+      <td class="mn" style="font-weight:700;color:var(--gold);">${p.lotNumber||'—'}</td>
+      <td style="font-size:12px;">${p.variety||'—'}</td>
+      <td><span style="font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;color:${col};background:${col}18;border:1px solid ${col}44;border-radius:2px;padding:2px 7px;letter-spacing:1px;">${p.method}</span></td>
+      <td class="mn">${(p.weightIn||0).toFixed(1)} lb</td>
+      <td class="mn">${p.weightOut?p.weightOut.toFixed(1)+' lb':'—'}</td>
+      <td style="font-size:11px;color:var(--text3);">${p.notes||'—'}</td>
+    </tr>`;
   }).join('');
 
   el.innerHTML=`
-    <div class="ph"><div class="ph-t">Preservation</div><div class="ph-s">Track dehydration, freeze drying, freezing and waste batches</div></div>
+    <div class="ph"><div class="ph-t">Preservation</div><div class="ph-s">PRSV batch tracking · multi-lot sourcing · preserved inventory · dispatch to market</div></div>
 
     <div class="stats" style="margin-bottom:28px;">
-      <div class="sc g"><div class="sc-l">Total Processed</div><div class="sc-v">${totalIn.toFixed(1)}</div><div class="sc-n">lbs into preservation</div></div>
-      <div class="sc" style=""><div class="sc-l">Total Yield Out</div><div class="sc-v" style="color:var(--blue)">${totalOut.toFixed(1)}</div><div class="sc-n">lbs after processing</div></div>
-      <div class="sc ${wasteTotal>0?'r':''}"><div class="sc-l">Waste / Spoilage</div><div class="sc-v">${wasteTotal.toFixed(1)}</div><div class="sc-n">lbs written off</div></div>
-      <div class="sc m"><div class="sc-l">Batches Logged</div><div class="sc-v">${logs.length}</div><div class="sc-n">all time</div></div>
+      <div class="sc g"><div class="sc-l">PRSV Batches</div><div class="sc-v">${totalBatches}</div><div class="sc-n">all time</div></div>
+      <div class="sc"><div class="sc-l">Total In</div><div class="sc-v">${totalIn.toFixed(1)}</div><div class="sc-n">lbs into preservation</div></div>
+      <div class="sc b"><div class="sc-l">On Hand</div><div class="sc-v" style="color:var(--blue)">${totalOnHand.toFixed(1)}</div><div class="sc-n">preserved inventory</div></div>
+      <div class="sc m"><div class="sc-l">Dispatched</div><div class="sc-v">${totalDispatched.toFixed(1)}</div><div class="sc-n">lbs sent to market</div></div>
     </div>
 
-    ${logs.length>0?`
-    <div class="sh"><span>By Method</span></div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;margin-bottom:28px;">
-      ${methodCards||'<div style="color:var(--text3);font-size:12px;">No batches yet.</div>'}
-    </div>`:''}
+    <div class="sh"><span>Preserved Inventory — On Hand</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:${onHandBatches.length>0?'var(--moss)':'var(--text3)'};">${onHandBatches.length} BATCH${onHandBatches.length!==1?'ES':''} AVAILABLE</span></div>
+    <div class="tw" style="margin-bottom:28px;"><table>
+      <thead><tr><th>Batch #</th><th>Date</th><th>Method</th><th>Varieties</th><th>Yield Out</th><th>On Hand</th><th></th></tr></thead>
+      <tbody>${onHandRows}</tbody>
+    </table></div>
 
-    ${canEdit()?`<div class="sh"><span>Log a Preservation Batch</span></div><div class="card" style="margin-bottom:24px;">`:'<div style="display:none"><div>'}
+    ${canEdit()?`
+    <div class="sh"><span>Log a New PRSV Batch</span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;background:rgba(84,116,72,.1);color:var(--fern);border:1px solid rgba(84,116,72,.3);border-radius:2px;padding:2px 8px;letter-spacing:.5px;">NEXT: ${nextBatch}</span>
+    </div>
+    <div class="card" style="margin-bottom:24px;">
       <div class="fg2">
         <div class="fgl">
           <label>Date</label>
-          <input class="fi" type="date" id="plog-date" value="${tday()}">
+          <input class="fi" type="date" id="prv-date" value="${tday()}">
         </div>
         <div class="fgl">
-          <label>Lot Number</label>
-          <select class="fs" id="plog-lot">
-            <option value="">Select lot...</option>
-            ${DB.harvests.filter(h=>Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0))>0)
-              .sort((a,b)=>b.date.localeCompare(a.date))
-              .map(h=>{
-                const oh=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0));
-                return `<option value="${h.id}">${h.lotNumber} — ${h.variety} (${oh.toFixed(1)} lb avail)</option>`;
-              }).join('')}
-          </select>
-        </div>
-        <div class="fgl">
-          <label>Method</label>
-          <select class="fs" id="plog-method">
+          <label>Preservation Method</label>
+          <select class="fs" id="prv-method">
             <option value="">Select method...</option>
             ${PRESERVE_METHODS.map(m=>`<option value="${m}">${m}</option>`).join('')}
           </select>
         </div>
         <div class="fgl">
-          <label>Weight In (lbs)</label>
-          <input class="fi" type="number" step="0.1" min="0.1" id="plog-wt" placeholder="lbs going in">
+          <label>Facility</label>
+          <input class="fi" value="Carthage" readonly style="background:var(--paper);color:var(--text2);cursor:not-allowed;">
         </div>
         <div class="fgl">
           <label>Weight Out / Yield (lbs)</label>
-          <input class="fi" type="number" step="0.1" min="0" id="plog-wout" placeholder="lbs after (dried, frozen, etc)">
+          <input class="fi" type="number" step="0.1" min="0" id="prv-wout" placeholder="lbs after processing (dried, frozen, etc)">
         </div>
-        <div class="fgl">
-          <label>Notes</label>
-          <input class="fi" id="plog-notes" placeholder="Batch notes, temp, equipment...">
+      </div>
+
+      <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px;margin-bottom:14px;">
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:10px;">Source Harvest Lots</div>
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;">
+          <div style="flex:1;min-width:220px;">
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Harvest Lot</label>
+            <select class="fs" id="prv-add-lot">
+              <option value="">Select lot...</option>
+              ${availLots.map(h=>{
+                const oh=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0));
+                return `<option value="${h.id}">${h.lotNumber} — ${h.variety} (${oh.toFixed(1)} lb avail)</option>`;
+              }).join('')}
+            </select>
+          </div>
+          <div style="width:110px;">
+            <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Weight In (lb)</label>
+            <input class="fi" type="number" step="0.1" min="0.1" id="prv-add-wt" placeholder="0.0">
+          </div>
+          <button class="btn b-m" onclick="addPrvSource()" style="margin-bottom:1px;white-space:nowrap;">+ Add Lot</button>
         </div>
+        <div id="prv-source-list" style="min-height:36px;">
+          <div style="color:var(--text3);font-size:12px;font-style:italic;padding:8px 0;">No lots added yet — use the picker above.</div>
+        </div>
+        <div style="font-size:12px;font-weight:600;color:var(--moss);margin-top:6px;">Total Weight In: <span id="prv-total-in" style="font-family:'Syne Mono',monospace;">0.0 lb</span></div>
+      </div>
+
+      <div class="fgl">
+        <label>Notes</label>
+        <input class="fi" id="prv-notes" placeholder="Temperature, equipment, packaging details...">
       </div>
       <div class="form-acts">
-        <button class="btn b-m b-lg" onclick="logPreservation()">Log Batch</button>
+        <button class="btn b-m b-lg" onclick="logPreservationBatch()">Log Batch → ${nextBatch}</button>
       </div>
-      <div class="toast" id="plog-t">✓ Batch logged and inventory updated</div>
-    </div>
+      <div class="toast" id="prv-t">✓ PRSV batch logged — preserved inventory updated</div>
+    </div>`:''}
 
-    ${logs.length>0&&Object.keys(byVariety).length>0?`
-    <div class="sh"><span>By Variety &amp; Method</span></div>
-    <div class="tw" style="margin-bottom:24px;overflow-x:auto;"><table>
-      <thead><tr>
-        <th>Variety</th>
-        ${PRESERVE_METHODS.map(m=>`<th>${m}</th>`).join('')}
-        <th>Total</th>
-      </tr></thead>
-      <tbody>${varBkRows}</tbody>
-    </table></div>`:''}
-
-    <div class="sh"><span>All Batches</span></div>
-    <div class="tw"><table>
-      <thead><tr>
-        <th>Date</th><th>Lot #</th><th>Variety</th><th>Container</th><th>Method</th><th>Wt In</th><th>Wt Out</th><th>Yield</th><th>Notes</th>
-      </tr></thead>
-      <tbody>${logRows}</tbody>
+    <div class="sh"><span>All PRSV Batches</span></div>
+    <div class="tw" style="margin-bottom:24px;"><table>
+      <thead><tr><th>Batch #</th><th>Date</th><th>Method</th><th>Varieties / Sources</th><th>Wt In</th><th>Wt Out</th><th>Yield</th><th>Status</th></tr></thead>
+      <tbody>${batchRows}</tbody>
     </table></div>
+
+    ${legacy.length>0?`
+    <details style="margin-bottom:24px;">
+      <summary style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);cursor:pointer;padding:8px 0;user-select:none;">▶ LEGACY BATCH LOG (${legacy.length} entr${legacy.length!==1?'ies':'y'} — pre-PRSV system)</summary>
+      <div class="tw" style="margin-top:10px;"><table>
+        <thead><tr><th>Date</th><th>Lot #</th><th>Variety</th><th>Method</th><th>Wt In</th><th>Wt Out</th><th>Notes</th></tr></thead>
+        <tbody>${legacyRows}</tbody>
+      </table></div>
+    </details>`:''}
   `;
 }
 
-async function logPreservation(){
-  const lotId = parseInt(document.getElementById('plog-lot').value);
-  const method = document.getElementById('plog-method').value;
-  const wt = parseFloat(document.getElementById('plog-wt').value)||0;
-  const wout = parseFloat(document.getElementById('plog-wout').value)||0;
-  const date = document.getElementById('plog-date').value;
-  const notes = document.getElementById('plog-notes').value.trim();
+async function logPreservationBatch(){
+  const date   = document.getElementById('prv-date').value;
+  const method = document.getElementById('prv-method').value;
+  const wout   = parseFloat(document.getElementById('prv-wout').value)||0;
+  const notes  = document.getElementById('prv-notes').value.trim();
 
-  if(!lotId){ alert('Please select a lot.'); return; }
-  if(!method){ alert('Please select a method.'); return; }
-  if(!wt||wt<=0){ alert('Weight in is required.'); return; }
+  if(!method){ alert('Please select a preservation method.'); return; }
+  if(_prvSources.length===0){ alert('Add at least one harvest lot as a source.'); return; }
+  if(!wout||wout<=0){ alert('Weight Out / Yield is required (enter the lbs after processing).'); return; }
 
-  const h = DB.harvests.find(x=>x.id===lotId); if(!h) return;
-  const maxOH = Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0));
-  if(wt>maxOH+0.01){ alert(`Only ${maxOH.toFixed(1)} lb available on ${h.lotNumber}.`); return; }
+  const totalIn    = _prvSources.reduce((s,x)=>s+(x.weightIn||0),0);
+  const batchNumber = nextPRSVNumber();
 
-  h.preservedWeight = (h.preservedWeight||0) + wt;
-  FS.update('harvests', h.id, {preservedWeight: h.preservedWeight});
-  const pData = {date, harvestId:h.id, lotNumber:h.lotNumber, variety:h.variety,
-    container:h.container, method, weightIn:wt, weightOut:wout||null, notes};
-  const pId = await FS.add('preservation', pData);
-  pData.id = pId;
-  DB.preservation.push(pData);
-  toast('plog-t');
+  // Deduct preservedWeight from each source harvest record
+  for(const src of _prvSources){
+    const h = DB.harvests.find(x=>x.id===src.harvestId); if(!h) continue;
+    h.preservedWeight = (h.preservedWeight||0) + src.weightIn;
+    FS.update('harvests', h.id, {preservedWeight: h.preservedWeight});
+  }
+
+  const batchData = {
+    batchNumber, date, method, facility:'Carthage',
+    sources: _prvSources.map(s=>({...s})),
+    totalWeightIn: totalIn,
+    weightOut: wout,
+    onHandWeight: wout,
+    status: 'in-stock',
+    notes,
+    createdBy: S.name||S.role||'unknown',
+    timestamp: new Date().toISOString()
+  };
+
+  const bId = await FS.add('preservationBatches', batchData);
+  batchData.id = bId;
+  DB.preservationBatches.push(batchData);
+
+  const srcSummary = _prvSources.map(s=>`${s.lotNumber} (${s.weightIn.toFixed(1)}lb)`).join(', ');
+  logAudit('preservation_logged', `${batchNumber} — ${method} — ${totalIn.toFixed(1)}lb in, ${wout.toFixed(1)}lb out — Sources: ${srcSummary}`);
+
+  _prvSources = [];
+  toast('prv-t');
   setTimeout(()=>renderC(), 900);
+}
+
+function openDispatchModal(batchId){
+  const batch = DB.preservationBatches.find(b=>b.id===batchId); if(!batch) return;
+  const varieties = [...new Set((batch.sources||[]).map(s=>s.variety))].join(', ')||'Preserved Product';
+  document.getElementById('em-title').textContent = 'Dispatch Preserved Product';
+  document.getElementById('em-body').innerHTML = `
+    <div style="background:rgba(84,116,72,.06);border:1px solid rgba(84,116,72,.2);border-radius:var(--r);padding:12px 16px;margin-bottom:20px;">
+      <div style="font-family:'Syne Mono',monospace;font-size:12px;font-weight:700;color:var(--fern);">${batch.batchNumber}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:3px;">${batch.method} · ${varieties}</div>
+      <div style="font-size:14px;font-weight:700;color:var(--moss);margin-top:5px;">${(batch.onHandWeight||0).toFixed(1)} lb on hand</div>
+    </div>
+    <div class="fg2">
+      <div class="fgl">
+        <label>Date</label>
+        <input class="fi" type="date" id="dsp-date" value="${tday()}">
+      </div>
+      <div class="fgl">
+        <label>Weight to Dispatch (lb)</label>
+        <input class="fi" type="number" step="0.1" min="0.1" max="${(batch.onHandWeight||0).toFixed(1)}" id="dsp-wt" value="${(batch.onHandWeight||0).toFixed(1)}">
+      </div>
+      <div class="fgl">
+        <label>Destination Type</label>
+        <select class="fs" id="dsp-type" onchange="toggleDispatchDest()">
+          <option value="external">External — Client / Customer</option>
+          <option value="internal">Internal — Move to Facility</option>
+        </select>
+      </div>
+      <div class="fgl" id="dsp-client-row">
+        <label>Client</label>
+        <select class="fs" id="dsp-client">
+          <option value="">Select client...</option>
+          ${DB.clients.filter(c=>c.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.id}">${c.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fgl" id="dsp-fac-row" style="display:none;">
+        <label>To Facility</label>
+        <select class="fs" id="dsp-fac">
+          ${DB.facilities.filter(f=>f!=='Carthage').map(f=>`<option value="${f}">${f}</option>`).join('')}
+        </select>
+      </div>
+      <div class="fgl">
+        <label>Driver</label>
+        <input class="fi" id="dsp-driver" placeholder="Driver name">
+      </div>
+      <div class="fgl">
+        <label>Vehicle</label>
+        <input class="fi" id="dsp-vehicle" placeholder="Vehicle (Sprinter, F-150...)">
+      </div>
+    </div>
+    <div class="fgl" style="margin-top:4px;">
+      <label>Notes</label>
+      <input class="fi" id="dsp-notes" placeholder="Cold chain, packaging, temperature notes...">
+    </div>
+    <div class="form-acts" style="margin-top:18px;">
+      <button class="btn b-m b-lg" onclick="confirmDispatch('${batchId}')">✓ Confirm Dispatch</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+  `;
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+function toggleDispatchDest(){
+  const t = document.getElementById('dsp-type').value;
+  const cr = document.getElementById('dsp-client-row');
+  const fr = document.getElementById('dsp-fac-row');
+  if(cr) cr.style.display = t==='external'?'':'none';
+  if(fr) fr.style.display = t==='internal'?'':'none';
+}
+
+async function confirmDispatch(batchId){
+  const batch = DB.preservationBatches.find(b=>b.id===batchId); if(!batch) return;
+  const wt       = parseFloat(document.getElementById('dsp-wt').value)||0;
+  const date     = document.getElementById('dsp-date').value;
+  const destType = document.getElementById('dsp-type').value;
+  const clientId = document.getElementById('dsp-client')?.value||'';
+  const toFac    = document.getElementById('dsp-fac')?.value||'';
+  const driver   = document.getElementById('dsp-driver').value.trim();
+  const vehicle  = document.getElementById('dsp-vehicle').value.trim();
+  const notes    = document.getElementById('dsp-notes').value.trim();
+
+  if(!wt||wt<=0){ alert('Enter a dispatch weight.'); return; }
+  if(wt>(batch.onHandWeight||0)+0.01){ alert(`Only ${(batch.onHandWeight||0).toFixed(1)} lb available.`); return; }
+  if(destType==='external'&&!clientId){ alert('Select a destination client.'); return; }
+
+  const clientObj = destType==='external' ? DB.clients.find(c=>c.id===clientId) : null;
+  const varieties = [...new Set((batch.sources||[]).map(s=>s.variety))].join(', ')||batch.method;
+
+  const mvData = {
+    productType:'preserved',
+    batchId: batch.id,
+    batchNumber: batch.batchNumber,
+    method: batch.method,
+    variety: varieties,
+    fromFacility:'Carthage',
+    destType,
+    toFacility: destType==='internal'?toFac:'',
+    toClient: destType==='external'?clientId:'',
+    toClientName: clientObj?clientObj.name:'',
+    productState:'Preserved',
+    weight: wt,
+    date, driver, vehicle, notes,
+    status:'logged',
+    createdBy: S.name||S.role||'unknown',
+    timestamp: new Date().toISOString()
+  };
+
+  const mvId = await FS.add('productMovements', mvData);
+  mvData.id = mvId;
+  DB.productMovements.push(mvData);
+
+  // Update batch on-hand weight and status
+  batch.onHandWeight = Math.max(0, (batch.onHandWeight||0) - wt);
+  batch.status = batch.onHandWeight <= 0.01 ? 'dispatched' : 'partial';
+  await FS.update('preservationBatches', batch.id, {onHandWeight: batch.onHandWeight, status: batch.status});
+
+  const dest = destType==='external' ? (clientObj?clientObj.name:'client') : toFac;
+  logAudit('product_moved', `${batch.batchNumber} — ${wt.toFixed(1)}lb preserved dispatched → ${dest}`);
+  closeModal();
+  renderC();
 }
 
 // ── HARVEST FORECAST HELPER (used by Analytics tab) ──
@@ -3894,11 +4115,26 @@ function seedDemoData(){
     {id:'demo-f-4',date:yd(14),containerID:'GH-08-01',lotNumber:'BLK-2024-004',vendor:'North Spore',variety:'Chestnut',blockCount:10,blockWeightLb:4.5,notes:'Third pin set',status:'harvested',harvestedAt:yd(2)},
   ];
 
-  // ── Preservation ──
-  DB.preservation=[
-    {id:'demo-p-1',date:yd(2),harvestId:'demo-h-3',lotNumber:'LOT-2024-003',variety:'Chestnut',container:'GH-02-01',method:'Freeze (Fresh Frozen)',weightIn:4,weightOut:3.8,notes:'Packed in 1lb bags'},
-    {id:'demo-p-2',date:yd(1),harvestId:'demo-h-6',lotNumber:'LOT-2024-006',variety:'Blue Oyster',container:'CA-02-01',method:'Dehydrate',weightIn:5,weightOut:0.9,notes:'Dried to chips — 5:1 ratio'},
-    {id:'demo-p-3',date:today,harvestId:'demo-h-8',lotNumber:'LOT-2024-008',variety:'Snow Oyster',container:'GH-07-01',method:'Freeze (Fresh Frozen)',weightIn:2,weightOut:1.95,notes:''},
+  // ── Preservation (legacy log — kept for backward compat display) ──
+  DB.preservation=[];
+
+  // ── Preservation Batches (PRSV system) ──
+  DB.preservationBatches=[
+    {id:'demo-pb-1',batchNumber:'PRSV-2026-001',date:yd(4),method:'Freeze (Fresh Frozen)',facility:'Carthage',
+      sources:[{harvestId:'demo-h-3',lotNumber:'LOT-2024-003',variety:'Chestnut',weightIn:4}],
+      totalWeightIn:4,weightOut:3.8,onHandWeight:3.8,status:'in-stock',
+      notes:'Packed in 1lb bags',createdBy:'Allen M.',timestamp:iso(4)},
+    {id:'demo-pb-2',batchNumber:'PRSV-2026-002',date:yd(2),method:'Dehydrate',facility:'Carthage',
+      sources:[{harvestId:'demo-h-6',lotNumber:'LOT-2024-006',variety:'Blue Oyster',weightIn:5}],
+      totalWeightIn:5,weightOut:0.9,onHandWeight:0,status:'dispatched',
+      notes:'Dried to chips — 5:1 ratio. Dispatched to Whole Foods.',createdBy:'Allen M.',timestamp:iso(2)},
+    {id:'demo-pb-3',batchNumber:'PRSV-2026-003',date:yd(1),method:'Freeze (Fresh Frozen)',facility:'Carthage',
+      sources:[
+        {harvestId:'demo-h-8',lotNumber:'LOT-2024-008',variety:'Snow Oyster',weightIn:2},
+        {harvestId:'demo-h-1',lotNumber:'LOT-2024-001',variety:'Blue Oyster',weightIn:3}
+      ],
+      totalWeightIn:5,weightOut:4.8,onHandWeight:2.3,status:'partial',
+      notes:'Multi-lot batch. 2.5lb already dispatched to Catbird Seat.',createdBy:'Allen M.',timestamp:iso(1)},
   ];
 
   // ── Product Movements ──
@@ -4868,11 +5104,23 @@ function rReports(el){
 
   // Preservation CSV
   window.dlPreservCSV=function(){
-    const rows=[['ID','Date','Lot Number','Variety','Container','Method','Weight In (lb)','Weight Out (lb)','Yield %','Notes']];
-    [...DB.preservation].sort((a,b)=>b.date.localeCompare(a.date)).forEach(p=>{
-      const yPct=p.weightIn>0&&p.weightOut?((p.weightOut/p.weightIn)*100).toFixed(1)+'%':'';
-      rows.push([p.id,p.date,p.lotNumber,p.variety,p.container,p.method,(p.weightIn||0).toFixed(2),p.weightOut?(p.weightOut).toFixed(2):'',yPct,p.notes||'']);
+    const rows=[['Batch #','Date','Method','Facility','Varieties','Source Lots','Total In (lb)','Weight Out (lb)','Yield %','On Hand (lb)','Status','Notes']];
+    [...DB.preservationBatches].sort((a,b)=>b.date.localeCompare(a.date)).forEach(b=>{
+      const varieties=[...new Set((b.sources||[]).map(s=>s.variety))].join('; ');
+      const srcSummary=(b.sources||[]).map(s=>`${s.lotNumber}:${s.weightIn}lb`).join('; ');
+      const yPct=b.totalWeightIn>0&&b.weightOut?((b.weightOut/b.totalWeightIn)*100).toFixed(1)+'%':'';
+      rows.push([b.batchNumber,b.date,b.method,b.facility||'Carthage',varieties,srcSummary,
+        (b.totalWeightIn||0).toFixed(2),b.weightOut?b.weightOut.toFixed(2):'',yPct,
+        (b.onHandWeight||0).toFixed(2),b.status||'in-stock',b.notes||'']);
     });
+    if(DB.preservation.length>0){
+      rows.push(['--- LEGACY LOG ---','','','','','','','','','','','']);
+      [...DB.preservation].sort((a,b)=>b.date.localeCompare(a.date)).forEach(p=>{
+        const yPct=p.weightIn>0&&p.weightOut?((p.weightOut/p.weightIn)*100).toFixed(1)+'%':'';
+        rows.push(['',p.date,p.method,'',p.variety||'',p.lotNumber||'',
+          (p.weightIn||0).toFixed(2),p.weightOut?p.weightOut.toFixed(2):'',yPct,'','',p.notes||'']);
+      });
+    }
     dlCSV('tm-preservation-'+tday()+'.csv',rows);
   };
 
@@ -4979,7 +5227,7 @@ function rReports(el){
       <button style="${btnStyle}" onclick="dlPreservCSV()">
         <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--rust);text-transform:uppercase;">Preservation Log</div>
         <div style="font-size:13px;font-weight:600;color:var(--black);">Download ↓</div>
-        <div style="font-size:11px;color:var(--text3);">${DB.preservation.length} batches</div>
+        <div style="font-size:11px;color:var(--text3);">${DB.preservationBatches.length} PRSV batches</div>
       </button>
       <button style="${btnStyle}" onclick="dlLaborCSV()">
         <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--amber);text-transform:uppercase;">Labor Log</div>
