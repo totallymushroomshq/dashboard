@@ -3841,13 +3841,137 @@ function clrNewSample(){
 }
 
 // ── ADMIN ──
+// ── DEMO / SEED DATA ──
+function seedDemoData(){
+  if(!confirm('Load demo data? This populates the app in memory only — nothing writes to Firestore. Refresh or click Clear Demo to restore real data.')) return;
+  DB._isDemoMode=true;
+
+  const today=tday();
+  const yd=d=>{ const dt=new Date(); dt.setDate(dt.getDate()-d); return dt.toISOString().split('T')[0]; };
+  const iso=d=>{ const dt=new Date(); dt.setDate(dt.getDate()-d); return dt.toISOString(); };
+  const id=p=>p+'-'+Math.random().toString(36).slice(2,8);
+
+  // ── Clients ──
+  DB.clients=[
+    {id:'demo-c-1',name:'The Catbird Seat',contact:'Tyler Brown',email:'chef@catbirdseat.com',phone:'615-555-0101',type:'restaurant',active:true},
+    {id:'demo-c-2',name:'Bastion Restaurant',contact:'Josh Habiger',email:'orders@bastionnashville.com',phone:'615-555-0202',type:'restaurant',active:true},
+    {id:'demo-c-3',name:'Five Points Pizza',contact:'Mike Malone',email:'mike@fivepointspizza.com',phone:'615-555-0303',type:'restaurant',active:true},
+    {id:'demo-c-4',name:'The Turnip Truck',contact:'Dan Blessing',email:'produce@turriptruck.com',phone:'615-555-0404',type:'retail',active:true},
+    {id:'demo-c-5',name:"Whole Foods — Green Hills",contact:'Produce Dept',email:'nashville.produce@wfm.com',phone:'615-555-0505',type:'wholesale',active:true},
+  ];
+
+  // ── Harvests ──
+  DB.harvests=[
+    {id:'demo-h-1',date:yd(0),container:'GH-03-01',facility:"Hyde's Ferry Pike",lotNumber:'LOT-2024-001',variety:'Blue Oyster',grade:'A',weight:28.5,usedWeight:12,sampleWeight:0,preservedWeight:0,notes:'Strong flush, dense clusters'},
+    {id:'demo-h-2',date:yd(1),container:'GH-04-01',facility:"Hyde's Ferry Pike",lotNumber:'LOT-2024-002',variety:"Lion's Mane",grade:'A',weight:14.0,usedWeight:6,sampleWeight:1,preservedWeight:0,notes:'Excellent size'},
+    {id:'demo-h-3',date:yd(1),container:'GH-02-01',facility:"Hyde's Ferry Pike",lotNumber:'LOT-2024-003',variety:'Chestnut',grade:'B',weight:19.0,usedWeight:9,sampleWeight:0,preservedWeight:4,notes:'Second flush'},
+    {id:'demo-h-4',date:yd(2),container:'GH-09-01',facility:"Hyde's Ferry Pike",lotNumber:'LOT-2024-004',variety:'Shiitake',grade:'A',weight:22.0,usedWeight:10,sampleWeight:0,preservedWeight:0,notes:''},
+    {id:'demo-h-5',date:yd(3),container:'CA-03-01',facility:'Carthage',lotNumber:'LOT-2024-005',variety:'Gold Oyster',grade:'A',weight:11.0,usedWeight:3,sampleWeight:0,preservedWeight:0,notes:'First flush of new substrate'},
+    {id:'demo-h-6',date:yd(3),container:'CA-02-01',facility:'Carthage',lotNumber:'LOT-2024-006',variety:'Blue Oyster',grade:'A',weight:32.0,usedWeight:15,sampleWeight:2,preservedWeight:5,notes:'Best yield this month'},
+    {id:'demo-h-7',date:yd(5),container:'MO-02-01',facility:'Opryland',lotNumber:'LOT-2024-007',variety:'Coral Tooth',grade:'A',weight:8.5,usedWeight:4,sampleWeight:1,preservedWeight:0,notes:'Unusual variety, customers excited'},
+    {id:'demo-h-8',date:yd(6),container:'GH-07-01',facility:"Hyde's Ferry Pike",lotNumber:'LOT-2024-008',variety:'Snow Oyster',grade:'B',weight:17.0,usedWeight:8,sampleWeight:0,preservedWeight:2,notes:'Slight humidity issue'},
+    {id:'demo-h-9',date:yd(7),container:'CA-04-01',facility:'Carthage',lotNumber:'LOT-2024-009',variety:"Lion's Mane",grade:'A',weight:10.5,usedWeight:5,sampleWeight:0,preservedWeight:0,notes:''},
+    {id:'demo-h-10',date:yd(8),container:'GH-06-01',facility:"Hyde's Ferry Pike",lotNumber:'LOT-2024-010',variety:'Chestnut',grade:'A',weight:24.0,usedWeight:18,sampleWeight:0,preservedWeight:0,notes:'High demand week'},
+  ];
+
+  // ── Orders ──
+  const wk=wkStart();
+  DB.orders=[
+    {id:'demo-o-1',clientId:'demo-c-1',client:'The Catbird Seat',day:'Tuesday',status:'confirmed',oyster:4,chefs:2,lions:2,chestnut:0,shiitake:1,lionsPack:0,chefsPack:0,notes:'',week:wk,custom:false,isStanding:false},
+    {id:'demo-o-2',clientId:'demo-c-2',client:'Bastion Restaurant',day:'Tuesday',status:'pending',oyster:2,chefs:0,lions:3,chestnut:1,shiitake:0,lionsPack:0,chefsPack:0,notes:'Extra lion mane if available',week:wk,custom:false,isStanding:false},
+    {id:'demo-o-3',clientId:'demo-c-3',client:"Five Points Pizza",day:'Thursday',status:'confirmed',oyster:3,chefs:1,lions:0,chestnut:2,shiitake:0,lionsPack:4,chefsPack:0,notes:'',week:wk,custom:false,isStanding:false},
+    {id:'demo-o-4',clientId:'demo-c-4',client:'The Turnip Truck',day:'Wednesday',status:'packed',oyster:6,chefs:0,lions:2,chestnut:3,shiitake:2,lionsPack:0,chefsPack:0,notes:'Retail mix',week:wk,custom:false,isStanding:false,packedAt:'Mon 8:15 AM'},
+    {id:'demo-o-5',clientId:'demo-c-5',client:'Whole Foods — Green Hills',day:'Monday',status:'invoiced',oyster:12,chefs:0,lions:0,chestnut:0,shiitake:0,lionsPack:0,chefsPack:0,notes:'Wholesale — 12× 3lb oyster',week:wk,custom:true,customType:'wholesale',isStanding:false,packedAt:'Mon 6:00 AM',invoicedAt:'Mon 9:00 AM'},
+    {id:'demo-o-6',clientId:'demo-c-1',client:'The Catbird Seat',day:'Tuesday',status:'confirmed',oyster:2,chefs:2,lions:1,chestnut:0,shiitake:0,lionsPack:0,chefsPack:0,notes:'Standing order',week:wkStart(new Date(Date.now()-7*86400000)),custom:false,isStanding:true},
+  ];
+
+  // ── Fruitings ──
+  DB.fruitings=[
+    {id:'demo-f-1',date:yd(4),containerID:'GH-05-01',lotNumber:'BLK-2024-001',vendor:'Field & Forest',variety:'Blue Oyster',blockCount:8,blockWeightLb:5,notes:'New substrate batch',status:'fruiting'},
+    {id:'demo-f-2',date:yd(6),containerID:'GH-01-01',lotNumber:'BLK-2024-002',vendor:'Fungi Perfecti',variety:"Lion's Mane",blockCount:6,blockWeightLb:4,notes:'',status:'fruiting'},
+    {id:'demo-f-3',date:yd(10),containerID:'CA-03-01',lotNumber:'BLK-2024-003',vendor:'Field & Forest',variety:'Shiitake',blockCount:12,blockWeightLb:5,notes:'High temp tolerance strain',status:'fruiting'},
+    {id:'demo-f-4',date:yd(14),containerID:'GH-08-01',lotNumber:'BLK-2024-004',vendor:'North Spore',variety:'Chestnut',blockCount:10,blockWeightLb:4.5,notes:'Third pin set',status:'harvested',harvestedAt:yd(2)},
+  ];
+
+  // ── Preservation ──
+  DB.preservation=[
+    {id:'demo-p-1',date:yd(2),harvestId:'demo-h-3',lotNumber:'LOT-2024-003',variety:'Chestnut',container:'GH-02-01',method:'Freeze (Fresh Frozen)',weightIn:4,weightOut:3.8,notes:'Packed in 1lb bags'},
+    {id:'demo-p-2',date:yd(1),harvestId:'demo-h-6',lotNumber:'LOT-2024-006',variety:'Blue Oyster',container:'CA-02-01',method:'Dehydrate',weightIn:5,weightOut:0.9,notes:'Dried to chips — 5:1 ratio'},
+    {id:'demo-p-3',date:today,harvestId:'demo-h-8',lotNumber:'LOT-2024-008',variety:'Snow Oyster',container:'GH-07-01',method:'Freeze (Fresh Frozen)',weightIn:2,weightOut:1.95,notes:''},
+  ];
+
+  // ── Product Movements ──
+  DB.productMovements=[
+    {id:'demo-m-1',harvestId:'demo-h-6',lotNumber:'LOT-2024-006',variety:'Blue Oyster',fromFacility:'Carthage',fromContainer:'CA-02-01',destType:'internal',toFacility:'Carthage',toClient:'',toClientName:'',productState:'Fresh',weight:5,date:yd(1),time:'09:30',driver:'Jake M.',vehicle:'Sprinter Van',tempAtPickup:38,notes:'Cold chain maintained',status:'logged',createdBy:'Allen',timestamp:iso(1)},
+    {id:'demo-m-2',harvestId:'demo-h-1',lotNumber:'LOT-2024-001',variety:'Blue Oyster',fromFacility:"Hyde's Ferry Pike",fromContainer:'GH-03-01',destType:'external',toFacility:'',toClient:'demo-c-1',toClientName:'The Catbird Seat',productState:'Fresh',weight:8,date:today,time:'07:00',driver:'Allen M.',vehicle:'F-150',tempAtPickup:36,notes:'Morning delivery',status:'logged',createdBy:'Allen',timestamp:iso(0)},
+  ];
+
+  // ── Container Sessions — today's activity (mix of states) ──
+  const now=new Date();
+  const hhmm=(h,m)=>{ const d=new Date(); d.setHours(h,m,0,0); return d.toISOString(); };
+  DB.containerSessions=[
+    // Closed — harvesting done this morning
+    {id:'demo-cs-1',date:today,containerCode:'GH-03-01',containerFarm:'Wheeler/Barnett Farm',facility:"Hyde's Ferry Pike",employeeName:'Jake M.',activity:'Harvesting',startTime:hhmm(7,0),endTime:hhmm(8,15),durationMinutes:75,notes:'Full flush harvest, 28lb',status:'closed',createdBy:'Jake M.',timestamp:hhmm(7,0)},
+    {id:'demo-cs-2',date:today,containerCode:'GH-04-01',containerFarm:'Mighty Coosa Farms LLC',facility:"Hyde's Ferry Pike",employeeName:'Sarah K.',activity:'Harvesting',startTime:hhmm(7,30),endTime:hhmm(8,45),durationMinutes:75,notes:'',status:'closed',createdBy:'Sarah K.',timestamp:hhmm(7,30)},
+    {id:'demo-cs-3',date:today,containerCode:'GH-02-01',containerFarm:'Egloff Farms',facility:"Hyde's Ferry Pike",employeeName:'Jake M.',activity:'Inspection',startTime:hhmm(8,45),endTime:hhmm(9,0),durationMinutes:15,notes:'Pins looking good, harvest in 2 days',status:'closed',createdBy:'Jake M.',timestamp:hhmm(8,45)},
+    // Active — still running (Allen is in a container)
+    {id:'demo-cs-4',date:today,containerCode:'CA-03-01',containerFarm:'D&D Interests LLC',facility:'Carthage',employeeName:'Allen M.',activity:'Fruiting',startTime:new Date(Date.now()-32*60000).toISOString(),endTime:null,durationMinutes:null,notes:'',status:'active',createdBy:'Allen M.',timestamp:new Date(Date.now()-32*60000).toISOString()},
+    // Closed — Opryland checked
+    {id:'demo-cs-5',date:today,containerCode:'MO-02-01',containerFarm:'Innovative Garden',facility:'Opryland',employeeName:'Maria T.',activity:'Cleaning',startTime:hhmm(10,0),endTime:hhmm(10,45),durationMinutes:45,notes:'Post-harvest clean, substrate removed',status:'closed',createdBy:'Maria T.',timestamp:hhmm(10,0)},
+    // No activity entries for a few containers
+    {id:'demo-cs-6',date:today,containerCode:'GH-05-01',containerFarm:'Savannah Barrow Farm',facility:"Hyde's Ferry Pike",employeeName:'System',activity:'No Activity',startTime:hhmm(8,0),endTime:hhmm(8,0),durationMinutes:0,notes:'Auto-logged at day closeout',status:'no-activity',createdBy:'System',timestamp:hhmm(8,0)},
+    // Yesterday's sessions
+    {id:'demo-cs-7',date:yd(1),containerCode:'GH-03-01',containerFarm:'Wheeler/Barnett Farm',facility:"Hyde's Ferry Pike",employeeName:'Jake M.',activity:'Harvesting',startTime:iso(1),endTime:new Date(new Date(iso(1)).getTime()+90*60000).toISOString(),durationMinutes:90,notes:'',status:'closed',createdBy:'Jake M.',timestamp:iso(1)},
+    {id:'demo-cs-8',date:yd(1),containerCode:'CA-02-01',containerFarm:'Kessler',facility:'Carthage',employeeName:'Allen M.',activity:'Maintenance',startTime:iso(1),endTime:new Date(new Date(iso(1)).getTime()+60*60000).toISOString(),durationMinutes:60,notes:'Replaced humidity sensor, cleaned floor drains',status:'closed',createdBy:'Allen M.',timestamp:iso(1)},
+  ];
+
+  // ── Samples ──
+  DB.samples=[
+    {id:'demo-s-1',date:yd(3),variety:"Lion's Mane",harvestId:'demo-h-2',lotNumber:'LOT-2024-002',weight:1,recipient:'Chef Brown — Catbird Seat',contact:'tyler@catbirdseat.com',notes:'Testing for new menu item',status:'sent',sentAt:yd(2),week:wkStart()},
+    {id:'demo-s-2',date:today,variety:'Coral Tooth',harvestId:'demo-h-7',lotNumber:'LOT-2024-007',weight:0.5,recipient:'Whole Foods Produce — Green Hills',contact:'nashville.produce@wfm.com',notes:'New variety introduction',status:'pending',week:wkStart()},
+  ];
+
+  // ── Transfers (legacy, mirrors demo product movements for inventory calc) ──
+  DB.transfers=[
+    {id:'demo-t-1',harvestId:'demo-h-6',lotNumber:'LOT-2024-006',variety:'Blue Oyster',fromFacility:'Carthage',toFacility:'Carthage',weight:5,date:yd(1),notes:'',transferredBy:'Allen',timestamp:iso(1)},
+  ];
+
+  renderC();
+  const t=document.createElement('div');
+  t.textContent='🧪 Demo data loaded — in memory only, nothing saved to Firestore';
+  t.style.cssText='position:fixed;bottom:24px;right:24px;background:#2a5578;color:#fff;padding:12px 20px;border-radius:4px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:340px;';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),5000);
+}
+
+async function clearDemoData(){
+  DB._isDemoMode=false;
+  await loadDB();
+  renderC();
+  const t=document.createElement('div');
+  t.textContent='✓ Demo data cleared — real Firestore data restored';
+  t.style.cssText='position:fixed;bottom:24px;right:24px;background:var(--moss);color:#fff;padding:12px 20px;border-radius:4px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);';
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),3000);
+}
+
 function rAdmin(el){
   const pend=DB.orders.filter(o=>o.status==='pending'&&!o.isStanding), cust=DB.orders.filter(o=>o.custom&&!o.isStanding), newSR=DB.signupRequests.filter(s=>s.status==='new');
   const staffUsers=DB.users.filter(u=>u.active!==false);
   const recentLogins=[...DB.loginHistory].sort((a,b)=>b.timestamp.localeCompare(a.timestamp)).slice(0,5);
 
   el.innerHTML=`
-    <div class="ph"><div class="ph-t">Admin <span class="bdg bad" style="font-size:14px;vertical-align:middle;">★ Admin Only</span></div><div class="ph-s">Signups · Approvals · Clients · Staff Accounts · Notifications</div></div>
+    <div class="ph" style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div>
+        <div class="ph-t">Admin <span class="bdg bad" style="font-size:14px;vertical-align:middle;">★ Admin Only</span></div>
+        <div class="ph-s">Signups · Approvals · Clients · Staff Accounts · Notifications</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+        ${DB._isDemoMode?`<span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--amber);letter-spacing:1px;">● DEMO MODE</span>
+        <button class="btn b-sm" onclick="clearDemoData()" style="font-size:10px;background:rgba(184,80,20,.1);color:var(--rust);border:1px solid rgba(184,80,20,.3);">🗑 Clear Demo</button>`
+        :`<button class="btn b-sm" onclick="seedDemoData()" style="font-size:10px;background:rgba(80,120,184,.1);color:var(--blue);border:1px solid rgba(80,120,184,.3);">🧪 Load Demo Data</button>`}
+      </div>
+    </div>
 
     <!-- SECURITY PREVIEW -->
     <div style="margin-bottom:28px;">
