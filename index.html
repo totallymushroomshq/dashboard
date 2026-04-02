@@ -84,14 +84,34 @@ body{font-family:'Syne',sans-serif;background:var(--paper);color:var(--text);min
 .ttab.ct{color:#88bbdd}.ttab.ct.active{background:rgba(42,85,120,.3)}
 .tb-r{display:flex;align-items:center;gap:10px;flex-shrink:0}
 /* ── Date Nav ── */
+/* ── Date Nav bar ── */
 #date-nav{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:3px 6px;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px}
 #date-nav.shifted{background:rgba(212,152,12,.15);border-color:rgba(212,152,12,.35)}
-#date-nav .dn-label{color:rgba(255,255,255,.75);min-width:64px;text-align:center;font-size:9px;letter-spacing:1.2px;cursor:default}
+#date-nav .dn-label{color:rgba(255,255,255,.8);min-width:76px;text-align:center;font-size:9px;letter-spacing:1.2px;cursor:pointer;padding:2px 6px;border-radius:3px;transition:background .12s;user-select:none}
+#date-nav .dn-label:hover{background:rgba(255,255,255,.12)}
 #date-nav.shifted .dn-label{color:var(--amber)}
 #date-nav .dn-btn{background:transparent;border:none;color:rgba(255,255,255,.45);cursor:pointer;padding:2px 5px;border-radius:2px;font-size:11px;line-height:1;transition:color .1s,background .1s}
 #date-nav .dn-btn:hover{color:var(--white);background:rgba(255,255,255,.12)}
 #date-nav .dn-live{background:rgba(212,152,12,.25);border:1px solid rgba(212,152,12,.5);color:var(--amber);cursor:pointer;padding:2px 7px;border-radius:2px;font-size:8px;letter-spacing:1.5px;font-family:'Syne Mono',monospace;transition:all .15s}
 #date-nav .dn-live:hover{background:rgba(212,152,12,.45);color:var(--white)}
+/* ── Date Calendar Popup ── */
+#date-cal{position:fixed;z-index:9999;background:var(--card,#fff);border:1px solid var(--border,#ddd);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.18);padding:14px;width:252px;display:none;font-family:'Syne',sans-serif}
+#date-cal .dc-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+#date-cal .dc-mo{font-weight:700;font-size:13px;color:var(--text1,#1a1a1a);letter-spacing:.5px}
+#date-cal .dc-nav{background:none;border:1px solid var(--border,#ddd);border-radius:4px;cursor:pointer;padding:3px 9px;font-size:12px;color:var(--text2,#555);transition:background .1s}
+#date-cal .dc-nav:hover{background:var(--paper,#f5f5f5)}
+#date-cal .dc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+#date-cal .dc-dow{font-family:'Syne Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--text3,#999);text-align:center;padding:3px 0 6px}
+#date-cal .dc-day{text-align:center;padding:5px 2px;border-radius:4px;cursor:pointer;font-size:11px;color:var(--text2,#555);transition:background .1s,color .1s;line-height:1.2}
+#date-cal .dc-day:hover{background:var(--sage-lt,#e8f0e8);color:var(--moss,#547448)}
+#date-cal .dc-day.other-mo{color:var(--text3,#aaa)}
+#date-cal .dc-day.is-today{background:var(--fern,#6a9e5e);color:#fff;font-weight:700}
+#date-cal .dc-day.is-selected{background:var(--moss,#547448);color:#fff;font-weight:700}
+#date-cal .dc-day.is-wkstart{border-left:2px solid var(--amber,#d4980c)}
+#date-cal .dc-foot{display:flex;gap:8px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#eee)}
+#date-cal .dc-today-btn{flex:1;background:var(--fern,#6a9e5e);color:#fff;border:none;border-radius:4px;padding:6px;font-size:10px;font-family:'Syne Mono',monospace;letter-spacing:1px;cursor:pointer;transition:background .1s}
+#date-cal .dc-today-btn:hover{background:var(--moss,#547448)}
+#date-cal .dc-wk-hint{font-size:9px;color:var(--text3,#aaa);align-self:center;font-family:'Syne Mono',monospace}
 .rpill{font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:4px 10px;border-radius:20px}
 .rpill.admin{background:rgba(212,152,12,.2);color:var(--amber);border:1px solid rgba(212,152,12,.4)}
 .rpill.staff{background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.2)}
@@ -396,6 +416,9 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
   <main class="main" id="main-views"></main>
 </div>
 
+<!-- DATE CALENDAR POPUP -->
+<div id="date-cal"></div>
+
 <!-- EDIT MODAL -->
 <div class="moverlay" id="edit-modal">
   <div class="modal">
@@ -549,6 +572,9 @@ function wkStart(){
   return new Date(d.setDate(diff)).toISOString().split('T')[0];
 }
 
+let _calViewYear = null; // month currently shown in calendar popup
+let _calViewMonth = null;
+
 function shiftDate(days){
   _viewDateOffset += days;
   updateDateNav();
@@ -556,12 +582,13 @@ function shiftDate(days){
 }
 function resetViewDate(){
   _viewDateOffset = 0;
+  closeDateCal();
   updateDateNav();
   renderC();
 }
 function updateDateNav(){
   const nav = document.getElementById('date-nav');
-  if(!nav || !S.role) return; // not logged in yet
+  if(!nav || !S.role) return;
   const vd = _viewDate();
   const shifted = _viewDateOffset !== 0;
   const label = shifted
@@ -572,12 +599,119 @@ function updateDateNav(){
   nav.innerHTML = `
     <button class="dn-btn" title="Back 1 week" onclick="shiftDate(-7)">«</button>
     <button class="dn-btn" title="Back 1 day" onclick="shiftDate(-1)">‹</button>
-    <span class="dn-label">${label}</span>
+    <span class="dn-label" title="Click to open calendar" onclick="toggleDateCal(event)">${label} 📅</span>
     <button class="dn-btn" title="Forward 1 day" onclick="shiftDate(1)">›</button>
     <button class="dn-btn" title="Forward 1 week" onclick="shiftDate(7)">»</button>
     ${shifted ? `<button class="dn-live" onclick="resetViewDate()">LIVE</button>` : ''}
   `;
 }
+
+function toggleDateCal(e){
+  e.stopPropagation();
+  const cal = document.getElementById('date-cal');
+  if(cal.style.display === 'block'){ closeDateCal(); return; }
+  // Position below the date-nav element
+  const nav = document.getElementById('date-nav');
+  const rect = nav.getBoundingClientRect();
+  cal.style.top = (rect.bottom + 6) + 'px';
+  cal.style.right = (window.innerWidth - rect.right) + 'px';
+  cal.style.left = 'auto';
+  // Show calendar for the virtual month
+  const vd = _viewDate();
+  _calViewYear = vd.getFullYear();
+  _calViewMonth = vd.getMonth();
+  renderDateCal();
+  cal.style.display = 'block';
+}
+
+function closeDateCal(){
+  const cal = document.getElementById('date-cal');
+  if(cal) cal.style.display = 'none';
+}
+
+function calNavMonth(dir){
+  _calViewMonth += dir;
+  if(_calViewMonth > 11){ _calViewMonth = 0; _calViewYear++; }
+  if(_calViewMonth < 0){ _calViewMonth = 11; _calViewYear--; }
+  renderDateCal();
+}
+
+function renderDateCal(){
+  const cal = document.getElementById('date-cal');
+  const realToday = new Date().toISOString().split('T')[0];
+  const virtualToday = _viewDate().toISOString().split('T')[0];
+  const yr = _calViewYear, mo = _calViewMonth;
+  const moName = new Date(yr, mo, 1).toLocaleDateString('en-US',{month:'long',year:'numeric'});
+
+  // First day of month and total days
+  const firstDow = new Date(yr, mo, 1).getDay(); // 0=Sun
+  // Shift so week starts Monday: Mon=0 … Sun=6
+  const startOffset = (firstDow + 6) % 7;
+  const daysInMo = new Date(yr, mo+1, 0).getDate();
+  const daysInPrevMo = new Date(yr, mo, 0).getDate();
+
+  const dow = ['M','T','W','T','F','S','S'];
+  let cells = '';
+  // leading blanks from prev month
+  for(let i = startOffset-1; i >= 0; i--){
+    const d = daysInPrevMo - i;
+    const dateStr = `${yr}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    cells += `<div class="dc-day other-mo" onclick="pickCalDate('${dateStr}')">${d}</div>`;
+  }
+  // current month days
+  for(let d = 1; d <= daysInMo; d++){
+    const dateStr = `${yr}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    // is this day a Monday (week start)?
+    const dow2 = new Date(dateStr+'T12:00:00').getDay();
+    const isMon = dow2 === 1;
+    let cls = 'dc-day';
+    if(dateStr === virtualToday) cls += ' is-selected';
+    else if(dateStr === realToday) cls += ' is-today';
+    if(isMon) cls += ' is-wkstart';
+    cells += `<div class="${cls}" onclick="pickCalDate('${dateStr}')">${d}</div>`;
+  }
+  // trailing blanks to fill grid
+  const totalCells = startOffset + daysInMo;
+  const trailingCount = (7 - (totalCells % 7)) % 7;
+  for(let d = 1; d <= trailingCount; d++){
+    const dateStr = `${yr}-${String(mo+2 > 12 ? 1 : mo+2).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    cells += `<div class="dc-day other-mo" onclick="pickCalDate('${dateStr}')">${d}</div>`;
+  }
+
+  cal.innerHTML = `
+    <div class="dc-head">
+      <button class="dc-nav" onclick="calNavMonth(-1)">‹</button>
+      <span class="dc-mo">${moName}</span>
+      <button class="dc-nav" onclick="calNavMonth(1)">›</button>
+    </div>
+    <div class="dc-grid">
+      ${dow.map(d=>`<div class="dc-dow">${d}</div>`).join('')}
+      ${cells}
+    </div>
+    <div class="dc-foot">
+      <button class="dc-today-btn" onclick="resetViewDate()">↩ Back to Today</button>
+      <span class="dc-wk-hint">│ = week start</span>
+    </div>
+  `;
+}
+
+function pickCalDate(dateStr){
+  // Compute offset from real today
+  const realNow = new Date(new Date().toISOString().split('T')[0]+'T12:00:00');
+  const picked = new Date(dateStr+'T12:00:00');
+  _viewDateOffset = Math.round((picked - realNow) / 86400000);
+  closeDateCal();
+  updateDateNav();
+  renderC();
+}
+
+// Close calendar on outside click
+document.addEventListener('click', function(e){
+  const cal = document.getElementById('date-cal');
+  if(cal && cal.style.display === 'block' && !cal.contains(e.target)){
+    closeDateCal();
+  }
+});
 
 // ── DATA ──
 function togglePw(inputId,btnId){ const inp=document.getElementById(inputId); if(!inp) return; const showing=inp.type==='text'; inp.type=showing?'password':'text'; const btn=document.getElementById(btnId); if(btn) btn.style.color=showing?'var(--text3)':'var(--sage)'; }
