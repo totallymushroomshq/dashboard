@@ -486,7 +486,7 @@ const FS = {
 // ── LOAD ALL DATA FROM FIRESTORE ──
 async function loadDB(){
   try {
-    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog] = await Promise.all([
+    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog,containerSessions] = await Promise.all([
       FS.getAll('orders'), FS.getAll('clients'), FS.getAll('harvests'),
       FS.getAll('samples'), FS.getAll('fruitings'), FS.getAll('preservation'),
       FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('packSessions'),
