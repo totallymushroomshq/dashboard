@@ -83,6 +83,15 @@ body{font-family:'Syne',sans-serif;background:var(--paper);color:var(--text);min
 .ttab.at{color:var(--amber)}.ttab.at.active{background:rgba(212,152,12,.15)}
 .ttab.ct{color:#88bbdd}.ttab.ct.active{background:rgba(42,85,120,.3)}
 .tb-r{display:flex;align-items:center;gap:10px;flex-shrink:0}
+/* ── Date Nav ── */
+#date-nav{display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:4px;padding:3px 6px;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px}
+#date-nav.shifted{background:rgba(212,152,12,.15);border-color:rgba(212,152,12,.35)}
+#date-nav .dn-label{color:rgba(255,255,255,.75);min-width:64px;text-align:center;font-size:9px;letter-spacing:1.2px;cursor:default}
+#date-nav.shifted .dn-label{color:var(--amber)}
+#date-nav .dn-btn{background:transparent;border:none;color:rgba(255,255,255,.45);cursor:pointer;padding:2px 5px;border-radius:2px;font-size:11px;line-height:1;transition:color .1s,background .1s}
+#date-nav .dn-btn:hover{color:var(--white);background:rgba(255,255,255,.12)}
+#date-nav .dn-live{background:rgba(212,152,12,.25);border:1px solid rgba(212,152,12,.5);color:var(--amber);cursor:pointer;padding:2px 7px;border-radius:2px;font-size:8px;letter-spacing:1.5px;font-family:'Syne Mono',monospace;transition:all .15s}
+#date-nav .dn-live:hover{background:rgba(212,152,12,.45);color:var(--white)}
 .rpill{font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:4px 10px;border-radius:20px}
 .rpill.admin{background:rgba(212,152,12,.2);color:var(--amber);border:1px solid rgba(212,152,12,.4)}
 .rpill.staff{background:rgba(255,255,255,.1);color:rgba(255,255,255,.7);border:1px solid rgba(255,255,255,.2)}
@@ -378,6 +387,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
       <div class="tb-brand">Totally <em>Mushrooms</em></div>
       <div class="tb-tabs" id="nav-tabs"></div>
       <div class="tb-r">
+        <div id="date-nav" style="display:none;"></div>
         <div class="rpill" id="role-pill"></div>
         <button class="out-btn" onclick="doLogout()">Out</button>
       </div>
@@ -440,14 +450,15 @@ const ALL_INTERNAL_TABS = [
   {id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},
   {id:'analytics',l:'Analytics'},
   {id:'admin',l:'⚙ Admin',c:'at'},{id:'security',l:'🔒 Security',c:'at'},
-  {id:'orders-all',l:'Orders',c:'ct'},{id:'reports',l:'📊 Reports',c:'at'}
+  {id:'orders-all',l:'Orders',c:'ct'},{id:'reports',l:'📊 Reports',c:'at'},
+  {id:'qb',l:'📒 QB',c:'at'}
 ];
 const DEFAULT_PERMS = {
-  admin: {today:true,week:true,'new-order':true,'email-parse':true,harvest:true,fruiting:true,inventory:true,preservation:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false},
-  staff: {today:true,week:true,'new-order':true,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false},
-  accountant: {today:true,week:true,'new-order':false,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,analytics:true,admin:false,security:false,'orders-all':true,reports:true}
+  admin: {today:true,week:true,'new-order':true,'email-parse':true,harvest:true,fruiting:true,inventory:true,preservation:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
+  staff: {today:true,week:true,'new-order':true,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
+  accountant: {today:true,week:true,'new-order':false,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
 };
-const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports'};
+const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
 
 // ── FIREBASE CONFIG ──
 const FIREBASE_CONFIG = {
@@ -523,12 +534,54 @@ function saveConfig(){ fdb.collection('appConfig').doc('main').set({adminPw:DB.a
 
 
 
+// ── DATE NAVIGATION (global view-date offset) ──
+let _viewDateOffset = 0; // days offset from real today; 0 = live
+
+function _viewDate(){
+  // Returns a Date object representing the "virtual today"
+  const d = new Date(); d.setDate(d.getDate() + _viewDateOffset); return d;
+}
+
+function tday(){ return _viewDate().toISOString().split('T')[0] }
+function todayName(){ return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][_viewDate().getDay()] }
+function wkStart(){
+  const d=_viewDate(), day=d.getDay(), diff=d.getDate()-day+(day===0?-6:1);
+  return new Date(d.setDate(diff)).toISOString().split('T')[0];
+}
+
+function shiftDate(days){
+  _viewDateOffset += days;
+  updateDateNav();
+  renderC();
+}
+function resetViewDate(){
+  _viewDateOffset = 0;
+  updateDateNav();
+  renderC();
+}
+function updateDateNav(){
+  const nav = document.getElementById('date-nav');
+  if(!nav || !S.role) return; // not logged in yet
+  const vd = _viewDate();
+  const shifted = _viewDateOffset !== 0;
+  const label = shifted
+    ? vd.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+    : 'TODAY';
+  nav.style.display = 'flex';
+  nav.className = shifted ? 'shifted' : '';
+  nav.innerHTML = `
+    <button class="dn-btn" title="Back 1 week" onclick="shiftDate(-7)">«</button>
+    <button class="dn-btn" title="Back 1 day" onclick="shiftDate(-1)">‹</button>
+    <span class="dn-label">${label}</span>
+    <button class="dn-btn" title="Forward 1 day" onclick="shiftDate(1)">›</button>
+    <button class="dn-btn" title="Forward 1 week" onclick="shiftDate(7)">»</button>
+    ${shifted ? `<button class="dn-live" onclick="resetViewDate()">LIVE</button>` : ''}
+  `;
+}
+
 // ── DATA ──
-function tday(){ return new Date().toISOString().split('T')[0] }
 function togglePw(inputId,btnId){ const inp=document.getElementById(inputId); if(!inp) return; const showing=inp.type==='text'; inp.type=showing?'password':'text'; const btn=document.getElementById(btnId); if(btn) btn.style.color=showing?'var(--text3)':'var(--sage)'; }
 function dAgo(n){ const d=new Date(); d.setDate(d.getDate()-n); return d.toISOString().split('T')[0] }
-function wkStart(){ const d=new Date(),day=d.getDay(),diff=d.getDate()-day+(day===0?-6:1); return new Date(d.setDate(diff)).toISOString().split('T')[0] }
-function todayName(){ return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()] }
 function fDate(s){ if(!s) return '—'; return new Date(s+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) }
 const STD_PRICE_LB  = 8;    // $8/lb — all standard varieties
 const SHI_PRICE_LB  = 10;   // $10/lb — Shiitake
@@ -1325,6 +1378,7 @@ function launch(){
 
 function doLogout(){
   stopSessionTimer();
+  _viewDateOffset = 0; // reset time travel on logout
   S={role:null,clientId:null,uid:null,email:null,name:null,permissions:null,newDevice:false};
   if(auth.currentUser) auth.signOut();
   dismissNewDevice();
@@ -1373,11 +1427,12 @@ function buildNav(){
   const perms=S.permissions||DEFAULT_PERMS[role]||DEFAULT_PERMS.staff;
   const tabList=ALL_INTERNAL_TABS.filter(t=>perms[t.id]);
   tabList.forEach((item,i)=>{ const b=document.createElement('button'); b.className='ttab'+(item.c?' '+item.c:''); b.textContent=item.l; b.dataset.view=item.id; b.onclick=()=>sw(item.id); tabs.appendChild(b); if(i===0) sw(item.id) });
+  updateDateNav();
 }
 
 function sw(id){ cv=id; document.querySelectorAll('.ttab').forEach(t=>t.classList.toggle('active',t.dataset.view===id)); renderC() }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,inventory:rInventory,preservation:rPreservation,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,inventory:rInventory,preservation:rPreservation,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -1669,6 +1724,7 @@ function rOC(o,container,showApprove){
   div.innerHTML=`
     <div class="oc-c">${o.client}<span class="bdg ${statusBadgeClass(o)}">${statusLabel(o)}</span></div>
     <div class="oc-m">${o.day.toUpperCase()} · ${o.week==='standing'?'STANDING TEMPLATE':('WEEK OF '+fDate(o.week))}</div>
+    ${o.orderRef?`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--blue);letter-spacing:1px;margin-bottom:2px;">${o.orderRef}</div>`:''}
     ${pipelineHTML}
     ${items||'<div class="oci"><span style="color:var(--text3)">See notes</span></div>'}
     ${o.notes?`<div class="oc-notes">${o.notes}</div>`:''}
@@ -2148,8 +2204,14 @@ function rNewOrd(el){
         <div class="fgl" style="margin-top:12px;"><label>Custom Notes</label><textarea class="fta" id="no-cu-n" placeholder="Details discussed with client..."></textarea></div>
       </div>
 
+      <!-- ── ORDER REFERENCE (shown for standard/wholesale/custom, hidden for samples) ── -->
+      <div class="fgl" id="no-po-row" style="margin-top:12px;">
+        <label>Order Reference <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;">HQ-#### auto-generated · override with QB-#### if QB-originated</span></label>
+        <input class="fi" id="no-po" placeholder="HQ-2026-001">
+      </div>
+
       <!-- ── NOTES (always shown) ── -->
-      <div class="fgl" style="margin-top:18px;margin-bottom:16px;">
+      <div class="fgl" style="margin-top:12px;margin-bottom:16px;">
         <label id="no-notes-lbl">Delivery Notes</label>
         <textarea class="fta" id="no-n" placeholder="Back door, contact, special instructions..."></textarea>
       </div>
@@ -2160,6 +2222,9 @@ function rNewOrd(el){
       </div>
       <div class="toast" id="no-t">✓ Submitted</div>
     </div>`;
+  // Auto-fill order reference with next HQ number
+  const refEl = document.getElementById('no-po');
+  if(refEl && !refEl.value) refEl.value = nextHQOrderNum();
 }
 
 function switchReqType(val){
@@ -2176,7 +2241,7 @@ function switchReqType(val){
 
   // Sample-specific top fields
   const isSamp=val==='sample';
-  ['no-day-row','no-week-row','no-stand-row'].forEach(id=>{
+  ['no-day-row','no-week-row','no-stand-row','no-po-row'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display=isSamp?'none':'';
   });
   ['no-sampdate-row','no-samptype-row','no-sampcontact-row'].forEach(id=>{
@@ -2238,6 +2303,7 @@ async function subNewOrd(){
     lionsPack:parseInt(document.getElementById('no-lrp')?.value)||0,
     chefsPack:parseInt(document.getElementById('no-crp')?.value)||0,
     notes:document.getElementById('no-n').value.trim(),
+    orderRef:document.getElementById('no-po')?.value.trim()||nextHQOrderNum(),
     custom:rt!=='standard',
     isStanding:document.getElementById('no-s')?.value==='1'
   };
@@ -2263,6 +2329,7 @@ async function subNewOrd(){
 
 function clrNewOrd(){
   ['no-c','no-n','no-wh-p','no-cu-p','no-cu-n','no-scontact'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
+  const refEl=document.getElementById('no-po'); if(refEl) refEl.value=nextHQOrderNum();
   ['no-oy','no-ch','no-li','no-cs','no-shi','no-lrp','no-crp'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='0'});
   VARIETIES.forEach(v=>{const el=document.getElementById('nsv-'+v.replace(/[^a-z0-9]/gi,'_'));if(el)el.value='0'});
   const sd=document.getElementById('no-sd');if(sd)sd.value=tday();
@@ -4084,6 +4151,346 @@ function clrNewSample(){
   VARIETIES.forEach(v=>{const el=document.getElementById('nsv-'+v.replace(/[^a-z0-9]/gi,'_'));if(el)el.value='0'});
 }
 
+// ── QUICKBOOKS INTEGRATION ──
+
+// QB item definitions — used for IIF export and invoice line items
+const QB_ITEMS = [
+  {name:'Oyster Mix',       desc:'Oyster mushrooms, 3 lb box',      price: BOX_LB*STD_PRICE_LB, acct:'Mushroom Sales'},
+  {name:"Chef's Mix",       desc:"Chef's mix mushrooms, 3 lb box",  price: BOX_LB*STD_PRICE_LB, acct:'Mushroom Sales'},
+  {name:"Lion's Mane",      desc:"Lion's Mane mushrooms, 3 lb box", price: BOX_LB*STD_PRICE_LB, acct:'Mushroom Sales'},
+  {name:'Chestnut',         desc:'Chestnut mushrooms, 3 lb box',    price: BOX_LB*STD_PRICE_LB, acct:'Mushroom Sales'},
+  {name:'Shiitake',         desc:'Shiitake mushrooms, 3 lb box',    price: BOX_LB*SHI_PRICE_LB, acct:'Mushroom Sales'},
+  {name:'LM Quarter Pound', desc:"Lion's Mane mushrooms, 1/4 lb retail pack", price: PACK_LB*STD_PRICE_LB, acct:'Mushroom Sales'},
+  {name:'CM Quarter Pound', desc:"Chef's Mix mushrooms, 1/4 lb retail pack",  price: PACK_LB*STD_PRICE_LB, acct:'Mushroom Sales'},
+];
+
+function formatQBDate(s){
+  if(!s) return '';
+  const [y,m,d]=(s+'').split('-');
+  return `${m}/${d}/${y}`;
+}
+
+function buildOrderLineItems(o){
+  if(o.custom && o.price){
+    return [{name:'Custom / Wholesale Order', qty:1, price:o.price, amount:o.price, acct:'Mushroom Sales'}];
+  }
+  const items=[];
+  const std=BOX_LB*STD_PRICE_LB, shi=BOX_LB*SHI_PRICE_LB, pk=PACK_LB*STD_PRICE_LB;
+  if(o.oyster)    items.push({name:'Oyster Mix',       qty:o.oyster,    price:std, amount:o.oyster*std,    acct:'Mushroom Sales'});
+  if(o.chefs)     items.push({name:"Chef's Mix",       qty:o.chefs,     price:std, amount:o.chefs*std,     acct:'Mushroom Sales'});
+  if(o.lions)     items.push({name:"Lion's Mane",      qty:o.lions,     price:std, amount:o.lions*std,     acct:'Mushroom Sales'});
+  if(o.chestnut)  items.push({name:'Chestnut',         qty:o.chestnut,  price:std, amount:o.chestnut*std,  acct:'Mushroom Sales'});
+  if(o.shiitake)  items.push({name:'Shiitake',         qty:o.shiitake,  price:shi, amount:o.shiitake*shi,  acct:'Mushroom Sales'});
+  if(o.lionsPack) items.push({name:'LM Quarter Pound', qty:o.lionsPack, price:pk,  amount:o.lionsPack*pk,  acct:'Mushroom Sales'});
+  if(o.chefsPack) items.push({name:'CM Quarter Pound', qty:o.chefsPack, price:pk,  amount:o.chefsPack*pk,  acct:'Mushroom Sales'});
+  return items;
+}
+
+function nextQBInvoiceNum(){
+  const yr=new Date().getFullYear();
+  const existing=DB.orders
+    .filter(o=>o.qbInvoiceNum&&o.qbInvoiceNum.startsWith('INV-'+yr+'-'))
+    .map(o=>parseInt(o.qbInvoiceNum.slice(-3))||0);
+  const next=(existing.length?Math.max(...existing):0)+1;
+  return 'INV-'+yr+'-'+String(next).padStart(3,'0');
+}
+
+function nextHQOrderNum(){
+  // Auto-generates HQ-YYYY-### for app-originated orders
+  const yr=new Date().getFullYear();
+  const existing=DB.orders
+    .filter(o=>o.orderRef&&o.orderRef.startsWith('HQ-'+yr+'-'))
+    .map(o=>parseInt(o.orderRef.slice(-3))||0);
+  const next=(existing.length?Math.max(...existing):0)+1;
+  return 'HQ-'+yr+'-'+String(next).padStart(3,'0');
+}
+
+function dlIIF(filename, lines){
+  const content=lines.join('\r\n');
+  const a=document.createElement('a');
+  a.href='data:text/plain;charset=utf-8,'+encodeURIComponent(content);
+  a.download=filename; a.click();
+}
+
+function dlQBInvoicesIIF(fromDate, toDate){
+  // Orders to export: invoiced + packed, in date range, not yet QB exported
+  let orders=[...DB.orders].filter(o=>
+    (o.status==='invoiced'||o.status==='packed')&&
+    !o.isStanding&&
+    (!fromDate||(o.week||o.date||'')>=fromDate)&&
+    (!toDate||(o.week||o.date||'')<=toDate)
+  ).sort((a,b)=>(a.week||'').localeCompare(b.week||'')||(a.client||'').localeCompare(b.client||''));
+
+  if(!orders.length){ alert('No invoiced/packed orders in this date range.'); return; }
+
+  const lines=[];
+  // IIF header rows — define the column structure for QB Desktop
+  lines.push('!TRNS\tTRNSTYPE\tDATE\tACCNT\tNAME\tAMOUNT\tDOCNUM\tMEMO\tCLEAR\tTOPRINT\tTERMS');
+  lines.push('!SPL\tTRNSTYPE\tDATE\tACCNT\tNAME\tAMOUNT\tDOCNUM\tQNTY\tPRICE\tINVITEM\tMEMO\tCLEAR\tTAXABLE');
+  lines.push('!ENDTRNS');
+
+  // Track invoice numbers assigned during this export
+  const yr=new Date().getFullYear();
+  let counter=Math.max(0,...DB.orders
+    .filter(o=>o.qbInvoiceNum&&o.qbInvoiceNum.startsWith('INV-'+yr+'-'))
+    .map(o=>parseInt(o.qbInvoiceNum.slice(-3))||0),0);
+
+  const assigned={}; // orderId → invoiceNum
+  orders.forEach(o=>{
+    if(o.qbInvoiceNum){ assigned[o.id]=o.qbInvoiceNum; return; }
+    counter++;
+    assigned[o.id]='INV-'+yr+'-'+String(counter).padStart(3,'0');
+  });
+
+  orders.forEach(o=>{
+    const docNum = o.orderRef || assigned[o.id];
+    const dateStr = formatQBDate(o.week||o.date||tday());
+    const total = eRev(o);
+    const items = buildOrderLineItems(o);
+    const memo = `Mushroom delivery${o.week?' wk '+o.week:''}${o.orderRef?' Ref:'+o.orderRef:''}`;
+
+    // Main transaction line (debit to Accounts Receivable)
+    lines.push(['TRNS','INVOICE',dateStr,'Accounts Receivable',o.client,total.toFixed(2),assigned[o.id],memo,'N','Y','Net 30'].join('\t'));
+
+    // Split lines — one per product type (credit to income)
+    items.forEach(item=>{
+      lines.push(['SPL','INVOICE',dateStr,item.acct,o.client,(-item.amount).toFixed(2),assigned[o.id],item.qty,item.price.toFixed(2),item.name,'','N','N'].join('\t'));
+    });
+
+    lines.push('ENDTRNS');
+  });
+
+  dlIIF('tm-qb-invoices-'+tday()+'.iif', lines);
+
+  // Save the assigned invoice numbers back to DB (in memory, Firestore on mark-exported)
+  orders.forEach(o=>{ if(!o.qbInvoiceNum) o._pendingQBInvoiceNum=assigned[o.id]; });
+
+  // Show the count
+  const t=document.createElement('div');
+  t.textContent=`✓ IIF exported — ${orders.length} invoice${orders.length!==1?'s':''} · Import into QB, then click Mark as Exported`;
+  t.style.cssText='position:fixed;bottom:24px;right:24px;background:var(--moss);color:#fff;padding:12px 20px;border-radius:4px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:380px;';
+  document.body.appendChild(t); setTimeout(()=>t.remove(),6000);
+}
+
+function dlQBItemsIIF(){
+  const lines=[];
+  lines.push('!INVITEM\tNAME\tINVITEMTYPE\tDESC\tPURCHASEDESC\tACCNT\tPRICE\tEXTRA');
+  QB_ITEMS.forEach(item=>{
+    lines.push(['INVITEM',item.name,'SERVICE',item.desc,'',item.acct,item.price.toFixed(2),'ENDGRP'].join('\t'));
+  });
+  dlIIF('tm-qb-items-'+tday()+'.iif', lines);
+}
+
+function dlQBCustomersIIF(){
+  const lines=[];
+  lines.push('!CUST\tNAME\tPHONE1\tEMAIL\tCONT1\tTERMS\tEXTRA');
+  DB.clients.filter(c=>c.active!==false).sort((a,b)=>a.name.localeCompare(b.name)).forEach(c=>{
+    lines.push(['CUST',c.name,c.phone||'',c.email||'',c.contact||'','Net 30','ENDGRP'].join('\t'));
+  });
+  dlIIF('tm-qb-customers-'+tday()+'.iif', lines);
+}
+
+function dlQBCOGSCSV(fromDate, toDate){
+  const sessions=DB.containerSessions.filter(s=>
+    s.status!=='active'&&s.status!=='no-activity'&&
+    (!fromDate||s.date>=fromDate)&&(!toDate||s.date<=toDate)
+  ).sort((a,b)=>a.date.localeCompare(b.date));
+
+  if(!sessions.length){ alert('No labor entries in this date range.'); return; }
+
+  // Group by container for summary
+  const byContainer={};
+  sessions.forEach(s=>{
+    if(!byContainer[s.containerCode]) byContainer[s.containerCode]={farm:s.containerFarm,facility:s.facility,totalMins:0,activities:{}};
+    byContainer[s.containerCode].totalMins+=(s.durationMinutes||0);
+    byContainer[s.containerCode].activities[s.activity]=(byContainer[s.containerCode].activities[s.activity]||0)+(s.durationMinutes||0);
+  });
+
+  // CSV rows — detailed
+  const rows=[['Date','Container','Farm','Facility','Activity','Employee','Duration (min)','Hours','Notes']];
+  sessions.forEach(s=>{
+    rows.push([s.date,s.containerCode,s.containerFarm||'',s.facility||'',s.activity,s.employeeName||'',(s.durationMinutes||0).toFixed(0),((s.durationMinutes||0)/60).toFixed(2),s.notes||'']);
+  });
+  // Summary rows at bottom
+  rows.push([]);
+  rows.push(['--- SUMMARY BY CONTAINER ---','','','','','','','','']);
+  rows.push(['Container','Farm','Facility','Total Minutes','Total Hours','Harvesting','Fruiting','Cleaning','Inspection','Maintenance']);
+  Object.entries(byContainer).sort((a,b)=>b[1].totalMins-a[1].totalMins).forEach(([code,d])=>{
+    rows.push([code,d.farm,d.facility,d.totalMins.toFixed(0),(d.totalMins/60).toFixed(2),
+      (d.activities['Harvesting']||0),(d.activities['Fruiting']||0),(d.activities['Cleaning']||0),
+      (d.activities['Inspection']||0),(d.activities['Maintenance']||0)]);
+  });
+
+  const csv=rows.map(r=>r.map(c=>{ const s=String(c==null?'':c); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; }).join(',')).join('\r\n');
+  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='tm-qb-cogs-'+tday()+'.csv'; a.click();
+}
+
+async function markQBExported(orderId){
+  const o=DB.orders.find(x=>x.id===orderId); if(!o) return;
+  const invNum=o._pendingQBInvoiceNum||o.qbInvoiceNum||nextQBInvoiceNum();
+  o.qbExported=true; o.qbExportedAt=new Date().toISOString(); o.qbInvoiceNum=invNum;
+  delete o._pendingQBInvoiceNum;
+  if(!DB._isDemoMode){ try{ await FS.update('orders',orderId,{qbExported:true,qbExportedAt:o.qbExportedAt,qbInvoiceNum:invNum}); }catch(e){console.warn('markQBExported:',e);} }
+  logAudit('other',`Marked ${invNum} as QB exported (${o.client})`);
+  renderC();
+}
+
+async function markAllQBExported(fromDate, toDate){
+  if(!confirm('Mark all invoiced orders in this date range as exported to QuickBooks?')) return;
+  const toMark=DB.orders.filter(o=>(o.status==='invoiced'||o.status==='packed')&&!o.isStanding&&!o.qbExported&&(!fromDate||(o.week||'')>=fromDate)&&(!toDate||(o.week||'')<=toDate));
+  if(!toMark.length){ alert('No orders to mark.'); return; }
+  const yr=new Date().getFullYear();
+  let counter=Math.max(0,...DB.orders.filter(o=>o.qbInvoiceNum&&o.qbInvoiceNum.startsWith('INV-'+yr+'-')).map(o=>parseInt(o.qbInvoiceNum.slice(-3))||0),0);
+  for(const o of toMark){
+    const invNum=o._pendingQBInvoiceNum||o.qbInvoiceNum||(()=>{ counter++; return 'INV-'+yr+'-'+String(counter).padStart(3,'0'); })();
+    o.qbExported=true; o.qbExportedAt=new Date().toISOString(); o.qbInvoiceNum=invNum;
+    delete o._pendingQBInvoiceNum;
+    if(!DB._isDemoMode){ try{ await FS.update('orders',o.id,{qbExported:true,qbExportedAt:o.qbExportedAt,qbInvoiceNum:invNum}); }catch(e){console.warn(e);} }
+  }
+  logAudit('other',`Marked ${toMark.length} order(s) as QB exported`);
+  renderC();
+}
+
+function rQB(el){
+  // Date range — default to current month
+  const qbFromEl=document.getElementById('qb-from');
+  const qbToEl=document.getElementById('qb-to');
+  const firstOfMonth=tday().slice(0,7)+'-01';
+  const fromDate=qbFromEl?.value||firstOfMonth;
+  const toDate=qbToEl?.value||tday();
+
+  const allInvoiced=DB.orders.filter(o=>(o.status==='invoiced'||o.status==='packed')&&!o.isStanding);
+  const pending=allInvoiced.filter(o=>!o.qbExported&&(o.week||'')>=fromDate&&(o.week||'')<=toDate);
+  const exported=allInvoiced.filter(o=>o.qbExported).sort((a,b)=>(b.qbExportedAt||'').localeCompare(a.qbExportedAt||''));
+
+  const pendingRev=pending.reduce((s,o)=>s+eRev(o),0);
+  const exportedRev=exported.reduce((s,o)=>s+eRev(o),0);
+  const totalLabor=DB.containerSessions.filter(s=>s.status!=='active'&&s.status!=='no-activity'&&s.date>=fromDate&&s.date<=toDate).reduce((s,x)=>s+(x.durationMinutes||0),0);
+
+  // Group pending by week
+  const byWeek={};
+  pending.sort((a,b)=>(a.week||'').localeCompare(b.week||'')||(a.client||'').localeCompare(b.client||'')).forEach(o=>{
+    const wk=o.week||'—'; if(!byWeek[wk]) byWeek[wk]=[]; byWeek[wk].push(o);
+  });
+
+  const pendingHTML=Object.keys(byWeek).length===0
+    ?'<div class="empty" style="padding:20px;">No invoiced/packed orders in this date range — check the range or mark some orders as invoiced first.</div>'
+    :Object.entries(byWeek).map(([wk,ords])=>`
+      <div style="margin-bottom:4px;padding:5px 14px;background:rgba(196,168,130,.07);border-radius:var(--r);font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);">WEEK OF ${fDate(wk).toUpperCase()}</div>
+      ${ords.map(o=>{
+        const rev=eRev(o);
+        const invNum=o._pendingQBInvoiceNum||o.qbInvoiceNum||'—';
+        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:5px;background:white;flex-wrap:wrap;gap:8px;">
+          <div>
+            <div style="font-weight:600;font-size:13px;">${o.client}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px;">${o.day||'—'} · ${oSum(o)}</div>
+            ${o.orderRef?`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--blue);margin-top:2px;">${o.orderRef}</div>`:''}
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--moss);">$${rev.toFixed(2)}</span>
+            <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);background:var(--paper);border:1px solid var(--border);border-radius:2px;padding:2px 7px;">${o.status.toUpperCase()}</span>
+            <button class="btn b-m b-sm" onclick="markQBExported('${o.id}')">✓ Mark Exported</button>
+          </div>
+        </div>`;
+      }).join('')}
+    `).join('');
+
+  const exportedRows=exported.length===0
+    ?'<tr><td colspan="6" class="empty">No orders marked as exported yet</td></tr>'
+    :exported.slice(0,50).map(o=>`<tr>
+      <td style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:var(--fern);">${o.qbInvoiceNum||'—'}</td>
+      <td>${o.client}</td>
+      <td class="mn">${fDate(o.week||o.date||'')}</td>
+      <td style="font-size:11px;">${oSum(o)}</td>
+      <td class="mn" style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--moss);">$${eRev(o).toFixed(2)}</td>
+      <td class="mn" style="font-size:10px;color:var(--text3);">${o.qbExportedAt?new Date(o.qbExportedAt).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—'}</td>
+    </tr>`).join('');
+
+  const btnStyle='background:white;border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;cursor:pointer;box-shadow:var(--shadow);transition:box-shadow .15s;display:flex;flex-direction:column;gap:6px;text-align:left;width:100%;';
+
+  el.innerHTML=`
+    <div class="ph">
+      <div class="ph-t">QuickBooks</div>
+      <div class="ph-s">IIF export for QB Desktop · invoice queue · items · customers · COGS</div>
+    </div>
+
+    <div class="stats" style="margin-bottom:28px;">
+      <div class="sc ${pending.length>0?'r':'g'}"><div class="sc-l">Pending Export</div><div class="sc-v">${pending.length}</div><div class="sc-n">invoices not yet in QB</div></div>
+      <div class="sc g"><div class="sc-l">Ready Revenue</div><div class="sc-v">$${pendingRev.toFixed(0)}</div><div class="sc-n">in pending invoices</div></div>
+      <div class="sc b"><div class="sc-l">Exported</div><div class="sc-v">${exported.length}</div><div class="sc-n">invoices in QB · $${exportedRev.toFixed(0)}</div></div>
+      <div class="sc m"><div class="sc-l">Labor Hours</div><div class="sc-v">${(totalLabor/60).toFixed(1)}</div><div class="sc-n">hrs in date range</div></div>
+    </div>
+
+    <div class="sh">
+      <span>Invoice Export Queue</span>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <span style="font-family:'Syne Mono',monospace;font-size:9px;color:${pending.length>0?'var(--amber)':'var(--text3)'};">${pending.length} PENDING</span>
+        <span style="font-size:11px;color:var(--text3);">From</span>
+        <input type="date" class="fi" id="qb-from" value="${fromDate}" style="padding:4px 8px;font-size:11px;width:130px;" onchange="renderC()">
+        <span style="font-size:11px;color:var(--text3);">To</span>
+        <input type="date" class="fi" id="qb-to" value="${toDate}" style="padding:4px 8px;font-size:11px;width:130px;" onchange="renderC()">
+      </div>
+    </div>
+
+    <div style="background:rgba(42,85,120,.05);border:1px solid rgba(42,85,120,.2);border-radius:var(--r);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <div style="flex:1;font-size:12px;color:var(--text2);">
+        <strong style="color:var(--blue);">Step 1:</strong> Export IIF &nbsp;·&nbsp;
+        <strong style="color:var(--blue);">Step 2:</strong> QB Desktop → File → Utilities → Import → IIF Files &nbsp;·&nbsp;
+        <strong style="color:var(--blue);">Step 3:</strong> Mark as Exported below
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn b-m" onclick="dlQBInvoicesIIF(document.getElementById('qb-from')?.value, document.getElementById('qb-to')?.value)" style="font-size:12px;">Export IIF ↓</button>
+        <button class="btn b-g" onclick="markAllQBExported(document.getElementById('qb-from')?.value, document.getElementById('qb-to')?.value)" style="font-size:12px;">✓ Mark All Exported</button>
+      </div>
+    </div>
+
+    <div style="margin-bottom:28px;">${pendingHTML}</div>
+
+    <div class="sh"><span>Data Exports</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">QB DESKTOP IIF · CSV</span></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-bottom:32px;">
+      <button style="${btnStyle}" onclick="dlQBInvoicesIIF(document.getElementById('qb-from')?.value, document.getElementById('qb-to')?.value)">
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--moss);text-transform:uppercase;">Invoices</div>
+        <div style="font-size:13px;font-weight:600;color:var(--black);">QB Invoice IIF ↓</div>
+        <div style="font-size:11px;color:var(--text3);">${pending.length} pending · import into QB Desktop</div>
+      </button>
+      <button style="${btnStyle}" onclick="dlQBItemsIIF()">
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--blue);text-transform:uppercase;">Products</div>
+        <div style="font-size:13px;font-weight:600;color:var(--black);">QB Items IIF ↓</div>
+        <div style="font-size:11px;color:var(--text3);">${QB_ITEMS.length} service items — import once to set up</div>
+      </button>
+      <button style="${btnStyle}" onclick="dlQBCustomersIIF()">
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:#6a3a9a;text-transform:uppercase;">Customers</div>
+        <div style="font-size:13px;font-weight:600;color:var(--black);">QB Customers IIF ↓</div>
+        <div style="font-size:11px;color:var(--text3);">${DB.clients.filter(c=>c.active!==false).length} active clients</div>
+      </button>
+      <button style="${btnStyle}" onclick="dlQBCOGSCSV(document.getElementById('qb-from')?.value, document.getElementById('qb-to')?.value)">
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--rust);text-transform:uppercase;">Labor / COGS</div>
+        <div style="font-size:13px;font-weight:600;color:var(--black);">COGS Labor CSV ↓</div>
+        <div style="font-size:11px;color:var(--text3);">${(totalLabor/60).toFixed(1)} hrs in range · enter as expense in QB</div>
+      </button>
+    </div>
+
+    <div class="sh"><span>Export History</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${exported.length} EXPORTED</span></div>
+    <div class="tw" style="margin-bottom:28px;"><table>
+      <thead><tr><th>Invoice #</th><th>Client</th><th>Week</th><th>Items</th><th>Amount</th><th>Exported</th></tr></thead>
+      <tbody>${exportedRows}</tbody>
+    </table></div>
+
+    <div class="sh"><span>QB Desktop Setup Notes</span></div>
+    <div class="card" style="font-size:12px;color:var(--text2);line-height:1.9;margin-bottom:0;">
+      <div style="font-weight:700;color:var(--black);margin-bottom:8px;">First-time setup (do once):</div>
+      <div>1. Export <strong>QB Items IIF</strong> and import → creates your mushroom product list in QB</div>
+      <div>2. Export <strong>QB Customers IIF</strong> and import → adds all your clients to QB</div>
+      <div>3. Make sure you have an <strong>Accounts Receivable</strong> and <strong>Mushroom Sales</strong> account in your chart of accounts</div>
+      <div style="margin-top:12px;font-weight:700;color:var(--black);">Weekly workflow:</div>
+      <div>4. At end of week, export <strong>QB Invoice IIF</strong> → import into QB Desktop</div>
+      <div>5. Come back here → click <strong>Mark All Exported</strong> to track what's been sent</div>
+      <div>6. Export <strong>COGS Labor CSV</strong> monthly and enter labor as a job cost / expense</div>
+      <div style="margin-top:12px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);">IIF import: QB Desktop → File → Utilities → Import → IIF Files → select the .iif file</div>
+    </div>
+  `;
+}
+
 // ── ADMIN ──
 // ── DEMO / SEED DATA ──
 function seedDemoData(){
@@ -4121,12 +4528,12 @@ function seedDemoData(){
   // ── Orders ──
   const wk=wkStart();
   DB.orders=[
-    {id:'demo-o-1',clientId:'demo-c-1',client:'The Catbird Seat',day:'Tuesday',status:'confirmed',oyster:4,chefs:2,lions:2,chestnut:0,shiitake:1,lionsPack:0,chefsPack:0,notes:'',week:wk,custom:false,isStanding:false},
-    {id:'demo-o-2',clientId:'demo-c-2',client:'Bastion Restaurant',day:'Tuesday',status:'pending',oyster:2,chefs:0,lions:3,chestnut:1,shiitake:0,lionsPack:0,chefsPack:0,notes:'Extra lion mane if available',week:wk,custom:false,isStanding:false},
-    {id:'demo-o-3',clientId:'demo-c-3',client:"Five Points Pizza",day:'Thursday',status:'confirmed',oyster:3,chefs:1,lions:0,chestnut:2,shiitake:0,lionsPack:4,chefsPack:0,notes:'',week:wk,custom:false,isStanding:false},
-    {id:'demo-o-4',clientId:'demo-c-4',client:'The Turnip Truck',day:'Wednesday',status:'packed',oyster:6,chefs:0,lions:2,chestnut:3,shiitake:2,lionsPack:0,chefsPack:0,notes:'Retail mix',week:wk,custom:false,isStanding:false,packedAt:'Mon 8:15 AM'},
-    {id:'demo-o-5',clientId:'demo-c-5',client:'Whole Foods — Green Hills',day:'Monday',status:'invoiced',oyster:12,chefs:0,lions:0,chestnut:0,shiitake:0,lionsPack:0,chefsPack:0,notes:'Wholesale — 12× 3lb oyster',week:wk,custom:true,customType:'wholesale',isStanding:false,packedAt:'Mon 6:00 AM',invoicedAt:'Mon 9:00 AM'},
-    {id:'demo-o-6',clientId:'demo-c-1',client:'The Catbird Seat',day:'Tuesday',status:'confirmed',oyster:2,chefs:2,lions:1,chestnut:0,shiitake:0,lionsPack:0,chefsPack:0,notes:'Standing order',week:wkStart(new Date(Date.now()-7*86400000)),custom:false,isStanding:true},
+    {id:'demo-o-1',clientId:'demo-c-1',client:'The Catbird Seat',day:'Tuesday',status:'confirmed',oyster:4,chefs:2,lions:2,chestnut:0,shiitake:1,lionsPack:0,chefsPack:0,notes:'',week:wk,custom:false,isStanding:false,orderRef:'HQ-2026-001'},
+    {id:'demo-o-2',clientId:'demo-c-2',client:'Bastion Restaurant',day:'Tuesday',status:'pending',oyster:2,chefs:0,lions:3,chestnut:1,shiitake:0,lionsPack:0,chefsPack:0,notes:'Extra lion mane if available',week:wk,custom:false,isStanding:false,orderRef:'HQ-2026-002'},
+    {id:'demo-o-3',clientId:'demo-c-3',client:"Five Points Pizza",day:'Thursday',status:'confirmed',oyster:3,chefs:1,lions:0,chestnut:2,shiitake:0,lionsPack:4,chefsPack:0,notes:'',week:wk,custom:false,isStanding:false,orderRef:'HQ-2026-003'},
+    {id:'demo-o-4',clientId:'demo-c-4',client:'The Turnip Truck',day:'Wednesday',status:'packed',oyster:6,chefs:0,lions:2,chestnut:3,shiitake:2,lionsPack:0,chefsPack:0,notes:'Retail mix',week:wk,custom:false,isStanding:false,packedAt:'Mon 8:15 AM',orderRef:'HQ-2026-004'},
+    {id:'demo-o-5',clientId:'demo-c-5',client:'Whole Foods — Green Hills',day:'Monday',status:'invoiced',oyster:12,chefs:0,lions:0,chestnut:0,shiitake:0,lionsPack:0,chefsPack:0,notes:'Wholesale — 12× 3lb oyster',week:wk,custom:true,customType:'wholesale',isStanding:false,packedAt:'Mon 6:00 AM',invoicedAt:'Mon 9:00 AM',orderRef:'QB-2026-0088',qbExported:true,qbInvoiceNum:'INV-2026-001',qbExportedAt:iso(3)},
+    {id:'demo-o-6',clientId:'demo-c-1',client:'The Catbird Seat',day:'Tuesday',status:'confirmed',oyster:2,chefs:2,lions:1,chestnut:0,shiitake:0,lionsPack:0,chefsPack:0,notes:'Standing order',week:wkStart(new Date(Date.now()-7*86400000)),custom:false,isStanding:true,orderRef:'HQ-2026-005'},
   ];
 
   // ── Fruitings ──
@@ -5190,6 +5597,7 @@ function rReports(el){
         <div>
           <div style="font-weight:600;font-size:14px;">${o.client}</div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px;">${o.day} · ${oSum(o)} · <span style="color:var(--moss);">$${eRev(o).toFixed(2)}</span></div>
+          ${o.orderRef?`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--blue);margin-top:2px;">${o.orderRef}</div>`:''}
           ${o.notes?`<div style="font-size:11px;color:var(--spore);margin-top:2px;">${o.notes}</div>`:''}
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
