@@ -461,6 +461,24 @@ const DB = {
   emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false}
 };
 let packDaySelected = {}; // harvestId -> pull weight, persists across renders
+let _yieldPeriod = 'week';   // week | month | 30d | year | custom
+let _yieldCustomFrom = '';
+let _yieldCustomTo = '';
+function setYieldPeriod(p){ _yieldPeriod=p; if(p!=='custom') renderC(); }
+function applyYieldCustom(){
+  _yieldCustomFrom=document.getElementById('ya-from')?.value||'';
+  _yieldCustomTo=document.getElementById('ya-to')?.value||'';
+  if(_yieldCustomFrom&&_yieldCustomTo) renderC();
+}
+function yieldDateRange(){
+  const t=tday();
+  if(_yieldPeriod==='week') return {from:wkStart(),to:t};
+  if(_yieldPeriod==='month') return {from:t.slice(0,7)+'-01',to:t};
+  if(_yieldPeriod==='30d'){ const d=new Date(t+'T12:00:00'); d.setDate(d.getDate()-30); return {from:d.toISOString().split('T')[0],to:t}; }
+  if(_yieldPeriod==='year') return {from:t.slice(0,4)+'-01-01',to:t};
+  if(_yieldPeriod==='custom') return {from:_yieldCustomFrom||t,to:_yieldCustomTo||t};
+  return {from:wkStart(),to:t};
+}
 // Audit session ID — unique per page load, groups all changes made in one sitting
 const _auditSession = Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 let viewDay = null; // null = today's delivery day; or 'Monday'/'Wednesday'/'Friday'
@@ -4155,7 +4173,11 @@ function rAna(el){
   const allSampsSorted=[...allSamps].sort((a,b)=>b.date.localeCompare(a.date));
 
   el.innerHTML=`
-    <div class="ph"><div class="ph-t">Analytics</div><div class="ph-s">Weekly performance, forecast & sample program</div></div>
+    <div class="ph"><div class="ph-t">Analytics</div><div class="ph-s">Yield performance · weekly orders · forecast · sample program</div></div>
+
+    ${buildYieldAverages()}
+
+    <div class="sh" style="margin-top:28px;border-top:1px solid var(--border);padding-top:20px;"><span>Weekly Orders</span></div>
     <div class="stats">
       <div class="sc g"><div class="sc-l">Week Revenue</div><div class="sc-v">$${rev.toFixed(0)}</div></div>
       <div class="sc m"><div class="sc-l">Boxes Out</div><div class="sc-v">${tB}</div></div>
@@ -4228,183 +4250,316 @@ function rAna(el){
     </div>
 
     ${buildForecastSection()}
-
-    <!-- ── YIELD AVERAGES ── -->
-    ${buildYieldAverages()}
   `;
 }
 
 function buildYieldAverages(){
-  // Only count containers that have at least one fruiting record with blocks
-  // Yield metric: lbs harvested per block (avg across all harvest events for that grouping)
-  // "Only containers with growth" = containers that appear in DB.fruitings with blockCount > 0
+  // ── Period filter ──
+  const {from, to} = yieldDateRange();
 
-  const activeFruitContainers = new Set(
-    DB.fruitings.filter(f=>f.blockCount>0).map(f=>f.containerID)
-  );
+  // Harvests in period
+  const periodHarvests = DB.harvests.filter(h => h.date >= from && h.date <= to);
 
-  // Build per-harvest enriched records — only for containers with fruiting blocks
-  const harvests = DB.harvests.filter(h=>activeFruitContainers.has(h.container)||activeFruitContainers.size===0);
+  // ── Container → blocks map (total blocks loaded, from all fruitings) ──
+  // Also detect WS (Wild Spore) per container: WS- lot prefix or vendor containing "Wild Spore"/"WS"
+  const containerMeta = {}; // containerID → {blocks, isWS, facility, variety}
+  DB.fruitings.forEach(f => {
+    if(!f.containerID) return;
+    const c = f.containerID;
+    if(!containerMeta[c]) containerMeta[c] = {blocks:0, isWS:false, facility:f.facility||'—', variety:f.variety||''};
+    containerMeta[c].blocks += (f.blockCount||0);
+    // WS detection: lot prefix OR vendor
+    const lot = (f.lotNumber||'').toUpperCase();
+    const vendor = (f.vendor||f.source||'').toUpperCase();
+    if(lot.startsWith('WS-') || vendor.includes('WILD SPORE') || vendor.includes(' WS ') || vendor === 'WS') {
+      containerMeta[c].isWS = true;
+    }
+    if(f.variety && !containerMeta[c].variety) containerMeta[c].variety = f.variety;
+  });
 
-  // Helper: get block count for a container (latest fruiting record)
-  function blocksForContainer(containerID){
-    const runs = DB.fruitings.filter(f=>f.containerID===containerID&&f.blockCount>0)
-      .sort((a,b)=>b.date.localeCompare(a.date));
-    return runs.length ? (runs[0].blockCount||0) : 0;
+  // ── Per-container period totals ──
+  const containerTotals = {}; // containerID → {lbs, harvestCount, isWS, facility, variety}
+  periodHarvests.forEach(h => {
+    const c = h.container;
+    if(!c) return;
+    if(!containerTotals[c]) {
+      const meta = containerMeta[c] || {blocks:0, isWS:false, facility:h.facility||'—', variety:h.variety||''};
+      containerTotals[c] = {lbs:0, harvestCount:0, blocks:meta.blocks, isWS:meta.isWS, facility:meta.facility, variety:meta.variety||h.variety||''};
+    }
+    containerTotals[c].lbs += (h.weight||0);
+    containerTotals[c].harvestCount++;
+  });
+
+  // ── Master stats ──
+  let masterLbs=0, masterBlocks=0, wsLbs=0, wsBlocks=0, hmLbs=0, hmBlocks=0;
+  Object.values(containerTotals).forEach(d => {
+    masterLbs += d.lbs;
+    if(d.blocks > 0) {
+      masterBlocks += d.blocks;
+      if(d.isWS){ wsLbs+=d.lbs; wsBlocks+=d.blocks; }
+      else { hmLbs+=d.lbs; hmBlocks+=d.blocks; }
+    }
+  });
+  const masterPerBlock = masterBlocks>0 ? masterLbs/masterBlocks : 0;
+  const wsPerBlock     = wsBlocks>0     ? wsLbs/wsBlocks         : 0;
+  const hmPerBlock     = hmBlocks>0     ? hmLbs/hmBlocks         : 0;
+
+  // ── Color helpers ──
+  // WS benchmark: 1.0–1.5 lb/block; TM (house-made): 1.0–2.0 lb/block
+  function blockColor(val, isWS){
+    if(val <= 0) return 'var(--text3)';
+    if(val >= 1.0) return 'var(--fern)';
+    if(val >= 0.7) return 'var(--amber)';
+    return 'var(--rust)';
+  }
+  function blockBar(val, isWS){
+    const target = isWS ? 1.5 : 2.0;
+    const pct = Math.min(Math.round(val/target*100), 100);
+    const col = blockColor(val, isWS);
+    return `<div style="display:flex;align-items:center;gap:6px;">
+      <div style="flex:1;background:var(--border);border-radius:3px;height:6px;min-width:60px;">
+        <div style="background:${col};width:${pct}%;height:6px;border-radius:3px;"></div>
+      </div>
+      <span style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:${col};min-width:52px;">${val.toFixed(2)} lb/blk</span>
+    </div>`;
+  }
+  function benchBadge(isWS){
+    return isWS
+      ? `<span style="font-size:9px;background:rgba(234,179,8,0.15);color:var(--amber);border:1px solid var(--amber);border-radius:3px;padding:1px 5px;font-family:'Syne Mono',monospace;">WS · 1.0–1.5</span>`
+      : `<span style="font-size:9px;background:rgba(96,153,96,0.12);color:var(--fern);border:1px solid var(--fern);border-radius:3px;padding:1px 5px;font-family:'Syne Mono',monospace;">TM · 1.0–2.0</span>`;
+  }
+  function masterBadge(val, isWS){
+    const col = blockColor(val, isWS);
+    const size = '32px';
+    return `<div class="sc-v" style="font-size:${size};color:${col};">${val>0?val.toFixed(2):'—'}<span style="font-size:14px"> lb/blk</span></div>`;
   }
 
-  // ── By Lot ──
-  const byLot={};
-  harvests.forEach(h=>{
-    if(!h.lotNumber) return;
-    if(!byLot[h.lotNumber]) byLot[h.lotNumber]={totalLb:0,count:0,variety:h.variety,container:h.container,facility:h.facility||'—'};
-    byLot[h.lotNumber].totalLb+=h.weight||0;
-    byLot[h.lotNumber].count++;
-  });
-
-  // ── By Container ──
-  const byContainer={};
-  harvests.forEach(h=>{
-    if(!activeFruitContainers.has(h.container)) return; // skip containers with no block records
-    if(!byContainer[h.container]) byContainer[h.container]={totalLb:0,count:0,facility:h.facility||'—',blockCount:blocksForContainer(h.container)};
-    byContainer[h.container].totalLb+=h.weight||0;
-    byContainer[h.container].count++;
-  });
+  // ── Period selector HTML ──
+  const periods = [['week','Week'],['month','Month'],['30d','30 Days'],['year','Year'],['custom','Custom']];
+  const periodBtns = periods.map(([k,l])=>`
+    <button onclick="setYieldPeriod('${k}')" style="padding:5px 12px;border-radius:5px;border:1px solid ${_yieldPeriod===k?'var(--gold)':'var(--border)'};background:${_yieldPeriod===k?'rgba(212,176,89,0.15)':'var(--bg2)'};color:${_yieldPeriod===k?'var(--gold)':'var(--text2)'};font-size:12px;font-family:'Syne Mono',monospace;cursor:pointer;">${l}</button>`).join('');
+  const customInputs = _yieldPeriod==='custom' ? `
+    <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+      <input id="ya-from" type="date" value="${_yieldCustomFrom}" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);color:var(--text1);font-size:12px;">
+      <span style="color:var(--text3);">→</span>
+      <input id="ya-to" type="date" value="${_yieldCustomTo}" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);color:var(--text1);font-size:12px;">
+      <button onclick="applyYieldCustom()" style="padding:4px 12px;border-radius:5px;border:1px solid var(--gold);background:rgba(212,176,89,0.15);color:var(--gold);font-size:12px;cursor:pointer;">Apply</button>
+    </div>` : '';
+  const periodLabel = {week:'This Week',month:'This Month','30d':'Last 30 Days',year:'This Year',custom:'Custom Range'}[_yieldPeriod]||'';
 
   // ── By Variety ──
-  const byVariety={};
-  harvests.forEach(h=>{
-    if(!h.variety) return;
-    if(!byVariety[h.variety]) byVariety[h.variety]={totalLb:0,count:0};
-    byVariety[h.variety].totalLb+=h.weight||0;
-    byVariety[h.variety].count++;
+  const byVariety = {};
+  periodHarvests.forEach(h => {
+    const v = h.variety||'Unknown';
+    if(!byVariety[v]) byVariety[v] = {lbs:0, harvestCount:0, containers:new Set()};
+    byVariety[v].lbs += (h.weight||0);
+    byVariety[v].harvestCount++;
+    if(h.container) byVariety[v].containers.add(h.container);
+  });
+  // Attach block counts per variety from containerTotals
+  Object.entries(containerTotals).forEach(([c,d]) => {
+    const v = d.variety||'Unknown';
+    if(!byVariety[v]) byVariety[v] = {lbs:0, harvestCount:0, containers:new Set(), blocks:0};
+    if(!byVariety[v].blocks) byVariety[v].blocks = 0;
+    byVariety[v].blocks += d.blocks;
   });
 
-  // ── By Facility (only containers with active growth) ──
-  const byFacility={};
-  harvests.forEach(h=>{
-    if(!activeFruitContainers.has(h.container)) return;
-    const fac=h.facility||'Unknown';
-    if(!byFacility[fac]) byFacility[fac]={totalLb:0,count:0,containers:new Set()};
-    byFacility[fac].totalLb+=h.weight||0;
-    byFacility[fac].count++;
-    byFacility[fac].containers.add(h.container);
-  });
-
-  // ── Overall master ──
-  const activeHarvests = harvests.filter(h=>activeFruitContainers.has(h.container));
-  const masterTotal = activeHarvests.reduce((s,h)=>s+(h.weight||0),0);
-  const masterCount = activeHarvests.length;
-  const masterAvg = masterCount>0 ? masterTotal/masterCount : 0;
-  const activeContainerCount = Object.keys(byContainer).length;
-
-  function avgBadge(avg){
-    const col = avg>=10?'var(--fern)':avg>=5?'var(--amber)':'var(--rust)';
-    return `<span style="font-family:'Syne Mono',monospace;font-size:12px;font-weight:700;color:${col};">${avg.toFixed(2)} lb/harvest</span>`;
-  }
-
-  const lotRows = Object.entries(byLot).sort((a,b)=>b[1].totalLb-a[1].totalLb).map(([lot,d])=>{
-    const avg = d.count>0?d.totalLb/d.count:0;
-    return `<tr>
-      <td class="mn" style="font-weight:600;color:var(--gold);font-family:'Syne Mono',monospace;">${lot}</td>
-      <td>${d.variety||'—'}</td>
-      <td class="mn">${d.container||'—'}</td>
-      <td class="mn" style="font-size:11px;color:var(--text3);">${d.facility}</td>
-      <td class="mn">${d.count}</td>
-      <td class="mn" style="color:var(--moss);font-weight:700;">${d.totalLb.toFixed(1)} lb</td>
-      <td class="mn">${avgBadge(avg)}</td>
-    </tr>`;
-  }).join('');
-
-  const containerRows = Object.entries(byContainer).sort((a,b)=>b[1].totalLb-a[1].totalLb).map(([c,d])=>{
-    const avg = d.count>0?d.totalLb/d.count:0;
-    const lbPerBlock = d.blockCount>0?(d.totalLb/d.blockCount).toFixed(2):'—';
-    return `<tr>
-      <td style="font-weight:600;">${c}</td>
-      <td class="mn" style="font-size:11px;color:var(--text3);">${d.facility}</td>
-      <td class="mn">${d.blockCount||'—'}</td>
-      <td class="mn">${d.count}</td>
-      <td class="mn" style="color:var(--moss);font-weight:700;">${d.totalLb.toFixed(1)} lb</td>
-      <td class="mn">${avgBadge(avg)}</td>
-      <td class="mn" style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--sage);">${lbPerBlock !== '—' ? lbPerBlock+' lb/block' : '—'}</td>
-    </tr>`;
-  }).join('');
-
-  const varietyRows = Object.entries(byVariety).sort((a,b)=>b[1].totalLb-a[1].totalLb).map(([v,d])=>{
-    const avg = d.count>0?d.totalLb/d.count:0;
+  const maxVarLbs = Math.max(...Object.values(byVariety).map(d=>d.lbs), 1);
+  const varietyRows = Object.entries(byVariety).sort((a,b)=>b[1].lbs-a[1].lbs).map(([v,d])=>{
+    const perBlock = (d.blocks||0)>0 ? d.lbs/d.blocks : 0;
+    const col = blockColor(perBlock, false);
     return `<tr>
       <td style="font-weight:600;">${v}</td>
-      <td class="mn">${d.count}</td>
-      <td class="mn" style="color:var(--moss);font-weight:700;">${d.totalLb.toFixed(1)} lb</td>
-      <td class="mn">${avgBadge(avg)}</td>
+      <td class="mn">${d.containers.size}</td>
+      <td class="mn">${d.harvestCount}</td>
+      <td class="mn" style="color:var(--moss);font-weight:700;">${d.lbs.toFixed(1)} lb</td>
+      <td style="min-width:140px;">${perBlock>0?blockBar(perBlock,false):'<span style="color:var(--text3);font-size:11px;">no block data</span>'}</td>
     </tr>`;
   }).join('');
 
-  const facilityRows = Object.entries(byFacility).sort((a,b)=>b[1].totalLb-a[1].totalLb).map(([fac,d])=>{
-    const avg = d.count>0?d.totalLb/d.count:0;
+  // ── By Container ──
+  const maxContainerLbs = Math.max(...Object.values(containerTotals).map(d=>d.lbs), 1);
+  const containerRows = Object.entries(containerTotals)
+    .sort((a,b)=>b[1].lbs-a[1].lbs)
+    .map(([c,d])=>{
+      const perBlock = d.blocks>0 ? d.lbs/d.blocks : 0;
+      const isWS = d.isWS;
+      return `<tr>
+        <td style="font-weight:600;">${c}</td>
+        <td class="mn" style="font-size:11px;color:var(--text3);">${d.facility}</td>
+        <td class="mn">${d.variety||'—'}</td>
+        <td class="mn">${d.blocks||'—'}</td>
+        <td class="mn">${benchBadge(isWS)}</td>
+        <td class="mn">${d.harvestCount}</td>
+        <td class="mn" style="color:var(--moss);font-weight:600;">${d.lbs.toFixed(1)} lb</td>
+        <td style="min-width:160px;">${d.blocks>0?blockBar(perBlock,isWS):'<span style="color:var(--text3);font-size:11px;">no block data</span>'}</td>
+      </tr>`;
+    }).join('');
+
+  // ── By Lot ──
+  const byLot = {};
+  DB.fruitings.forEach(f => {
+    if(!f.lotNumber) return;
+    const lot = f.lotNumber;
+    if(!byLot[lot]) byLot[lot] = {lbs:0, harvestCount:0, blocks:0, isWS:false, variety:f.variety||'', containers:new Set()};
+    byLot[lot].blocks += (f.blockCount||0);
+    const lotUp = lot.toUpperCase();
+    const vendor = (f.vendor||f.source||'').toUpperCase();
+    if(lotUp.startsWith('WS-') || vendor.includes('WILD SPORE') || vendor === 'WS') byLot[lot].isWS = true;
+    byLot[lot].containers.add(f.containerID);
+    if(f.variety && !byLot[lot].variety) byLot[lot].variety = f.variety;
+  });
+  periodHarvests.forEach(h => {
+    if(!h.lotNumber) return;
+    if(!byLot[h.lotNumber]) byLot[h.lotNumber] = {lbs:0, harvestCount:0, blocks:0, isWS:false, variety:h.variety||'', containers:new Set()};
+    byLot[h.lotNumber].lbs += (h.weight||0);
+    byLot[h.lotNumber].harvestCount++;
+  });
+  const lotRows = Object.entries(byLot)
+    .filter(([,d])=>d.harvestCount>0||d.blocks>0)
+    .sort((a,b)=>b[1].lbs-a[1].lbs)
+    .map(([lot,d])=>{
+      const perBlock = d.blocks>0 ? d.lbs/d.blocks : 0;
+      return `<tr>
+        <td style="font-weight:600;color:var(--gold);font-family:'Syne Mono',monospace;">${lot}</td>
+        <td>${d.variety||'—'}</td>
+        <td class="mn">${benchBadge(d.isWS)}</td>
+        <td class="mn">${d.blocks||'—'}</td>
+        <td class="mn">${d.harvestCount}</td>
+        <td class="mn" style="color:var(--moss);font-weight:600;">${d.lbs.toFixed(1)} lb</td>
+        <td style="min-width:160px;">${d.blocks>0?blockBar(perBlock,d.isWS):'<span style="color:var(--text3);font-size:11px;">no block data</span>'}</td>
+      </tr>`;
+    }).join('');
+
+  // ── By Facility ──
+  const byFacility = {};
+  Object.entries(containerTotals).forEach(([c,d])=>{
+    const fac = d.facility||'Unknown';
+    if(!byFacility[fac]) byFacility[fac]={lbs:0, harvestCount:0, blocks:0, containers:new Set()};
+    byFacility[fac].lbs += d.lbs;
+    byFacility[fac].harvestCount += d.harvestCount;
+    byFacility[fac].blocks += d.blocks;
+    byFacility[fac].containers.add(c);
+  });
+  const facilityRows = Object.entries(byFacility).sort((a,b)=>b[1].lbs-a[1].lbs).map(([fac,d])=>{
+    const perBlock = d.blocks>0 ? d.lbs/d.blocks : 0;
     return `<tr>
       <td style="font-weight:600;">${fac}</td>
       <td class="mn">${d.containers.size}</td>
-      <td class="mn">${d.count}</td>
-      <td class="mn" style="color:var(--moss);font-weight:700;">${d.totalLb.toFixed(1)} lb</td>
-      <td class="mn">${avgBadge(avg)}</td>
+      <td class="mn">${d.blocks||'—'}</td>
+      <td class="mn">${d.harvestCount}</td>
+      <td class="mn" style="color:var(--moss);font-weight:600;">${d.lbs.toFixed(1)} lb</td>
+      <td style="min-width:160px;">${d.blocks>0?blockBar(perBlock,false):'<span style="color:var(--text3);font-size:11px;">no block data</span>'}</td>
     </tr>`;
   }).join('');
 
-  if(masterCount===0) return `
-    <div class="sh" style="margin-top:32px;border-top:1px solid var(--border);padding-top:20px;"><span>Yield Averages</span></div>
-    <div class="empty" style="padding:20px;">No harvest data linked to fruiting containers yet.</div>`;
+  const totalHarvestCount = periodHarvests.length;
+
+  if(totalHarvestCount===0) return `
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px 24px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+        <div>
+          <div style="font-size:11px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:.08em;margin-bottom:4px;">PRIMARY METRIC</div>
+          <div style="font-size:18px;font-weight:700;color:var(--text1);">Yield Per Block</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${periodBtns}</div>
+      </div>
+      ${customInputs}
+      <div class="empty" style="padding:16px 0;">No harvests recorded for ${periodLabel}.</div>
+    </div>`;
 
   return `
-    <div class="sh" style="margin-top:32px;border-top:1px solid var(--border);padding-top:20px;">
-      <span>Yield Averages</span>
-      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">CONTAINERS WITH ACTIVE GROWTH ONLY</span>
-    </div>
+    <div style="background:var(--bg2);border:2px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:8px;">
 
-    <!-- Master average strip -->
-    <div class="stats" style="margin-bottom:24px;">
-      <div class="sc g"><div class="sc-l">Master Avg / Harvest</div><div class="sc-v" style="font-size:26px;">${masterAvg.toFixed(2)}<span style="font-size:14px"> lb</span></div><div class="sc-n">across all active containers</div></div>
-      <div class="sc"><div class="sc-l">Total Harvested</div><div class="sc-v">${masterTotal.toFixed(1)}<span style="font-size:16px"> lb</span></div><div class="sc-n">${masterCount} harvest events</div></div>
-      <div class="sc m"><div class="sc-l">Active Containers</div><div class="sc-v">${activeContainerCount}</div><div class="sc-n">with fruiting block data</div></div>
-    </div>
+      <!-- Header + period selector -->
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
+        <div>
+          <div style="font-size:10px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:.1em;margin-bottom:3px;">PRIMARY METRIC</div>
+          <div style="font-size:20px;font-weight:700;color:var(--text1);">Yield Per Block</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px;">${periodLabel} · ${totalHarvestCount} harvest event${totalHarvestCount!==1?'s':''} · ${masterLbs.toFixed(1)} lb total</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${periodBtns}</div>
+      </div>
+      ${customInputs}
 
-    <div class="cr" style="gap:20px;">
+      <!-- Master stats strip -->
+      <div class="stats" style="margin-bottom:20px;">
+        <div class="sc g">
+          <div class="sc-l">Overall lb / Block</div>
+          ${masterBadge(masterPerBlock, false)}
+          <div class="sc-n">${masterBlocks} total blocks · target ≥ 1.0</div>
+        </div>
+        <div class="sc" style="${wsBlocks===0?'opacity:.45':''}">
+          <div class="sc-l">Wild Spore lb / Block</div>
+          ${masterBadge(wsPerBlock, true)}
+          <div class="sc-n">${wsBlocks} WS blocks · bench 1.0–1.5</div>
+        </div>
+        <div class="sc m" style="${hmBlocks===0?'opacity:.45':''}">
+          <div class="sc-l">TM lb / Block</div>
+          ${masterBadge(hmPerBlock, false)}
+          <div class="sc-n">${hmBlocks} TM blocks · bench 1.0–2.0</div>
+        </div>
+      </div>
 
-      <!-- By Variety -->
-      <div class="cc" style="flex:1;min-width:260px;">
-        <div class="cc-l">By Variety</div>
+      <!-- Legend -->
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--fern);"></span> ≥ 1.0 lb/blk (on target)
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--amber);"></span> 0.70–0.99 (watch)
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--rust);"></span> &lt; 0.70 (underperforming)
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
+          ${benchBadge(true)} Wild Spore source
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
+          ${benchBadge(false)} TM (house-made)
+        </div>
+      </div>
+
+      <!-- Row 1: Variety + Facility -->
+      <div class="cr" style="gap:20px;margin-bottom:20px;">
+        <div class="cc" style="flex:1;min-width:260px;">
+          <div class="cc-l">By Variety</div>
+          <div class="tw"><table>
+            <thead><tr><th>Variety</th><th>Containers</th><th>Harvests</th><th>Total lb</th><th style="min-width:160px;">lb / Block</th></tr></thead>
+            <tbody>${varietyRows||'<tr><td colspan="5" class="empty">No data</td></tr>'}</tbody>
+          </table></div>
+        </div>
+        <div class="cc" style="flex:1;min-width:260px;">
+          <div class="cc-l">By Facility</div>
+          <div class="tw"><table>
+            <thead><tr><th>Facility</th><th>Containers</th><th>Blocks</th><th>Harvests</th><th>Total lb</th><th style="min-width:160px;">lb / Block</th></tr></thead>
+            <tbody>${facilityRows||'<tr><td colspan="6" class="empty">No data</td></tr>'}</tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- By Container -->
+      <div class="cc" style="margin-bottom:20px;">
+        <div class="cc-l">By Container <span style="font-size:9px;font-family:'Syne Mono',monospace;color:var(--text3);margin-left:6px;">PERIOD HARVEST ÷ TOTAL BLOCKS LOADED</span></div>
         <div class="tw"><table>
-          <thead><tr><th>Variety</th><th>Harvests</th><th>Total</th><th>Avg / Harvest</th></tr></thead>
-          <tbody>${varietyRows||'<tr><td colspan="4" class="empty">No data</td></tr>'}</tbody>
+          <thead><tr><th>Container</th><th>Facility</th><th>Variety</th><th>Blocks</th><th>Source</th><th>Harvests</th><th>Total lb</th><th style="min-width:170px;">lb / Block</th></tr></thead>
+          <tbody>${containerRows||'<tr><td colspan="8" class="empty">No containers with harvest data this period</td></tr>'}</tbody>
         </table></div>
       </div>
 
-      <!-- By Facility -->
-      <div class="cc" style="flex:1;min-width:260px;">
-        <div class="cc-l">By Facility</div>
+      <!-- By Lot -->
+      <div class="cc">
+        <div class="cc-l">By Lot Number <span style="font-size:9px;font-family:'Syne Mono',monospace;color:var(--text3);margin-left:6px;">PERIOD HARVESTS ONLY</span></div>
         <div class="tw"><table>
-          <thead><tr><th>Facility</th><th>Containers</th><th>Harvests</th><th>Total</th><th>Avg / Harvest</th></tr></thead>
-          <tbody>${facilityRows||'<tr><td colspan="5" class="empty">No data</td></tr>'}</tbody>
+          <thead><tr><th>Lot #</th><th>Variety</th><th>Source</th><th>Blocks</th><th>Harvests</th><th>Total lb</th><th style="min-width:170px;">lb / Block</th></tr></thead>
+          <tbody>${lotRows||'<tr><td colspan="7" class="empty">No lot data this period</td></tr>'}</tbody>
         </table></div>
       </div>
 
     </div>
-
-    <!-- By Container -->
-    <div class="sh" style="margin-top:20px;"><span>By Container</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">ONLY CONTAINERS WITH FRUITING BLOCKS</span></div>
-    <div class="tw"><table>
-      <thead><tr><th>Container</th><th>Facility</th><th>Blocks</th><th>Harvests</th><th>Total</th><th>Avg / Harvest</th><th>lb / Block</th></tr></thead>
-      <tbody>${containerRows||'<tr><td colspan="7" class="empty">No containers with block data yet</td></tr>'}</tbody>
-    </table></div>
-
-    <!-- By Lot -->
-    <div class="sh" style="margin-top:20px;"><span>By Lot Number</span></div>
-    <div class="tw"><table>
-      <thead><tr><th>Lot #</th><th>Variety</th><th>Container</th><th>Facility</th><th>Harvests</th><th>Total</th><th>Avg / Harvest</th></tr></thead>
-      <tbody>${lotRows||'<tr><td colspan="7" class="empty">No lot data yet</td></tr>'}</tbody>
-    </table></div>
   `;
 }
+
 
 // ── SAMPLES ──
 
