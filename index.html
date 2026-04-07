@@ -464,6 +464,11 @@ let packDaySelected = {}; // harvestId -> pull weight, persists across renders
 let _yieldPeriod = 'week';   // week | month | 30d | year | custom
 let _yieldCustomFrom = '';
 let _yieldCustomTo = '';
+// ── Sortable column state ──
+let _tSort = {};
+function tSort(tk,col){ if(_tSort[tk]&&_tSort[tk].col===col){_tSort[tk].dir=_tSort[tk].dir==='asc'?'desc':'asc';}else{_tSort[tk]={col,dir:'asc'};} renderC(); }
+function thS(tk,col,lbl,xtra){ const s=_tSort[tk]; const on=s&&s.col===col; const ic=on?(s.dir==='asc'?'&#9650;':'&#9660;'):'&#8693;'; return `<th style="cursor:pointer;user-select:none;white-space:nowrap;${xtra||''}" onclick="tSort('${tk}','${col}')">${lbl}&thinsp;<span style="font-size:8px;opacity:${on?0.9:0.3};color:${on?'var(--gold)':'inherit'}">${ic}</span></th>`; }
+function sByKey(tk,arr,acc){ const s=_tSort[tk]; if(!s||!acc[s.col]) return arr; const fn=acc[s.col]; return [...arr].sort((a,b)=>{ const av=fn(a),bv=fn(b); const cmp=typeof av==='string'?(av||'').localeCompare(bv||'',undefined,{numeric:true,sensitivity:'base'}):((av??-1e9)-(bv??-1e9)); return s.dir==='asc'?cmp:-cmp; }); }
 function setYieldPeriod(p){ _yieldPeriod=p; if(p!=='custom') renderC(); }
 function applyYieldCustom(){
   _yieldCustomFrom=document.getElementById('ya-from')?.value||'';
@@ -2652,6 +2657,7 @@ function rFruiting(el){
     const windowStatus=daysIn<td.min?'early':daysIn<=td.max?'ready':'overdue';
     return {...f,daysIn,harvestMin,harvestMax,projLbs,windowStatus,td};
   }).sort((a,b)=>a.harvestMin-b.harvestMin);
+  const fruitRows=sByKey('fruit-act',withForecast,{date:f=>f.date,daysIn:f=>f.daysIn,containerID:f=>f.containerID,lotNumber:f=>f.lotNumber,vendor:f=>f.vendor||'',variety:f=>f.variety,blockCount:f=>f.blockCount||0,blockWeightLb:f=>f.blockWeightLb||0,projLbs:f=>f.projLbs||0,harvestMin:f=>f.harvestMin.getTime(),windowStatus:f=>['early','ready','overdue'].indexOf(f.windowStatus)});
 
   const readyCount=withForecast.filter(f=>f.windowStatus==='ready').length;
   const overdueCount=withForecast.filter(f=>f.windowStatus==='overdue').length;
@@ -2721,8 +2727,8 @@ function rFruiting(el){
     <div class="sh"><span>Active Fruiting Blocks</span>${active.length>0?`<span class="bdg bc">${active.length} active</span>`:''}</div>
     <div class="tw" style="margin-bottom:24px;overflow-x:auto;">
       <table>
-        <thead><tr><th>Date In</th><th>Days In</th><th>Container</th><th>Lot #</th><th>Vendor</th><th>Variety</th><th>Blocks</th><th>Blk Wt</th><th>Proj. Yield</th><th>Harvest Window</th><th>Status</th><th>Action</th></tr></thead>
-        <tbody>${withForecast.length===0?'<tr><td colspan="12" class="empty">No active fruiting blocks — log one above</td></tr>':withForecast.map(f=>{
+        <thead><tr>${thS('fruit-act','date','Date In')}${thS('fruit-act','daysIn','Days In')}${thS('fruit-act','containerID','Container')}${thS('fruit-act','lotNumber','Lot #')}${thS('fruit-act','vendor','Vendor')}${thS('fruit-act','variety','Variety')}${thS('fruit-act','blockCount','Blocks')}${thS('fruit-act','blockWeightLb','Blk Wt')}${thS('fruit-act','projLbs','Proj. Yield')}${thS('fruit-act','harvestMin','Harvest Window')}${thS('fruit-act','windowStatus','Status')}<th>Action</th></tr></thead>
+        <tbody>${fruitRows.length===0?'<tr><td colspan="12" class="empty">No active fruiting blocks — log one above</td></tr>':fruitRows.map(f=>{
           const sc=f.windowStatus==='ready'?'var(--fern)':f.windowStatus==='overdue'?'var(--rust)':'var(--text3)';
           const stLbl=f.windowStatus==='ready'?'\u2713 READY':f.windowStatus==='overdue'?'\u26a0 OVERDUE':'\u23f3 EARLY';
           return `<tr>
@@ -2765,8 +2771,8 @@ function rFruiting(el){
     <div class="sh"><span>Harvested — Completed</span><span class="bdg bc">${done.length}</span></div>
     <div class="tw" style="margin-bottom:24px;overflow-x:auto;">
       <table>
-        <thead><tr><th>Date In</th><th>Container</th><th>Lot #</th><th>Vendor</th><th>Variety</th><th>Blocks</th><th>Proj. Yield</th><th>Harvested</th></tr></thead>
-        <tbody>${[...done].sort((a,b)=>b.date.localeCompare(a.date)).map(f=>`<tr>
+        <thead><tr>${thS('fruit-done','date','Date In')}${thS('fruit-done','containerID','Container')}${thS('fruit-done','lotNumber','Lot #')}${thS('fruit-done','vendor','Vendor')}${thS('fruit-done','variety','Variety')}${thS('fruit-done','blockCount','Blocks')}${thS('fruit-done','projLbs','Proj. Yield')}${thS('fruit-done','harvestedAt','Harvested')}</tr></thead>
+        <tbody>${sByKey('fruit-done',[...done],{date:f=>f.date,containerID:f=>f.containerID,lotNumber:f=>f.lotNumber,vendor:f=>f.vendor||'',variety:f=>f.variety,blockCount:f=>f.blockCount||0,projLbs:f=>(f.blockCount||0)*LBSPERBLOCK,harvestedAt:f=>f.harvestedAt||''}).map(f=>`<tr>
           <td class="mn">${fDate(f.date)}</td>
           <td>${f.containerID}</td>
           <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}</td>
@@ -2866,7 +2872,7 @@ function onContainerSelect(code){
 }
 
 function rHarvest(el){
-  const s=[...DB.harvests].sort((a,b)=>b.date.localeCompare(a.date));
+  const s=sByKey('harvest',[...DB.harvests].sort((a,b)=>b.date.localeCompare(a.date)),{date:h=>h.date,container:h=>h.container,facility:h=>h.facility||'',lotNumber:h=>h.lotNumber||'',variety:h=>h.variety,grade:h=>h.grade||'',weight:h=>h.weight||0,usedWeight:h=>h.usedWeight||0});
   const activeContainers=getActiveContainers();
   el.innerHTML=`
     <div class="ph"><div class="ph-t">Harvest Log</div><div class="ph-s">Record each lot from the grow room</div></div>
@@ -2914,7 +2920,7 @@ function rHarvest(el){
     <div class="form-acts"><button class="btn b-m b-lg" onclick="logHarv()">Log Harvest</button></div>
     <div class="toast" id="hl-t">✓ Harvest recorded</div></div>
     <div class="tw"><table>
-      <thead><tr><th>Date</th><th>Container</th><th>Facility</th><th>Lot Number</th><th>Variety</th><th>Grade</th><th>Harvested</th><th>On Hand</th><th>Notes</th></tr></thead>
+      <thead><tr>${thS('harvest','date','Date')}${thS('harvest','container','Container')}${thS('harvest','facility','Facility')}${thS('harvest','lotNumber','Lot Number')}${thS('harvest','variety','Variety')}${thS('harvest','grade','Grade')}${thS('harvest','weight','Harvested')}${thS('harvest','usedWeight','On Hand')}<th>Notes</th></tr></thead>
       <tbody>${s.length===0
         ? '<tr><td colspan="9" class="empty">No harvests logged yet</td></tr>'
         : s.map(h=>{ const onHand=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); const pct=h.weight>0?onHand/h.weight:0; const col=pct>0.5?'#3a6030':pct>0.2?'#b8820a':'#b84c20'; return `<tr>
@@ -2977,12 +2983,12 @@ function rHarvest(el){
 
     <!-- ── SPENT BLOCK HISTORY ── -->
     ${(()=>{
-      const disp=[...DB.blockDisposals].sort((a,b)=>b.date.localeCompare(a.date));
+      const disp=sByKey('blk-disp',[...DB.blockDisposals].sort((a,b)=>b.date.localeCompare(a.date)),{date:d=>d.date,container:d=>d.container,blockCount:d=>d.blockCount||0,reason:d=>d.reason||'',loggedBy:d=>d.loggedBy||''});
       if(!disp.length) return '';
       const reasonCol={spent:'var(--text3)',dead:'var(--rust)',contaminated:'#9a2a2a',other:'var(--text2)'};
       return `<div class="sh" style="margin-top:20px;"><span>Block Removal History</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${disp.length} ENTRIES</span></div>
       <div class="tw"><table>
-        <thead><tr><th>Date</th><th>Container</th><th>Blocks</th><th>Reason</th><th>Logged By</th><th>Notes</th></tr></thead>
+        <thead><tr>${thS('blk-disp','date','Date')}${thS('blk-disp','container','Container')}${thS('blk-disp','blockCount','Blocks')}${thS('blk-disp','reason','Reason')}${thS('blk-disp','loggedBy','Logged By')}<th>Notes</th></tr></thead>
         <tbody>${disp.map(d=>`<tr>
           <td class="mn">${fDate(d.date)}</td>
           <td>${d.container}</td>
@@ -3696,7 +3702,7 @@ function rPreservation(el){
   // On-hand inventory rows
   const onHandRows = onHandBatches.length===0
     ? '<tr><td colspan="7" class="empty">No preserved inventory on hand — log a batch below to create sellable stock</td></tr>'
-    : onHandBatches.map(b=>{
+    : sByKey('prsv-hand',onHandBatches,{batchNumber:b=>b.batchNumber||'',date:b=>b.date,method:b=>b.method||'',weightOut:b=>b.weightOut||0,onHandWeight:b=>b.onHandWeight||0}).map(b=>{
         const col = PRESERVE_COLORS[b.method]||'#5a4a30';
         const varieties = [...new Set((b.sources||[]).map(s=>s.variety))].join(', ')||'—';
         return `<tr>
@@ -3762,7 +3768,7 @@ function rPreservation(el){
 
     <div class="sh"><span>Preserved Inventory — On Hand</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:${onHandBatches.length>0?'var(--moss)':'var(--text3)'};">${onHandBatches.length} BATCH${onHandBatches.length!==1?'ES':''} AVAILABLE</span></div>
     <div class="tw" style="margin-bottom:28px;"><table>
-      <thead><tr><th>Batch #</th><th>Date</th><th>Method</th><th>Varieties</th><th>Yield Out</th><th>On Hand</th><th></th></tr></thead>
+      <thead><tr>${thS('prsv-hand','batchNumber','Batch #')}${thS('prsv-hand','date','Date')}${thS('prsv-hand','method','Method')}<th>Varieties</th>${thS('prsv-hand','weightOut','Yield Out')}${thS('prsv-hand','onHandWeight','On Hand')}<th></th></tr></thead>
       <tbody>${onHandRows}</tbody>
     </table></div>
 
@@ -4914,7 +4920,7 @@ function rQB(el){
 
   const allInvoiced=DB.orders.filter(o=>(o.status==='invoiced'||o.status==='packed')&&!o.isStanding);
   const pending=allInvoiced.filter(o=>!o.qbExported&&(o.week||'')>=fromDate&&(o.week||'')<=toDate);
-  const exported=allInvoiced.filter(o=>o.qbExported).sort((a,b)=>(b.qbExportedAt||'').localeCompare(a.qbExportedAt||''));
+  const exported=sByKey('qb-exp',allInvoiced.filter(o=>o.qbExported).sort((a,b)=>(b.qbExportedAt||'').localeCompare(a.qbExportedAt||'')),{qbInvoiceNum:o=>o.qbInvoiceNum||'',client:o=>o.client,week:o=>o.week||'',amount:o=>eRev(o),qbExportedAt:o=>o.qbExportedAt||''});
 
   const pendingRev=pending.reduce((s,o)=>s+eRev(o),0);
   const exportedRev=exported.reduce((s,o)=>s+eRev(o),0);
@@ -5025,7 +5031,7 @@ function rQB(el){
 
     <div class="sh"><span>Export History</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${exported.length} EXPORTED</span></div>
     <div class="tw" style="margin-bottom:28px;"><table>
-      <thead><tr><th>Invoice #</th><th>Client</th><th>Week</th><th>Items</th><th>Amount</th><th>Exported</th></tr></thead>
+      <thead><tr>${thS('qb-exp','qbInvoiceNum','Invoice #')}${thS('qb-exp','client','Client')}${thS('qb-exp','week','Week')}<th>Items</th>${thS('qb-exp','amount','Amount')}${thS('qb-exp','qbExportedAt','Exported')}</tr></thead>
       <tbody>${exportedRows}</tbody>
     </table></div>
 
