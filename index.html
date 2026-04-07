@@ -5302,169 +5302,347 @@ function seedDemoData(){
   const iso=d=>{ const dt=new Date(); dt.setDate(dt.getDate()-d); return dt.toISOString(); };
   const id=p=>p+'-'+Math.random().toString(36).slice(2,8);
 
-  // ── Clients ──
+  // -- Clients --
   DB.clients=[
     {id:'demo-c-1',name:'The Catbird Seat',contact:'Tyler Brown',email:'chef@catbirdseat.com',phone:'615-555-0101',type:'restaurant',active:true},
     {id:'demo-c-2',name:'Bastion Restaurant',contact:'Josh Habiger',email:'orders@bastionnashville.com',phone:'615-555-0202',type:'restaurant',active:true},
     {id:'demo-c-3',name:'Five Points Pizza',contact:'Mike Malone',email:'mike@fivepointspizza.com',phone:'615-555-0303',type:'restaurant',active:true},
     {id:'demo-c-4',name:'The Turnip Truck',contact:'Dan Blessing',email:'produce@turriptruck.com',phone:'615-555-0404',type:'retail',active:true},
     {id:'demo-c-5',name:"Whole Foods — Green Hills",contact:'Produce Dept',email:'nashville.produce@wfm.com',phone:'615-555-0505',type:'wholesale',active:true},
+    {id:'demo-c-6',name:'Miel Restaurant',contact:'Seema Prasad',email:'orders@miel-nashville.com',phone:'615-555-0606',type:'restaurant',active:true},
+    {id:'demo-c-7',name:'The Pharmacy Burger',contact:'Sam Hatcher',email:'sam@thepharmacynashville.com',phone:'615-555-0707',type:'restaurant',active:true},
+    {id:'demo-c-8',name:'Nashville Farmers Market',contact:'Market Manager',email:'info@nashvillefarmersmarket.org',phone:'615-555-0808',type:'retail',active:true},
   ];
 
-  // ── Harvests ──
+  // -- Harvests: 128 records, ~1653 lb this week --
   DB.harvests=[
-    {id:'demo-h-1',date:yd(0),container:'GH-03-01',facility:"Hyde's Ferry Pike",lotNumber:'LOT-2024-001',variety:'Blue Oyster',grade:'A',weight:28.5,usedWeight:12,sampleWeight:0,preservedWeight:0,notes:'Strong flush, dense clusters'},
-    {id:'demo-h-2',date:yd(1),container:'GH-04-01',facility:"Hyde's Ferry Pike",lotNumber:'LOT-2024-002',variety:"Lion's Mane",grade:'A',weight:14.0,usedWeight:6,sampleWeight:1,preservedWeight:0,notes:'Excellent size'},
-    {id:'demo-h-3',date:yd(1),container:'GH-02-01',facility:"Hyde's Ferry Pike",lotNumber:'LOT-2024-003',variety:'Chestnut',grade:'B',weight:19.0,usedWeight:9,sampleWeight:0,preservedWeight:4,notes:'Second flush'},
-    {id:'demo-h-4',date:yd(2),container:'GH-09-01',facility:"Hyde's Ferry Pike",lotNumber:'LOT-2024-004',variety:'Shiitake',grade:'A',weight:22.0,usedWeight:10,sampleWeight:0,preservedWeight:0,notes:''},
-    {id:'demo-h-5',date:yd(3),container:'CA-03-01',facility:'Carthage',lotNumber:'LOT-2024-005',variety:'Gold Oyster',grade:'A',weight:11.0,usedWeight:3,sampleWeight:0,preservedWeight:0,notes:'First flush of new substrate'},
-    {id:'demo-h-6',date:yd(3),container:'CA-02-01',facility:'Carthage',lotNumber:'LOT-2024-006',variety:'Blue Oyster',grade:'A',weight:32.0,usedWeight:15,sampleWeight:2,preservedWeight:5,notes:'Best yield this month'},
-    {id:'demo-h-7',date:yd(5),container:'MO-02-01',facility:'Opryland',lotNumber:'LOT-2024-007',variety:'Coral Tooth',grade:'A',weight:8.5,usedWeight:4,sampleWeight:1,preservedWeight:0,notes:'Unusual variety, customers excited'},
-    {id:'demo-h-8',date:yd(6),container:'GH-07-01',facility:"Hyde's Ferry Pike",lotNumber:'LOT-2024-008',variety:'Snow Oyster',grade:'B',weight:17.0,usedWeight:8,sampleWeight:0,preservedWeight:2,notes:'Slight humidity issue'},
-    {id:'demo-h-9',date:yd(7),container:'CA-04-01',facility:'Carthage',lotNumber:'LOT-2024-009',variety:"Lion's Mane",grade:'A',weight:10.5,usedWeight:5,sampleWeight:0,preservedWeight:0,notes:''},
-    {id:'demo-h-10',date:yd(8),container:'GH-06-01',facility:"Hyde's Ferry Pike",lotNumber:'LOT-2024-010',variety:'Chestnut',grade:'A',weight:24.0,usedWeight:18,sampleWeight:0,preservedWeight:0,notes:'High demand week'},
+    {id:'demo-h-1',date:yd(0),container:'GH-01-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-001',variety:"Blue Oyster",grade:'A',weight:39.0,usedWeight:21.5,sampleWeight:0,preservedWeight:0,notes:"Strong first flush, dense clusters"},
+    {id:'demo-h-2',date:yd(3),container:'GH-01-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-001',variety:"Blue Oyster",grade:'A',weight:26.0,usedWeight:14.3,sampleWeight:0,preservedWeight:0,notes:"Second flush on schedule"},
+    {id:'demo-h-3',date:yd(2),container:'GH-01-03',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-001',variety:"Blue Oyster",grade:'A',weight:34.2,usedWeight:18.8,sampleWeight:0,preservedWeight:0,notes:"Excellent TM substrate yield"},
+    {id:'demo-h-4',date:yd(5),container:'GH-01-03',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-001',variety:"Blue Oyster",grade:'A',weight:22.8,usedWeight:12.5,sampleWeight:0,preservedWeight:0,notes:"Consistent flush pattern"},
+    {id:'demo-h-5',date:yd(1),container:'GH-02-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-002',variety:"Lion\'s Mane",grade:'A',weight:34.8,usedWeight:19.1,sampleWeight:0,preservedWeight:0,notes:"Premium WS genetics performing"},
+    {id:'demo-h-6',date:yd(4),container:'GH-02-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-002',variety:"Lion\'s Mane",grade:'A',weight:23.2,usedWeight:12.8,sampleWeight:0,preservedWeight:0,notes:"Great clump structure"},
+    {id:'demo-h-7',date:yd(2),container:'GH-03-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-003',variety:"Chestnut",grade:'A',weight:37.2,usedWeight:20.5,sampleWeight:0,preservedWeight:0,notes:"Beautiful nutty aroma, dense clusters"},
+    {id:'demo-h-8',date:yd(5),container:'GH-03-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-003',variety:"Chestnut",grade:'A',weight:24.8,usedWeight:13.6,sampleWeight:0,preservedWeight:0,notes:"Top grade chestnut run"},
+    {id:'demo-h-9',date:yd(0),container:'GH-04-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-004',variety:"Shiitake",grade:'A',weight:45.0,usedWeight:24.8,sampleWeight:0,preservedWeight:0,notes:"Best shiitake flush this month"},
+    {id:'demo-h-10',date:yd(3),container:'GH-04-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-004',variety:"Shiitake",grade:'A',weight:30.0,usedWeight:16.5,sampleWeight:0,preservedWeight:0,notes:"High chef demand — pulled early AM"},
+    {id:'demo-h-11',date:yd(1),container:'GH-04-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-004',variety:"Shiitake",grade:'A',weight:40.2,usedWeight:22.1,sampleWeight:0,preservedWeight:0,notes:"Consistent thick caps grade A"},
+    {id:'demo-h-12',date:yd(4),container:'GH-04-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-004',variety:"Shiitake",grade:'A',weight:26.8,usedWeight:14.7,sampleWeight:0,preservedWeight:0,notes:"Spot on yield"},
+    {id:'demo-h-13',date:yd(2),container:'GH-05-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-005',variety:"Gold Oyster",grade:'A',weight:26.4,usedWeight:14.5,sampleWeight:0,preservedWeight:0,notes:"Vibrant gold color — WS lot above bench"},
+    {id:'demo-h-14',date:yd(6),container:'GH-05-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-005',variety:"Gold Oyster",grade:'A',weight:17.6,usedWeight:9.7,sampleWeight:0,preservedWeight:0,notes:"Clean pull, no waste"},
+    {id:'demo-h-15',date:yd(0),container:'GH-06-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-006',variety:"Snow Oyster",grade:'A',weight:21.0,usedWeight:11.6,sampleWeight:0,preservedWeight:0,notes:"Clean white caps, good moisture"},
+    {id:'demo-h-16',date:yd(5),container:'GH-06-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-006',variety:"Snow Oyster",grade:'A',weight:14.0,usedWeight:7.7,sampleWeight:0,preservedWeight:0,notes:"Steady producer"},
+    {id:'demo-h-17',date:yd(1),container:'GH-08-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-008',variety:"Blue Oyster",grade:'A',weight:36.0,usedWeight:19.8,sampleWeight:0,preservedWeight:0,notes:"Great second flush WS genetics"},
+    {id:'demo-h-18',date:yd(4),container:'GH-08-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-008',variety:"Blue Oyster",grade:'A',weight:24.0,usedWeight:13.2,sampleWeight:0,preservedWeight:0,notes:"Strong producer"},
+    {id:'demo-h-19',date:yd(0),container:'GH-09-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-009',variety:"Shiitake",grade:'A',weight:38.4,usedWeight:21.1,sampleWeight:0,preservedWeight:0,notes:"Premium grade caps"},
+    {id:'demo-h-20',date:yd(3),container:'GH-09-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-009',variety:"Shiitake",grade:'A',weight:25.6,usedWeight:14.1,sampleWeight:0,preservedWeight:0,notes:"Top container this week"},
+    {id:'demo-h-21',date:yd(0),container:'GH-02-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-002',variety:"Lion\'s Mane",grade:'A',weight:18.0,usedWeight:9.9,sampleWeight:0,preservedWeight:0,notes:"Slightly below average, monitoring humidity"},
+    {id:'demo-h-22',date:yd(4),container:'GH-02-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-002',variety:"Lion\'s Mane",grade:'A',weight:12.0,usedWeight:6.6,sampleWeight:0,preservedWeight:0,notes:"Adjusting CO2 next cycle"},
+    {id:'demo-h-23',date:yd(1),container:'GH-03-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-003',variety:"Chestnut",grade:'B',weight:21.0,usedWeight:11.6,sampleWeight:0,preservedWeight:0,notes:"Second flush lighter than expected"},
+    {id:'demo-h-24',date:yd(5),container:'GH-03-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-003',variety:"Chestnut",grade:'B',weight:14.0,usedWeight:7.7,sampleWeight:0,preservedWeight:0,notes:"Scheduling third pin evaluation"},
+    {id:'demo-h-25',date:yd(3),container:'GH-05-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-005',variety:"Gold Oyster",grade:'B',weight:22,usedWeight:12.1,sampleWeight:0,preservedWeight:0,notes:"Light flush — adjusting CO2 and humidity levels"},
+    {id:'demo-h-26',date:yd(2),container:'GH-06-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-006',variety:"Snow Oyster",grade:'B',weight:20,usedWeight:11.0,sampleWeight:0,preservedWeight:0,notes:"Humidity calibration issue mid-cycle resolved"},
+    {id:'demo-h-27',date:yd(1),container:'GH-01-02',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-001',variety:"Blue Oyster",grade:'B',weight:18.0,usedWeight:9.9,sampleWeight:0,preservedWeight:0,notes:"Second flush underperforming — sparse pinning"},
+    {id:'demo-h-28',date:yd(5),container:'GH-01-02',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-001',variety:"Blue Oyster",grade:'B',weight:12.0,usedWeight:6.6,sampleWeight:0,preservedWeight:0,notes:"Substrate aging, scheduling rotation"},
+    {id:'demo-h-29',date:yd(4),container:'GH-07-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-007',variety:"Coral Tooth",grade:'B',weight:16,usedWeight:8.8,sampleWeight:0,preservedWeight:0,notes:"Still dialing in coral tooth fruiting conditions"},
+    {id:'demo-h-30',date:yd(0),container:'CA-01-01',facility:"Carthage",lotNumber:'WS-2026-010',variety:"Blue Oyster",grade:'A',weight:43.8,usedWeight:24.1,sampleWeight:0,preservedWeight:0,notes:"Top yield container this week"},
+    {id:'demo-h-31',date:yd(3),container:'CA-01-01',facility:"Carthage",lotNumber:'WS-2026-010',variety:"Blue Oyster",grade:'A',weight:29.2,usedWeight:16.1,sampleWeight:0,preservedWeight:0,notes:"Perfect pinset, pulled clean"},
+    {id:'demo-h-32',date:yd(1),container:'CA-01-02',facility:"Carthage",lotNumber:'TM-2026-011',variety:"Blue Oyster",grade:'A',weight:39.0,usedWeight:21.5,sampleWeight:0,preservedWeight:0,notes:"Solid TM substrate producer"},
+    {id:'demo-h-33',date:yd(4),container:'CA-01-02',facility:"Carthage",lotNumber:'TM-2026-011',variety:"Blue Oyster",grade:'A',weight:26.0,usedWeight:14.3,sampleWeight:0,preservedWeight:0,notes:"Consistent back-to-back flushes"},
+    {id:'demo-h-34',date:yd(2),container:'CA-02-01',facility:"Carthage",lotNumber:'WS-2026-012',variety:"Lion\'s Mane",grade:'A',weight:34.8,usedWeight:19.1,sampleWeight:0,preservedWeight:0,notes:"Beautiful clumps WS strain consistent"},
+    {id:'demo-h-35',date:yd(5),container:'CA-02-01',facility:"Carthage",lotNumber:'WS-2026-012',variety:"Lion\'s Mane",grade:'A',weight:23.2,usedWeight:12.8,sampleWeight:0,preservedWeight:0,notes:"Above bench this week"},
+    {id:'demo-h-36',date:yd(0),container:'CA-03-01',facility:"Carthage",lotNumber:'TM-2026-014',variety:"Chestnut",grade:'A',weight:40.8,usedWeight:22.4,sampleWeight:0,preservedWeight:0,notes:"Strong Carthage chestnut, dense clusters"},
+    {id:'demo-h-37',date:yd(4),container:'CA-03-01',facility:"Carthage",lotNumber:'TM-2026-014',variety:"Chestnut",grade:'A',weight:27.2,usedWeight:15.0,sampleWeight:0,preservedWeight:0,notes:"On pace for best month"},
+    {id:'demo-h-38',date:yd(1),container:'CA-04-01',facility:"Carthage",lotNumber:'TM-2026-015',variety:"Shiitake",grade:'A',weight:49.2,usedWeight:27.1,sampleWeight:0,preservedWeight:0,notes:"Best shiitake container in system"},
+    {id:'demo-h-39',date:yd(4),container:'CA-04-01',facility:"Carthage",lotNumber:'TM-2026-015',variety:"Shiitake",grade:'A',weight:32.8,usedWeight:18.0,sampleWeight:0,preservedWeight:0,notes:"Chef top request — premium caps"},
+    {id:'demo-h-40',date:yd(0),container:'CA-04-02',facility:"Carthage",lotNumber:'TM-2026-015',variety:"Shiitake",grade:'A',weight:42.0,usedWeight:23.1,sampleWeight:0,preservedWeight:0,notes:"Premium thick caps spot on yield"},
+    {id:'demo-h-41',date:yd(3),container:'CA-04-02',facility:"Carthage",lotNumber:'TM-2026-015',variety:"Shiitake",grade:'A',weight:28.0,usedWeight:15.4,sampleWeight:0,preservedWeight:0,notes:"High demand this week"},
+    {id:'demo-h-42',date:yd(2),container:'CA-05-01',facility:"Carthage",lotNumber:'WS-2026-016',variety:"Gold Oyster",grade:'A',weight:25.2,usedWeight:13.9,sampleWeight:0,preservedWeight:0,notes:"Vivid gold WS lot above bench"},
+    {id:'demo-h-43',date:yd(5),container:'CA-05-01',facility:"Carthage",lotNumber:'WS-2026-016',variety:"Gold Oyster",grade:'A',weight:16.8,usedWeight:9.2,sampleWeight:0,preservedWeight:0,notes:"Top specialty producer"},
+    {id:'demo-h-44',date:yd(1),container:'CA-06-01',facility:"Carthage",lotNumber:'WS-2026-017',variety:"Snow Oyster",grade:'A',weight:21.0,usedWeight:11.6,sampleWeight:0,preservedWeight:0,notes:"Clean snow oyster pull WS source"},
+    {id:'demo-h-45',date:yd(5),container:'CA-06-01',facility:"Carthage",lotNumber:'WS-2026-017',variety:"Snow Oyster",grade:'A',weight:14.0,usedWeight:7.7,sampleWeight:0,preservedWeight:0,notes:"Consistent cold-room conditions"},
+    {id:'demo-h-46',date:yd(0),container:'CA-08-01',facility:"Carthage",lotNumber:'TM-2026-019',variety:"Lion\'s Mane",grade:'A',weight:26.4,usedWeight:14.5,sampleWeight:0,preservedWeight:0,notes:"Good yield second TM batch"},
+    {id:'demo-h-47',date:yd(4),container:'CA-08-01',facility:"Carthage",lotNumber:'TM-2026-019',variety:"Lion\'s Mane",grade:'A',weight:17.6,usedWeight:9.7,sampleWeight:0,preservedWeight:0,notes:"Consistent growth pattern"},
+    {id:'demo-h-48',date:yd(2),container:'CA-03-02',facility:"Carthage",lotNumber:'TM-2026-014',variety:"Chestnut",grade:'A',weight:22.8,usedWeight:12.5,sampleWeight:0,preservedWeight:0,notes:"Second flush lighter, within projections"},
+    {id:'demo-h-49',date:yd(6),container:'CA-03-02',facility:"Carthage",lotNumber:'TM-2026-014',variety:"Chestnut",grade:'A',weight:15.2,usedWeight:8.4,sampleWeight:0,preservedWeight:0,notes:"Watch next cycle"},
+    {id:'demo-h-50',date:yd(1),container:'CA-02-02',facility:"Carthage",lotNumber:'TM-2026-013',variety:"Lion\'s Mane",grade:'B',weight:25,usedWeight:13.8,sampleWeight:0,preservedWeight:0,notes:"Contamination early cycle — isolated 3 blocks, yield light"},
+    {id:'demo-h-51',date:yd(4),container:'CA-07-01',facility:"Carthage",lotNumber:'TM-2026-018',variety:"Coral Tooth",grade:'B',weight:13,usedWeight:7.2,sampleWeight:0,preservedWeight:0,notes:"New variety, still dialing in conditions"},
+    {id:'demo-h-52',date:yd(2),container:'MO-01-01',facility:"Opryland",lotNumber:'WS-2026-020',variety:"Blue Oyster",grade:'A',weight:34.2,usedWeight:18.8,sampleWeight:0,preservedWeight:0,notes:"WS oyster top performer at Opryland"},
+    {id:'demo-h-53',date:yd(6),container:'MO-01-01',facility:"Opryland",lotNumber:'WS-2026-020',variety:"Blue Oyster",grade:'A',weight:22.8,usedWeight:12.5,sampleWeight:0,preservedWeight:0,notes:"Premium color and weight"},
+    {id:'demo-h-54',date:yd(0),container:'MO-01-02',facility:"Opryland",lotNumber:'TM-2026-021',variety:"Blue Oyster",grade:'A',weight:25.2,usedWeight:13.9,sampleWeight:0,preservedWeight:0,notes:"TM substrate solid second flush"},
+    {id:'demo-h-55',date:yd(4),container:'MO-01-02',facility:"Opryland",lotNumber:'TM-2026-021',variety:"Blue Oyster",grade:'A',weight:16.8,usedWeight:9.2,sampleWeight:0,preservedWeight:0,notes:"Reliable producer"},
+    {id:'demo-h-56',date:yd(1),container:'MO-03-01',facility:"Opryland",lotNumber:'TM-2026-023',variety:"Chestnut",grade:'A',weight:33.0,usedWeight:18.2,sampleWeight:0,preservedWeight:0,notes:"Chestnut well at Opryland"},
+    {id:'demo-h-57',date:yd(5),container:'MO-03-01',facility:"Opryland",lotNumber:'TM-2026-023',variety:"Chestnut",grade:'A',weight:22.0,usedWeight:12.1,sampleWeight:0,preservedWeight:0,notes:"Dense brown caps"},
+    {id:'demo-h-58',date:yd(0),container:'MO-04-01',facility:"Opryland",lotNumber:'TM-2026-024',variety:"Shiitake",grade:'A',weight:36.0,usedWeight:19.8,sampleWeight:0,preservedWeight:0,notes:"Solid Opryland shiitake run — top grade"},
+    {id:'demo-h-59',date:yd(3),container:'MO-04-01',facility:"Opryland",lotNumber:'TM-2026-024',variety:"Shiitake",grade:'A',weight:24.0,usedWeight:13.2,sampleWeight:0,preservedWeight:0,notes:"Strong finish to week"},
+    {id:'demo-h-60',date:yd(2),container:'MO-05-01',facility:"Opryland",lotNumber:'WS-2026-025',variety:"Snow Oyster",grade:'A',weight:18.0,usedWeight:9.9,sampleWeight:0,preservedWeight:0,notes:"WS snow oyster producing well"},
+    {id:'demo-h-61',date:yd(6),container:'MO-05-01',facility:"Opryland",lotNumber:'WS-2026-025',variety:"Snow Oyster",grade:'A',weight:12.0,usedWeight:6.6,sampleWeight:0,preservedWeight:0,notes:"Clean white caps"},
+    {id:'demo-h-62',date:yd(3),container:'MO-02-01',facility:"Opryland",lotNumber:'TM-2026-022',variety:"Lion\'s Mane",grade:'A',weight:27,usedWeight:14.9,sampleWeight:0,preservedWeight:0,notes:"Below target — reviewing fruiting room airflow"},
+    {id:'demo-h-63',date:yd(3),container:'MO-06-01',facility:"Opryland",lotNumber:'TM-2026-027',variety:"Coral Tooth",grade:'B',weight:14,usedWeight:7.7,sampleWeight:0,preservedWeight:0,notes:"Specialty variety — building baseline data"},
+    {id:'demo-h-64',date:yd(5),container:'MO-05-02',facility:"Opryland",lotNumber:'TM-2026-026',variety:"Snow Oyster",grade:'B',weight:15,usedWeight:8.2,sampleWeight:0,preservedWeight:0,notes:"Slower than expected — reviewing substrate blend"},
+    {id:'demo-h-65',date:yd(7),container:'GH-01-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-001',variety:"Blue Oyster",grade:'A',weight:37.2,usedWeight:20.5,sampleWeight:0,preservedWeight:0,notes:"Solid first flush"},
+    {id:'demo-h-66',date:yd(10),container:'GH-01-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-001',variety:"Blue Oyster",grade:'A',weight:24.8,usedWeight:13.6,sampleWeight:0,preservedWeight:0,notes:"Back-to-back production week"},
+    {id:'demo-h-67',date:yd(8),container:'GH-01-02',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-001',variety:"Blue Oyster",grade:'B',weight:16.8,usedWeight:9.2,sampleWeight:0,preservedWeight:0,notes:"Second flush continues light"},
+    {id:'demo-h-68',date:yd(11),container:'GH-01-02',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-001',variety:"Blue Oyster",grade:'B',weight:11.2,usedWeight:6.2,sampleWeight:0,preservedWeight:0,notes:"Substrate aging"},
+    {id:'demo-h-69',date:yd(9),container:'GH-01-03',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-001',variety:"Blue Oyster",grade:'A',weight:33.0,usedWeight:18.2,sampleWeight:0,preservedWeight:0,notes:"TM substrate consistent"},
+    {id:'demo-h-70',date:yd(12),container:'GH-01-03',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-001',variety:"Blue Oyster",grade:'A',weight:22.0,usedWeight:12.1,sampleWeight:0,preservedWeight:0,notes:"Good week overall"},
+    {id:'demo-h-71',date:yd(8),container:'GH-02-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-002',variety:"Lion\'s Mane",grade:'A',weight:33.6,usedWeight:18.5,sampleWeight:0,preservedWeight:0,notes:"WS lion\'s mane on pace"},
+    {id:'demo-h-72',date:yd(11),container:'GH-02-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-002',variety:"Lion\'s Mane",grade:'A',weight:22.4,usedWeight:12.3,sampleWeight:0,preservedWeight:0,notes:"Premium quality"},
+    {id:'demo-h-73',date:yd(7),container:'GH-02-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-002',variety:"Lion\'s Mane",grade:'A',weight:19.2,usedWeight:10.6,sampleWeight:0,preservedWeight:0,notes:"Monitoring moisture"},
+    {id:'demo-h-74',date:yd(11),container:'GH-02-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-002',variety:"Lion\'s Mane",grade:'A',weight:12.8,usedWeight:7.0,sampleWeight:0,preservedWeight:0,notes:"Adjusting FAE"},
+    {id:'demo-h-75',date:yd(9),container:'GH-03-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-003',variety:"Chestnut",grade:'A',weight:36.0,usedWeight:19.8,sampleWeight:0,preservedWeight:0,notes:"Chestnut cluster count high"},
+    {id:'demo-h-76',date:yd(12),container:'GH-03-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-003',variety:"Chestnut",grade:'A',weight:24.0,usedWeight:13.2,sampleWeight:0,preservedWeight:0,notes:"Great week"},
+    {id:'demo-h-77',date:yd(8),container:'GH-03-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-003',variety:"Chestnut",grade:'B',weight:19.8,usedWeight:10.9,sampleWeight:0,preservedWeight:0,notes:"Lighter second flush"},
+    {id:'demo-h-78',date:yd(12),container:'GH-03-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-003',variety:"Chestnut",grade:'B',weight:13.2,usedWeight:7.3,sampleWeight:0,preservedWeight:0,notes:"Still harvesting"},
+    {id:'demo-h-79',date:yd(7),container:'GH-04-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-004',variety:"Shiitake",grade:'A',weight:43.2,usedWeight:23.8,sampleWeight:0,preservedWeight:0,notes:"Strong shiitake week"},
+    {id:'demo-h-80',date:yd(10),container:'GH-04-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-004',variety:"Shiitake",grade:'A',weight:28.8,usedWeight:15.8,sampleWeight:0,preservedWeight:0,notes:"Chef orders filled"},
+    {id:'demo-h-81',date:yd(8),container:'GH-04-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-004',variety:"Shiitake",grade:'A',weight:39.0,usedWeight:21.5,sampleWeight:0,preservedWeight:0,notes:"Consistent yield"},
+    {id:'demo-h-82',date:yd(11),container:'GH-04-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-004',variety:"Shiitake",grade:'A',weight:26.0,usedWeight:14.3,sampleWeight:0,preservedWeight:0,notes:"Premium grade"},
+    {id:'demo-h-83',date:yd(9),container:'GH-05-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-005',variety:"Gold Oyster",grade:'A',weight:25.2,usedWeight:13.9,sampleWeight:0,preservedWeight:0,notes:"WS gold above bench"},
+    {id:'demo-h-84',date:yd(13),container:'GH-05-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-005',variety:"Gold Oyster",grade:'A',weight:16.8,usedWeight:9.2,sampleWeight:0,preservedWeight:0,notes:"Vibrant clusters"},
+    {id:'demo-h-85',date:yd(10),container:'GH-05-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-005',variety:"Gold Oyster",grade:'B',weight:20,usedWeight:11.0,sampleWeight:0,preservedWeight:0,notes:"CO2 adjustment made"},
+    {id:'demo-h-86',date:yd(7),container:'GH-06-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-006',variety:"Snow Oyster",grade:'A',weight:19.8,usedWeight:10.9,sampleWeight:0,preservedWeight:0,notes:"Clean pull"},
+    {id:'demo-h-87',date:yd(12),container:'GH-06-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-006',variety:"Snow Oyster",grade:'A',weight:13.2,usedWeight:7.3,sampleWeight:0,preservedWeight:0,notes:"Good snow oyster week"},
+    {id:'demo-h-88',date:yd(9),container:'GH-06-02',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-006',variety:"Snow Oyster",grade:'B',weight:19,usedWeight:10.5,sampleWeight:0,preservedWeight:0,notes:"Humidity issue corrected"},
+    {id:'demo-h-89',date:yd(11),container:'GH-07-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-007',variety:"Coral Tooth",grade:'B',weight:14,usedWeight:7.7,sampleWeight:0,preservedWeight:0,notes:"Coral tooth adjusting"},
+    {id:'demo-h-90',date:yd(8),container:'GH-08-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-008',variety:"Blue Oyster",grade:'A',weight:34.8,usedWeight:19.1,sampleWeight:0,preservedWeight:0,notes:"WS reliable"},
+    {id:'demo-h-91',date:yd(11),container:'GH-08-01',facility:"Hyde\'s Ferry Pike",lotNumber:'WS-2026-008',variety:"Blue Oyster",grade:'A',weight:23.2,usedWeight:12.8,sampleWeight:0,preservedWeight:0,notes:"Strong second flush"},
+    {id:'demo-h-92',date:yd(7),container:'GH-09-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-009',variety:"Shiitake",grade:'A',weight:37.2,usedWeight:20.5,sampleWeight:0,preservedWeight:0,notes:"Top shiitake run"},
+    {id:'demo-h-93',date:yd(10),container:'GH-09-01',facility:"Hyde\'s Ferry Pike",lotNumber:'TM-2026-009',variety:"Shiitake",grade:'A',weight:24.8,usedWeight:13.6,sampleWeight:0,preservedWeight:0,notes:"Premium grade"},
+    {id:'demo-h-94',date:yd(7),container:'CA-01-01',facility:"Carthage",lotNumber:'WS-2026-010',variety:"Blue Oyster",grade:'A',weight:42.6,usedWeight:23.4,sampleWeight:0,preservedWeight:0,notes:"Top WS oyster week"},
+    {id:'demo-h-95',date:yd(10),container:'CA-01-01',facility:"Carthage",lotNumber:'WS-2026-010',variety:"Blue Oyster",grade:'A',weight:28.4,usedWeight:15.6,sampleWeight:0,preservedWeight:0,notes:"Best container running"},
+    {id:'demo-h-96',date:yd(8),container:'CA-01-02',facility:"Carthage",lotNumber:'TM-2026-011',variety:"Blue Oyster",grade:'A',weight:37.8,usedWeight:20.8,sampleWeight:0,preservedWeight:0,notes:"TM substrate solid"},
+    {id:'demo-h-97',date:yd(11),container:'CA-01-02',facility:"Carthage",lotNumber:'TM-2026-011',variety:"Blue Oyster",grade:'A',weight:25.2,usedWeight:13.9,sampleWeight:0,preservedWeight:0,notes:"Consistent week"},
+    {id:'demo-h-98',date:yd(9),container:'CA-02-01',facility:"Carthage",lotNumber:'WS-2026-012',variety:"Lion\'s Mane",grade:'A',weight:33.6,usedWeight:18.5,sampleWeight:0,preservedWeight:0,notes:"WS lion\'s mane dense and heavy"},
+    {id:'demo-h-99',date:yd(12),container:'CA-02-01',facility:"Carthage",lotNumber:'WS-2026-012',variety:"Lion\'s Mane",grade:'A',weight:22.4,usedWeight:12.3,sampleWeight:0,preservedWeight:0,notes:"Great harvest"},
+    {id:'demo-h-100',date:yd(8),container:'CA-02-02',facility:"Carthage",lotNumber:'TM-2026-013',variety:"Lion\'s Mane",grade:'B',weight:22,usedWeight:12.1,sampleWeight:0,preservedWeight:0,notes:"Contamination follow-up — lighter flush"},
+    {id:'demo-h-101',date:yd(7),container:'CA-03-01',facility:"Carthage",lotNumber:'TM-2026-014',variety:"Chestnut",grade:'A',weight:39.6,usedWeight:21.8,sampleWeight:0,preservedWeight:0,notes:"Strong chestnut run"},
+    {id:'demo-h-102',date:yd(11),container:'CA-03-01',facility:"Carthage",lotNumber:'TM-2026-014',variety:"Chestnut",grade:'A',weight:26.4,usedWeight:14.5,sampleWeight:0,preservedWeight:0,notes:"Dense clusters"},
+    {id:'demo-h-103',date:yd(9),container:'CA-03-02',facility:"Carthage",lotNumber:'TM-2026-014',variety:"Chestnut",grade:'A',weight:21.6,usedWeight:11.9,sampleWeight:0,preservedWeight:0,notes:"Second flush on track"},
+    {id:'demo-h-104',date:yd(13),container:'CA-03-02',facility:"Carthage",lotNumber:'TM-2026-014',variety:"Chestnut",grade:'A',weight:14.4,usedWeight:7.9,sampleWeight:0,preservedWeight:0,notes:"Monitoring"},
+    {id:'demo-h-105',date:yd(8),container:'CA-04-01',facility:"Carthage",lotNumber:'TM-2026-015',variety:"Shiitake",grade:'A',weight:48.0,usedWeight:26.4,sampleWeight:0,preservedWeight:0,notes:"Best shiitake in system again"},
+    {id:'demo-h-106',date:yd(11),container:'CA-04-01',facility:"Carthage",lotNumber:'TM-2026-015',variety:"Shiitake",grade:'A',weight:32.0,usedWeight:17.6,sampleWeight:0,preservedWeight:0,notes:"Chef orders up"},
+    {id:'demo-h-107',date:yd(7),container:'CA-04-02',facility:"Carthage",lotNumber:'TM-2026-015',variety:"Shiitake",grade:'A',weight:40.8,usedWeight:22.4,sampleWeight:0,preservedWeight:0,notes:"Premium thick caps"},
+    {id:'demo-h-108',date:yd(10),container:'CA-04-02',facility:"Carthage",lotNumber:'TM-2026-015',variety:"Shiitake",grade:'A',weight:27.2,usedWeight:15.0,sampleWeight:0,preservedWeight:0,notes:"Spot on"},
+    {id:'demo-h-109',date:yd(9),container:'CA-05-01',facility:"Carthage",lotNumber:'WS-2026-016',variety:"Gold Oyster",grade:'A',weight:24.0,usedWeight:13.2,sampleWeight:0,preservedWeight:0,notes:"Gold oyster steady"},
+    {id:'demo-h-110',date:yd(12),container:'CA-05-01',facility:"Carthage",lotNumber:'WS-2026-016',variety:"Gold Oyster",grade:'A',weight:16.0,usedWeight:8.8,sampleWeight:0,preservedWeight:0,notes:"WS above bench"},
+    {id:'demo-h-111',date:yd(8),container:'CA-06-01',facility:"Carthage",lotNumber:'WS-2026-017',variety:"Snow Oyster",grade:'A',weight:19.8,usedWeight:10.9,sampleWeight:0,preservedWeight:0,notes:"Snow oyster clean pull"},
+    {id:'demo-h-112',date:yd(12),container:'CA-06-01',facility:"Carthage",lotNumber:'WS-2026-017',variety:"Snow Oyster",grade:'A',weight:13.2,usedWeight:7.3,sampleWeight:0,preservedWeight:0,notes:"WS source"},
+    {id:'demo-h-113',date:yd(11),container:'CA-07-01',facility:"Carthage",lotNumber:'TM-2026-018',variety:"Coral Tooth",grade:'B',weight:11,usedWeight:6.1,sampleWeight:0,preservedWeight:0,notes:"New variety still learning"},
+    {id:'demo-h-114',date:yd(7),container:'CA-08-01',facility:"Carthage",lotNumber:'TM-2026-019',variety:"Lion\'s Mane",grade:'A',weight:25.2,usedWeight:13.9,sampleWeight:0,preservedWeight:0,notes:"TM LM steady second week"},
+    {id:'demo-h-115',date:yd(11),container:'CA-08-01',facility:"Carthage",lotNumber:'TM-2026-019',variety:"Lion\'s Mane",grade:'A',weight:16.8,usedWeight:9.2,sampleWeight:0,preservedWeight:0,notes:"Good yield"},
+    {id:'demo-h-116',date:yd(9),container:'MO-01-01',facility:"Opryland",lotNumber:'WS-2026-020',variety:"Blue Oyster",grade:'A',weight:33.0,usedWeight:18.2,sampleWeight:0,preservedWeight:0,notes:"WS oyster top producer"},
+    {id:'demo-h-117',date:yd(13),container:'MO-01-01',facility:"Opryland",lotNumber:'WS-2026-020',variety:"Blue Oyster",grade:'A',weight:22.0,usedWeight:12.1,sampleWeight:0,preservedWeight:0,notes:"Great color"},
+    {id:'demo-h-118',date:yd(7),container:'MO-01-02',facility:"Opryland",lotNumber:'TM-2026-021',variety:"Blue Oyster",grade:'A',weight:24.0,usedWeight:13.2,sampleWeight:0,preservedWeight:0,notes:"TM substrate solid"},
+    {id:'demo-h-119',date:yd(11),container:'MO-01-02',facility:"Opryland",lotNumber:'TM-2026-021',variety:"Blue Oyster",grade:'A',weight:16.0,usedWeight:8.8,sampleWeight:0,preservedWeight:0,notes:"Good week Opryland"},
+    {id:'demo-h-120',date:yd(10),container:'MO-02-01',facility:"Opryland",lotNumber:'TM-2026-022',variety:"Lion\'s Mane",grade:'A',weight:26,usedWeight:14.3,sampleWeight:0,preservedWeight:0,notes:"Lion\'s mane airflow review in progress"},
+    {id:'demo-h-121',date:yd(8),container:'MO-03-01',facility:"Opryland",lotNumber:'TM-2026-023',variety:"Chestnut",grade:'A',weight:31.8,usedWeight:17.5,sampleWeight:0,preservedWeight:0,notes:"Chestnut on target"},
+    {id:'demo-h-122',date:yd(12),container:'MO-03-01',facility:"Opryland",lotNumber:'TM-2026-023',variety:"Chestnut",grade:'A',weight:21.2,usedWeight:11.7,sampleWeight:0,preservedWeight:0,notes:"Dense clusters"},
+    {id:'demo-h-123',date:yd(7),container:'MO-04-01',facility:"Opryland",lotNumber:'TM-2026-024',variety:"Shiitake",grade:'A',weight:34.8,usedWeight:19.1,sampleWeight:0,preservedWeight:0,notes:"Shiitake top grade"},
+    {id:'demo-h-124',date:yd(10),container:'MO-04-01',facility:"Opryland",lotNumber:'TM-2026-024',variety:"Shiitake",grade:'A',weight:23.2,usedWeight:12.8,sampleWeight:0,preservedWeight:0,notes:"Strong producer"},
+    {id:'demo-h-125',date:yd(9),container:'MO-05-01',facility:"Opryland",lotNumber:'WS-2026-025',variety:"Snow Oyster",grade:'A',weight:16.8,usedWeight:9.2,sampleWeight:0,preservedWeight:0,notes:"WS snow steady"},
+    {id:'demo-h-126',date:yd(13),container:'MO-05-01',facility:"Opryland",lotNumber:'WS-2026-025',variety:"Snow Oyster",grade:'A',weight:11.2,usedWeight:6.2,sampleWeight:0,preservedWeight:0,notes:"White caps clean"},
+    {id:'demo-h-127',date:yd(12),container:'MO-05-02',facility:"Opryland",lotNumber:'TM-2026-026',variety:"Snow Oyster",grade:'B',weight:13,usedWeight:7.2,sampleWeight:0,preservedWeight:0,notes:"Substrate review — second flush light"},
+    {id:'demo-h-128',date:yd(10),container:'MO-06-01',facility:"Opryland",lotNumber:'TM-2026-027',variety:"Coral Tooth",grade:'B',weight:12,usedWeight:6.6,sampleWeight:0,preservedWeight:0,notes:"Specialty variety building baseline"}
   ];
 
-  // ── Orders ──
+  // -- Orders --
   const wk=wkStart();
+  const pwk=wkStart(new Date(Date.now()-7*86400000));
   DB.orders=[
-    {id:'demo-o-1',clientId:'demo-c-1',client:'The Catbird Seat',day:'Tuesday',status:'confirmed',oyster:4,chefs:2,lions:2,chestnut:0,shiitake:1,lionsPack:0,chefsPack:0,notes:'',week:wk,custom:false,isStanding:false,orderRef:'HQ-2026-001'},
-    {id:'demo-o-2',clientId:'demo-c-2',client:'Bastion Restaurant',day:'Tuesday',status:'pending',oyster:2,chefs:0,lions:3,chestnut:1,shiitake:0,lionsPack:0,chefsPack:0,notes:'Extra lion mane if available',week:wk,custom:false,isStanding:false,orderRef:'HQ-2026-002'},
-    {id:'demo-o-3',clientId:'demo-c-3',client:"Five Points Pizza",day:'Thursday',status:'confirmed',oyster:3,chefs:1,lions:0,chestnut:2,shiitake:0,lionsPack:4,chefsPack:0,notes:'',week:wk,custom:false,isStanding:false,orderRef:'HQ-2026-003'},
-    {id:'demo-o-4',clientId:'demo-c-4',client:'The Turnip Truck',day:'Wednesday',status:'packed',oyster:6,chefs:0,lions:2,chestnut:3,shiitake:2,lionsPack:0,chefsPack:0,notes:'Retail mix',week:wk,custom:false,isStanding:false,packedAt:'Mon 8:15 AM',orderRef:'HQ-2026-004'},
-    {id:'demo-o-5',clientId:'demo-c-5',client:'Whole Foods — Green Hills',day:'Monday',status:'invoiced',oyster:12,chefs:0,lions:0,chestnut:0,shiitake:0,lionsPack:0,chefsPack:0,notes:'Wholesale — 12× 3lb oyster',week:wk,custom:true,customType:'wholesale',isStanding:false,packedAt:'Mon 6:00 AM',invoicedAt:'Mon 9:00 AM',orderRef:'QB-2026-0088',qbExported:true,qbInvoiceNum:'INV-2026-001',qbExportedAt:iso(3)},
-    {id:'demo-o-6',clientId:'demo-c-1',client:'The Catbird Seat',day:'Tuesday',status:'confirmed',oyster:2,chefs:2,lions:1,chestnut:0,shiitake:0,lionsPack:0,chefsPack:0,notes:'Standing order',week:wkStart(new Date(Date.now()-7*86400000)),custom:false,isStanding:true,orderRef:'HQ-2026-005'},
+    {id:'demo-o-1',clientId:'demo-c-1',client:'The Catbird Seat',day:'Tuesday',status:'confirmed',oyster:8,chefs:4,lions:4,chestnut:2,shiitake:2,lionsPack:0,chefsPack:0,notes:'Weekly standing — upgrade to 8 oyster',week:wk,custom:false,isStanding:false,orderRef:'HQ-2026-011'},
+    {id:'demo-o-2',clientId:'demo-c-2',client:'Bastion Restaurant',day:'Tuesday',status:'pending',oyster:5,chefs:0,lions:6,chestnut:2,shiitake:0,lionsPack:4,chefsPack:0,notes:'Extra lion mane if available',week:wk,custom:false,isStanding:false,orderRef:'HQ-2026-012'},
+    {id:'demo-o-3',clientId:'demo-c-3',client:"Five Points Pizza",day:'Thursday',status:'confirmed',oyster:6,chefs:2,lions:0,chestnut:4,shiitake:0,lionsPack:8,chefsPack:4,notes:'',week:wk,custom:false,isStanding:false,orderRef:'HQ-2026-013'},
+    {id:'demo-o-4',clientId:'demo-c-4',client:'The Turnip Truck',day:'Wednesday',status:'packed',oyster:14,chefs:0,lions:4,chestnut:6,shiitake:4,lionsPack:0,chefsPack:0,notes:'Retail mix — peak season',week:wk,custom:false,isStanding:false,packedAt:'Mon 8:15 AM',orderRef:'HQ-2026-014'},
+    {id:'demo-o-5',clientId:'demo-c-5',client:"Whole Foods — Green Hills",day:'Monday',status:'invoiced',oyster:30,chefs:0,lions:0,chestnut:0,shiitake:10,lionsPack:0,chefsPack:0,notes:'Wholesale — 30x 3lb oyster, 10x shiitake',week:wk,custom:true,customType:'wholesale',isStanding:false,packedAt:'Mon 6:00 AM',invoicedAt:'Mon 9:00 AM',orderRef:'QB-2026-0088',qbExported:true,qbInvoiceNum:'INV-2026-042',qbExportedAt:iso(3)},
+    {id:'demo-o-6',clientId:'demo-c-6',client:'Miel Restaurant',day:'Wednesday',status:'confirmed',oyster:4,chefs:2,lions:3,chestnut:0,shiitake:2,lionsPack:0,chefsPack:0,notes:'Standing — Wednesday delivery',week:wk,custom:false,isStanding:true,orderRef:'HQ-2026-015'},
+    {id:'demo-o-7',clientId:'demo-c-7',client:'The Pharmacy Burger',day:'Thursday',status:'confirmed',oyster:6,chefs:2,lions:0,chestnut:2,shiitake:0,lionsPack:0,chefsPack:0,notes:'',week:wk,custom:false,isStanding:false,orderRef:'HQ-2026-016'},
+    {id:'demo-o-8',clientId:'demo-c-8',client:'Nashville Farmers Market',day:'Saturday',status:'pending',oyster:20,chefs:0,lions:6,chestnut:6,shiitake:6,lionsPack:12,chefsPack:0,notes:'Market day mix for retail booth',week:wk,custom:false,isStanding:false,orderRef:'HQ-2026-017'},
+    {id:'demo-o-9',clientId:'demo-c-1',client:'The Catbird Seat',day:'Tuesday',status:'invoiced',oyster:8,chefs:4,lions:4,chestnut:2,shiitake:2,lionsPack:0,chefsPack:0,notes:'',week:pwk,custom:false,isStanding:true,packedAt:'Tue 7:00 AM',invoicedAt:'Tue 9:30 AM',orderRef:'HQ-2026-006',qbExported:true,qbInvoiceNum:'INV-2026-041',qbExportedAt:iso(7)},
+    {id:'demo-o-10',clientId:'demo-c-5',client:"Whole Foods — Green Hills",day:'Monday',status:'invoiced',oyster:28,chefs:0,lions:0,chestnut:0,shiitake:8,lionsPack:0,chefsPack:0,notes:'',week:pwk,custom:true,customType:'wholesale',isStanding:false,packedAt:'Mon 6:00 AM',invoicedAt:'Mon 9:00 AM',orderRef:'QB-2026-0082',qbExported:true,qbInvoiceNum:'INV-2026-040',qbExportedAt:iso(10)},
   ];
 
-  // ── Fruitings ──
+  // -- Fruitings: 36 containers (all aligned with harvest container IDs) --
   DB.fruitings=[
-    {id:'demo-f-1',date:yd(4),containerID:'GH-05-01',lotNumber:'BLK-2024-001',vendor:'Field & Forest',variety:'Blue Oyster',blockCount:8,blockWeightLb:5,notes:'New substrate batch',status:'fruiting'},
-    {id:'demo-f-2',date:yd(6),containerID:'GH-01-01',lotNumber:'BLK-2024-002',vendor:'Fungi Perfecti',variety:"Lion's Mane",blockCount:6,blockWeightLb:4,notes:'',status:'fruiting'},
-    {id:'demo-f-3',date:yd(10),containerID:'CA-03-01',lotNumber:'BLK-2024-003',vendor:'Field & Forest',variety:'Shiitake',blockCount:12,blockWeightLb:5,notes:'High temp tolerance strain',status:'fruiting'},
-    {id:'demo-f-4',date:yd(14),containerID:'GH-08-01',lotNumber:'BLK-2024-004',vendor:'North Spore',variety:'Chestnut',blockCount:10,blockWeightLb:4.5,notes:'Third pin set',status:'harvested',harvestedAt:yd(2)},
+    {id:'demo-f-1',date:yd(14),containerID:'GH-01-01',lotNumber:'WS-2026-001',vendor:"Wild Spore Genetics",variety:"Blue Oyster",blockCount:50,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-2',date:yd(18),containerID:'GH-01-02',lotNumber:'WS-2026-001',vendor:"Wild Spore Genetics",variety:"Blue Oyster",blockCount:48,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-3',date:yd(12),containerID:'GH-01-03',lotNumber:'TM-2026-001',vendor:"Totally Mushrooms",variety:"Blue Oyster",blockCount:44,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-4',date:yd(16),containerID:'GH-02-01',lotNumber:'WS-2026-002',vendor:"Wild Spore Genetics",variety:"Lion\'s Mane",blockCount:46,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-5',date:yd(20),containerID:'GH-02-02',lotNumber:'TM-2026-002',vendor:"Totally Mushrooms",variety:"Lion\'s Mane",blockCount:40,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-6',date:yd(15),containerID:'GH-03-01',lotNumber:'TM-2026-003',vendor:"Totally Mushrooms",variety:"Chestnut",blockCount:48,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-7',date:yd(22),containerID:'GH-03-02',lotNumber:'TM-2026-003',vendor:"Totally Mushrooms",variety:"Chestnut",blockCount:44,blockWeightLb:5.0,notes:'',status:'harvested',harvestedAt:yd(20)},
+    {id:'demo-f-8',date:yd(13),containerID:'GH-04-01',lotNumber:'TM-2026-004',vendor:"Totally Mushrooms",variety:"Shiitake",blockCount:56,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-9',date:yd(19),containerID:'GH-04-02',lotNumber:'TM-2026-004',vendor:"Totally Mushrooms",variety:"Shiitake",blockCount:52,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-10',date:yd(11),containerID:'GH-05-01',lotNumber:'WS-2026-005',vendor:"Wild Spore Genetics",variety:"Gold Oyster",blockCount:36,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-11',date:yd(17),containerID:'GH-05-02',lotNumber:'TM-2026-005',vendor:"Totally Mushrooms",variety:"Gold Oyster",blockCount:30,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-12',date:yd(10),containerID:'GH-06-01',lotNumber:'TM-2026-006',vendor:"Totally Mushrooms",variety:"Snow Oyster",blockCount:32,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-13',date:yd(14),containerID:'GH-06-02',lotNumber:'TM-2026-006',vendor:"Totally Mushrooms",variety:"Snow Oyster",blockCount:28,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-14',date:yd(8),containerID:'GH-07-01',lotNumber:'TM-2026-007',vendor:"Totally Mushrooms",variety:"Coral Tooth",blockCount:24,blockWeightLb:4.0,notes:'',status:'fruiting'},
+    {id:'demo-f-15',date:yd(9),containerID:'GH-08-01',lotNumber:'WS-2026-008',vendor:"Wild Spore Genetics",variety:"Blue Oyster",blockCount:46,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-16',date:yd(21),containerID:'GH-09-01',lotNumber:'TM-2026-009',vendor:"Totally Mushrooms",variety:"Shiitake",blockCount:50,blockWeightLb:5.0,notes:'',status:'harvested',harvestedAt:yd(19)},
+    {id:'demo-f-17',date:yd(13),containerID:'CA-01-01',lotNumber:'WS-2026-010',vendor:"Wild Spore Genetics",variety:"Blue Oyster",blockCount:56,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-18',date:yd(17),containerID:'CA-01-02',lotNumber:'TM-2026-011',vendor:"Totally Mushrooms",variety:"Blue Oyster",blockCount:50,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-19',date:yd(12),containerID:'CA-02-01',lotNumber:'WS-2026-012',vendor:"Wild Spore Genetics",variety:"Lion\'s Mane",blockCount:46,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-20',date:yd(16),containerID:'CA-02-02',lotNumber:'TM-2026-013',vendor:"Totally Mushrooms",variety:"Lion\'s Mane",blockCount:42,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-21',date:yd(14),containerID:'CA-03-01',lotNumber:'TM-2026-014',vendor:"Totally Mushrooms",variety:"Chestnut",blockCount:52,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-22',date:yd(20),containerID:'CA-03-02',lotNumber:'TM-2026-014',vendor:"Totally Mushrooms",variety:"Chestnut",blockCount:48,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-23',date:yd(11),containerID:'CA-04-01',lotNumber:'TM-2026-015',vendor:"Totally Mushrooms",variety:"Shiitake",blockCount:60,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-24',date:yd(18),containerID:'CA-04-02',lotNumber:'TM-2026-015',vendor:"Totally Mushrooms",variety:"Shiitake",blockCount:54,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-25',date:yd(10),containerID:'CA-05-01',lotNumber:'WS-2026-016',vendor:"Wild Spore Genetics",variety:"Gold Oyster",blockCount:34,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-26',date:yd(15),containerID:'CA-06-01',lotNumber:'WS-2026-017',vendor:"Wild Spore Genetics",variety:"Snow Oyster",blockCount:30,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-27',date:yd(9),containerID:'CA-07-01',lotNumber:'TM-2026-018',vendor:"Totally Mushrooms",variety:"Coral Tooth",blockCount:22,blockWeightLb:4.0,notes:'',status:'fruiting'},
+    {id:'demo-f-28',date:yd(13),containerID:'CA-08-01',lotNumber:'TM-2026-019',vendor:"Totally Mushrooms",variety:"Lion\'s Mane",blockCount:38,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-29',date:yd(11),containerID:'MO-01-01',lotNumber:'WS-2026-020',vendor:"Wild Spore Genetics",variety:"Blue Oyster",blockCount:44,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-30',date:yd(16),containerID:'MO-01-02',lotNumber:'TM-2026-021',vendor:"Totally Mushrooms",variety:"Blue Oyster",blockCount:38,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-31',date:yd(14),containerID:'MO-02-01',lotNumber:'TM-2026-022',vendor:"Totally Mushrooms",variety:"Lion\'s Mane",blockCount:36,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-32',date:yd(12),containerID:'MO-03-01',lotNumber:'TM-2026-023',vendor:"Totally Mushrooms",variety:"Chestnut",blockCount:42,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-33',date:yd(10),containerID:'MO-04-01',lotNumber:'TM-2026-024',vendor:"Totally Mushrooms",variety:"Shiitake",blockCount:46,blockWeightLb:5.0,notes:'',status:'fruiting'},
+    {id:'demo-f-34',date:yd(8),containerID:'MO-05-01',lotNumber:'WS-2026-025',vendor:"Wild Spore Genetics",variety:"Snow Oyster",blockCount:26,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-35',date:yd(13),containerID:'MO-05-02',lotNumber:'TM-2026-026',vendor:"Totally Mushrooms",variety:"Snow Oyster",blockCount:22,blockWeightLb:4.5,notes:'',status:'fruiting'},
+    {id:'demo-f-36',date:yd(7),containerID:'MO-06-01',lotNumber:'TM-2026-027',vendor:"Totally Mushrooms",variety:"Coral Tooth",blockCount:18,blockWeightLb:4.0,notes:'',status:'fruiting'}
   ];
 
-  // ── Preservation (legacy log — kept for backward compat display) ──
+  // -- Preservation --
   DB.preservation=[];
-
-  // ── Preservation Batches (PRSV system) ──
   DB.preservationBatches=[
     {id:'demo-pb-1',batchNumber:'PRSV-2026-001',date:yd(4),method:'Freeze (Fresh Frozen)',facility:'Carthage',
-      sources:[{harvestId:'demo-h-3',lotNumber:'LOT-2024-003',variety:'Chestnut',weightIn:4}],
+      sources:[{harvestId:'demo-h-7',lotNumber:'TM-2026-003',variety:'Chestnut',weightIn:4}],
       totalWeightIn:4,weightOut:3.8,onHandWeight:3.8,status:'in-stock',
       notes:'Packed in 1lb bags',createdBy:'Allen M.',timestamp:iso(4)},
     {id:'demo-pb-2',batchNumber:'PRSV-2026-002',date:yd(2),method:'Dehydrate',facility:'Carthage',
-      sources:[{harvestId:'demo-h-6',lotNumber:'LOT-2024-006',variety:'Blue Oyster',weightIn:5}],
+      sources:[{harvestId:'demo-h-30',lotNumber:'WS-2026-010',variety:'Blue Oyster',weightIn:5}],
       totalWeightIn:5,weightOut:0.9,onHandWeight:0,status:'dispatched',
       notes:'Dried to chips — 5:1 ratio. Dispatched to Whole Foods.',createdBy:'Allen M.',timestamp:iso(2)},
-    {id:'demo-pb-3',batchNumber:'PRSV-2026-003',date:yd(1),method:'Freeze (Fresh Frozen)',facility:'Carthage',
+    {id:'demo-pb-3',batchNumber:'PRSV-2026-003',date:yd(1),method:'Freeze (Fresh Frozen)',facility:"Hyde\'s Ferry Pike",
       sources:[
-        {harvestId:'demo-h-8',lotNumber:'LOT-2024-008',variety:'Snow Oyster',weightIn:2},
-        {harvestId:'demo-h-1',lotNumber:'LOT-2024-001',variety:'Blue Oyster',weightIn:3}
+        {harvestId:'demo-h-44',lotNumber:'WS-2026-017',variety:'Snow Oyster',weightIn:2},
+        {harvestId:'demo-h-1',lotNumber:'WS-2026-001',variety:'Blue Oyster',weightIn:3}
       ],
       totalWeightIn:5,weightOut:4.8,onHandWeight:2.3,status:'partial',
-      notes:'Multi-lot batch. 2.5lb already dispatched to Catbird Seat.',createdBy:'Allen M.',timestamp:iso(1)},
+      notes:'Multi-lot batch. 2.5lb dispatched to Catbird Seat.',createdBy:'Allen M.',timestamp:iso(1)},
+    {id:'demo-pb-4',batchNumber:'PRSV-2026-004',date:yd(6),method:'Powder',facility:'Carthage',
+      sources:[{harvestId:'demo-h-38',lotNumber:'TM-2026-015',variety:'Shiitake',weightIn:8}],
+      totalWeightIn:8,weightOut:1.1,onHandWeight:1.1,status:'in-stock',
+      notes:'Fine powder — 7:1 dry ratio. High-value product.',createdBy:'Allen M.',timestamp:iso(6)},
   ];
 
-  // ── Lab Batches (Production Logs) ──
+  // -- Lab Batches --
   DB.labBatches=[
     {
-      id:'demo-lb-1', batchNum:'LAB-2026-001',
-      productionDate:yd(14), substrateBatch:'SB-2026-01', lotCode:'LOT-2026-LAB-001',
-      order:'1 of 2', strain:'Blue Oyster',
-      substrateLbs:200, buckets:8, gallonsWater:26, blockCount:40,
-      waterStartTime:'07:00', waterEndTime:'07:45', mixTime:'08:00',
+      id:'demo-lb-1',batchNum:'LAB-2026-001',
+      productionDate:yd(14),substrateBatch:'SB-2026-01',lotCode:'TM-2026-003',
+      order:'1 of 2',strain:'Blue Oyster',
+      substrateLbs:200,buckets:8,gallonsWater:26,blockCount:48,
+      waterStartTime:'07:00',waterEndTime:'07:45',mixTime:'08:00',
       prodNotes:'Good moisture, substrate packed tight. No clumping.',
-      sterilizationDate:yd(14), autoclaveTemp:250, cookTimeHours:2.5,
-      cookTimeStart:'09:00', cookTimeEnd:'11:30',
+      sterilizationDate:yd(14),autoclaveTemp:250,cookTimeHours:2.5,
+      cookTimeStart:'09:00',cookTimeEnd:'11:30',
       sterNotes:'Pressure held steady. Blocks cooled overnight.',
-      spawnDate:yd(12), spawnSource:'Grain Spawn', spawnQuantity:'10% by weight — 20 lbs grain',
-      spawnLot:'GS-2026-007', labNotes:'All blocks inoculated under still air box. Clean workflow.',
-      rackLocation:'Rack A, Shelf 1-2 — Carthage Inc. Room 1', expectedColDays:16,
-      roomNotes:'Temp 72°F, humidity 85%. First signs of mycelium at day 4.',
-      createdBy:'Allen M.', timestamp:iso(14)
+      spawnDate:yd(12),spawnSource:'Grain Spawn',spawnQuantity:'10% by weight — 20 lbs grain',
+      spawnLot:'GS-2026-007',labNotes:'All blocks inoculated under still air box. Clean workflow.',
+      rackLocation:'Rack A, Shelf 1-2 — Carthage Inc. Room 1',expectedColDays:16,
+      roomNotes:'Temp 72F, humidity 85%. First signs of mycelium at day 4.',
+      createdBy:'Allen M.',timestamp:iso(14)
     },
     {
-      id:'demo-lb-2', batchNum:'LAB-2026-002',
-      productionDate:yd(7), substrateBatch:'SB-2026-02', lotCode:'LOT-2026-LAB-002',
-      order:'1 of 1', strain:"Lion's Mane",
-      substrateLbs:100, buckets:4, gallonsWater:13, blockCount:20,
-      waterStartTime:'07:30', waterEndTime:'08:00', mixTime:'08:15',
+      id:'demo-lb-2',batchNum:'LAB-2026-002',
+      productionDate:yd(7),substrateBatch:'SB-2026-02',lotCode:'WS-2026-002',
+      order:'1 of 1',strain:"Lion's Mane",
+      substrateLbs:100,buckets:4,gallonsWater:13,blockCount:46,
+      waterStartTime:'07:30',waterEndTime:'08:00',mixTime:'08:15',
       prodNotes:"Master's mix trial. Higher bran ratio.",
-      sterilizationDate:yd(7), autoclaveTemp:250, cookTimeHours:3,
-      cookTimeStart:'09:30', cookTimeEnd:'12:30',
-      sterNotes:'Extended cook time for master\'s mix. Blocks firm after cooling.',
-      spawnDate:yd(5), spawnSource:"Liquid Culture (LC)", spawnQuantity:'10cc per bag',
-      spawnLot:'LC-LM-04', labNotes:'LC syringe healthy — thick white mycelium. No contamination visible at inoculation.',
-      rackLocation:'Rack B, Shelf 3 — Carthage Inc. Room 1', expectedColDays:18,
+      sterilizationDate:yd(7),autoclaveTemp:250,cookTimeHours:3,
+      cookTimeStart:'09:30',cookTimeEnd:'12:30',
+      sterNotes:"Extended cook time for master's mix. Blocks firm after cooling.",
+      spawnDate:yd(5),spawnSource:'Liquid Culture (LC)',spawnQuantity:'10cc per bag',
+      spawnLot:'LC-LM-04',labNotes:'LC syringe healthy — thick white mycelium. No contamination at inoculation.',
+      rackLocation:'Rack B, Shelf 3 — Carthage Inc. Room 1',expectedColDays:18,
       roomNotes:'',
-      createdBy:'Allen M.', timestamp:iso(7)
+      createdBy:'Allen M.',timestamp:iso(7)
     },
     {
-      id:'demo-lb-3', batchNum:'LAB-2026-003',
-      productionDate:yd(2), substrateBatch:'SB-2026-03', lotCode:'LOT-2026-LAB-003',
-      order:'2 of 2', strain:'Chestnut',
-      substrateLbs:150, buckets:6, gallonsWater:19, blockCount:30,
-      waterStartTime:'07:00', waterEndTime:'07:40', mixTime:'07:55',
-      prodNotes:'Second run of the week. Substrate looked great.',
-      sterilizationDate:yd(2), autoclaveTemp:250, cookTimeHours:2.5,
-      cookTimeStart:'09:00', cookTimeEnd:'11:30',
-      sterNotes:'Normal run. Blocks still warm as of end of day.',
-      spawnDate:'', spawnSource:'', spawnQuantity:'', spawnLot:'',
-      labNotes:'', rackLocation:'', expectedColDays:0, roomNotes:'',
-      createdBy:'Allen M.', timestamp:iso(2)
+      id:'demo-lb-3',batchNum:'LAB-2026-003',
+      productionDate:yd(2),substrateBatch:'SB-2026-03',lotCode:'TM-2026-015',
+      order:'2 of 2',strain:'Shiitake',
+      substrateLbs:150,buckets:6,gallonsWater:19,blockCount:54,
+      waterStartTime:'07:00',waterEndTime:'07:40',mixTime:'07:55',
+      prodNotes:'Second shiitake run of the week. Substrate looked excellent.',
+      sterilizationDate:yd(2),autoclaveTemp:250,cookTimeHours:2.5,
+      cookTimeStart:'09:00',cookTimeEnd:'11:30',
+      sterNotes:'Normal run. Blocks still warm end of day.',
+      spawnDate:'',spawnSource:'',spawnQuantity:'',spawnLot:'',
+      labNotes:'',rackLocation:'',expectedColDays:0,roomNotes:'',
+      createdBy:'Allen M.',timestamp:iso(2)
+    },
+    {
+      id:'demo-lb-4',batchNum:'LAB-2026-004',
+      productionDate:yd(5),substrateBatch:'SB-2026-04',lotCode:'TM-2026-009',
+      order:'1 of 1',strain:'Chestnut',
+      substrateLbs:175,buckets:7,gallonsWater:22,blockCount:50,
+      waterStartTime:'07:00',waterEndTime:'07:50',mixTime:'08:05',
+      prodNotes:'Smooth run — dialed in ratios from last batch.',
+      sterilizationDate:yd(5),autoclaveTemp:250,cookTimeHours:2.5,
+      cookTimeStart:'09:00',cookTimeEnd:'11:30',
+      sterNotes:'Clean cook. Consistent pressure throughout.',
+      spawnDate:yd(3),spawnSource:'Grain Spawn',spawnQuantity:'10% by weight — 17.5 lbs',
+      spawnLot:'GS-2026-009',labNotes:'Clean inoculation, no contamination observed.',
+      rackLocation:'Rack C, Shelf 1-2 — Carthage Inc. Room 2',expectedColDays:16,
+      roomNotes:'Mycelium showing at day 3. Looking strong.',
+      createdBy:'Jake M.',timestamp:iso(5)
     },
   ];
 
-  // ── Block Disposals ──
+  // -- Block Disposals --
   DB.blockDisposals=[
-    {id:'demo-bd-1',date:yd(5),container:'GH-03-01',blockCount:4,reason:'spent',notes:'Third flush complete, no more pins',loggedBy:'Jake M.',timestamp:iso(5)},
-    {id:'demo-bd-2',date:yd(2),container:'GH-02-01',blockCount:2,reason:'contaminated',notes:'Green mold on 2 blocks, isolated and removed',loggedBy:'Sarah K.',timestamp:iso(2)},
-    {id:'demo-bd-3',date:yd(1),container:'CA-03-01',blockCount:6,reason:'spent',notes:'Last harvest was very light, called it',loggedBy:'Allen M.',timestamp:iso(1)},
+    {id:'demo-bd-1',date:yd(5),container:'GH-01-02',blockCount:4,reason:'spent',notes:'Third flush complete — substrate exhausted',loggedBy:'Jake M.',timestamp:iso(5)},
+    {id:'demo-bd-2',date:yd(2),container:'CA-02-02',blockCount:3,reason:'contaminated',notes:'Green mold on 3 blocks early cycle — isolated',loggedBy:'Sarah K.',timestamp:iso(2)},
+    {id:'demo-bd-3',date:yd(1),container:'MO-05-02',blockCount:2,reason:'spent',notes:'Second flush very light — pulled early',loggedBy:'Allen M.',timestamp:iso(1)},
+    {id:'demo-bd-4',date:yd(4),container:'GH-07-01',blockCount:2,reason:'contaminated',notes:'Wet rot on 2 blocks — contamination isolated',loggedBy:'Jake M.',timestamp:iso(4)},
+    {id:'demo-bd-5',date:yd(3),container:'CA-07-01',blockCount:2,reason:'spent',notes:'First flush very sparse — variety still being dialed in',loggedBy:'Allen M.',timestamp:iso(3)},
   ];
 
-  // ── Product Movements ──
+  // -- Product Movements --
   DB.productMovements=[
-    {id:'demo-m-1',harvestId:'demo-h-6',lotNumber:'LOT-2024-006',variety:'Blue Oyster',fromFacility:'Carthage',fromContainer:'CA-02-01',destType:'internal',toFacility:'Carthage',toClient:'',toClientName:'',productState:'Fresh',weight:5,date:yd(1),time:'09:30',driver:'Jake M.',vehicle:'Sprinter Van',tempAtPickup:38,notes:'Cold chain maintained',status:'logged',createdBy:'Allen',timestamp:iso(1)},
-    {id:'demo-m-2',harvestId:'demo-h-1',lotNumber:'LOT-2024-001',variety:'Blue Oyster',fromFacility:"Hyde's Ferry Pike",fromContainer:'GH-03-01',destType:'external',toFacility:'',toClient:'demo-c-1',toClientName:'The Catbird Seat',productState:'Fresh',weight:8,date:today,time:'07:00',driver:'Allen M.',vehicle:'F-150',tempAtPickup:36,notes:'Morning delivery',status:'logged',createdBy:'Allen',timestamp:iso(0)},
+    {id:'demo-m-1',harvestId:'demo-h-30',lotNumber:'WS-2026-010',variety:'Blue Oyster',fromFacility:'Carthage',fromContainer:'CA-01-01',destType:'external',toFacility:'',toClient:'demo-c-5',toClientName:"Whole Foods — Green Hills",productState:'Fresh',weight:30,date:today,time:'06:00',driver:'Jake M.',vehicle:'Sprinter Van',tempAtPickup:36,notes:'Wholesale delivery — cold chain maintained',status:'logged',createdBy:'Allen',timestamp:iso(0)},
+    {id:'demo-m-2',harvestId:'demo-h-1',lotNumber:'WS-2026-001',variety:'Blue Oyster',fromFacility:"Hyde's Ferry Pike",fromContainer:'GH-01-01',destType:'external',toFacility:'',toClient:'demo-c-1',toClientName:'The Catbird Seat',productState:'Fresh',weight:8,date:today,time:'07:00',driver:'Allen M.',vehicle:'F-150',tempAtPickup:36,notes:'Morning restaurant delivery',status:'logged',createdBy:'Allen',timestamp:iso(0)},
+    {id:'demo-m-3',harvestId:'demo-h-38',lotNumber:'TM-2026-015',variety:'Shiitake',fromFacility:'Carthage',fromContainer:'CA-04-01',destType:'internal',toFacility:"Hyde's Ferry Pike",toClient:'',toClientName:'',productState:'Fresh',weight:15,date:yd(1),time:'09:30',driver:'Jake M.',vehicle:'Sprinter Van',tempAtPickup:38,notes:'Cross-facility transfer for packing',status:'logged',createdBy:'Allen',timestamp:iso(1)},
   ];
 
-  // ── Container Sessions — today's activity (mix of states) ──
+  // -- Container Sessions --
   const now=new Date();
   const hhmm=(h,m)=>{ const d=new Date(); d.setHours(h,m,0,0); return d.toISOString(); };
   DB.containerSessions=[
-    // Closed — harvesting done this morning
-    {id:'demo-cs-1',date:today,containerCode:'GH-03-01',containerFarm:'Wheeler/Barnett Farm',facility:"Hyde's Ferry Pike",employeeName:'Jake M.',activity:'Harvesting',startTime:hhmm(7,0),endTime:hhmm(8,15),durationMinutes:75,notes:'Full flush harvest, 28lb',status:'closed',createdBy:'Jake M.',timestamp:hhmm(7,0)},
-    {id:'demo-cs-2',date:today,containerCode:'GH-04-01',containerFarm:'Mighty Coosa Farms LLC',facility:"Hyde's Ferry Pike",employeeName:'Sarah K.',activity:'Harvesting',startTime:hhmm(7,30),endTime:hhmm(8,45),durationMinutes:75,notes:'',status:'closed',createdBy:'Sarah K.',timestamp:hhmm(7,30)},
-    {id:'demo-cs-3',date:today,containerCode:'GH-02-01',containerFarm:'Egloff Farms',facility:"Hyde's Ferry Pike",employeeName:'Jake M.',activity:'Inspection',startTime:hhmm(8,45),endTime:hhmm(9,0),durationMinutes:15,notes:'Pins looking good, harvest in 2 days',status:'closed',createdBy:'Jake M.',timestamp:hhmm(8,45)},
-    // Active — still running (Allen is in a container)
-    {id:'demo-cs-4',date:today,containerCode:'CA-03-01',containerFarm:'D&D Interests LLC',facility:'Carthage',employeeName:'Allen M.',activity:'Fruiting',startTime:new Date(Date.now()-32*60000).toISOString(),endTime:null,durationMinutes:null,notes:'',status:'active',createdBy:'Allen M.',timestamp:new Date(Date.now()-32*60000).toISOString()},
-    // Closed — Opryland checked
-    {id:'demo-cs-5',date:today,containerCode:'MO-02-01',containerFarm:'Innovative Garden',facility:'Opryland',employeeName:'Maria T.',activity:'Cleaning',startTime:hhmm(10,0),endTime:hhmm(10,45),durationMinutes:45,notes:'Post-harvest clean, substrate removed',status:'closed',createdBy:'Maria T.',timestamp:hhmm(10,0)},
-    // No activity entries for a few containers
-    {id:'demo-cs-6',date:today,containerCode:'GH-05-01',containerFarm:'Savannah Barrow Farm',facility:"Hyde's Ferry Pike",employeeName:'System',activity:'No Activity',startTime:hhmm(8,0),endTime:hhmm(8,0),durationMinutes:0,notes:'Auto-logged at day closeout',status:'no-activity',createdBy:'System',timestamp:hhmm(8,0)},
-    // Yesterday's sessions
-    {id:'demo-cs-7',date:yd(1),containerCode:'GH-03-01',containerFarm:'Wheeler/Barnett Farm',facility:"Hyde's Ferry Pike",employeeName:'Jake M.',activity:'Harvesting',startTime:iso(1),endTime:new Date(new Date(iso(1)).getTime()+90*60000).toISOString(),durationMinutes:90,notes:'',status:'closed',createdBy:'Jake M.',timestamp:iso(1)},
-    {id:'demo-cs-8',date:yd(1),containerCode:'CA-02-01',containerFarm:'Kessler',facility:'Carthage',employeeName:'Allen M.',activity:'Maintenance',startTime:iso(1),endTime:new Date(new Date(iso(1)).getTime()+60*60000).toISOString(),durationMinutes:60,notes:'Replaced humidity sensor, cleaned floor drains',status:'closed',createdBy:'Allen M.',timestamp:iso(1)},
+    {id:'demo-cs-1',date:today,containerCode:'GH-01-01',containerFarm:'Wheeler/Barnett Farm',facility:"Hyde's Ferry Pike",employeeName:'Jake M.',activity:'Harvesting',startTime:hhmm(7,0),endTime:hhmm(8,30),durationMinutes:90,notes:'Full flush harvest — 38lb',status:'closed',createdBy:'Jake M.',timestamp:hhmm(7,0)},
+    {id:'demo-cs-2',date:today,containerCode:'GH-04-01',containerFarm:'Mighty Coosa Farms LLC',facility:"Hyde's Ferry Pike",employeeName:'Sarah K.',activity:'Harvesting',startTime:hhmm(7,30),endTime:hhmm(9,0),durationMinutes:90,notes:'Shiitake — top quality pull',status:'closed',createdBy:'Sarah K.',timestamp:hhmm(7,30)},
+    {id:'demo-cs-3',date:today,containerCode:'GH-03-01',containerFarm:'Egloff Farms',facility:"Hyde's Ferry Pike",employeeName:'Jake M.',activity:'Inspection',startTime:hhmm(9,0),endTime:hhmm(9,15),durationMinutes:15,notes:'Pins looking good, harvest in 2 days',status:'closed',createdBy:'Jake M.',timestamp:hhmm(9,0)},
+    {id:'demo-cs-4',date:today,containerCode:'CA-03-01',containerFarm:'D&D Interests LLC',facility:'Carthage',employeeName:'Allen M.',activity:'Harvesting',startTime:new Date(Date.now()-45*60000).toISOString(),endTime:null,durationMinutes:null,notes:'',status:'active',createdBy:'Allen M.',timestamp:new Date(Date.now()-45*60000).toISOString()},
+    {id:'demo-cs-5',date:today,containerCode:'MO-04-01',containerFarm:'Innovative Garden',facility:'Opryland',employeeName:'Maria T.',activity:'Harvesting',startTime:hhmm(10,0),endTime:hhmm(11,15),durationMinutes:75,notes:'Full shiitake pull — 35lb',status:'closed',createdBy:'Maria T.',timestamp:hhmm(10,0)},
+    {id:'demo-cs-6',date:today,containerCode:'CA-01-01',containerFarm:'Kessler Farm',facility:'Carthage',employeeName:'Allen M.',activity:'Harvesting',startTime:hhmm(6,30),endTime:hhmm(8,0),durationMinutes:90,notes:'WS oyster — 43lb clean pull',status:'closed',createdBy:'Allen M.',timestamp:hhmm(6,30)},
+    {id:'demo-cs-7',date:today,containerCode:'GH-09-01',containerFarm:'Savannah Barrow Farm',facility:"Hyde's Ferry Pike",employeeName:'Jake M.',activity:'Harvesting',startTime:hhmm(8,30),endTime:hhmm(9,30),durationMinutes:60,notes:'Shiitake premium grade',status:'closed',createdBy:'Jake M.',timestamp:hhmm(8,30)},
+    {id:'demo-cs-8',date:yd(1),containerCode:'GH-01-01',containerFarm:'Wheeler/Barnett Farm',facility:"Hyde's Ferry Pike",employeeName:'Jake M.',activity:'Harvesting',startTime:iso(1),endTime:new Date(new Date(iso(1)).getTime()+75*60000).toISOString(),durationMinutes:75,notes:'',status:'closed',createdBy:'Jake M.',timestamp:iso(1)},
+    {id:'demo-cs-9',date:yd(1),containerCode:'CA-01-01',containerFarm:'Kessler Farm',facility:'Carthage',employeeName:'Allen M.',activity:'Maintenance',startTime:iso(1),endTime:new Date(new Date(iso(1)).getTime()+60*60000).toISOString(),durationMinutes:60,notes:'Replaced humidity sensor, cleaned floor drains',status:'closed',createdBy:'Allen M.',timestamp:iso(1)},
+    {id:'demo-cs-10',date:yd(1),containerCode:'MO-01-01',containerFarm:'Green Hills Farm',facility:'Opryland',employeeName:'Maria T.',activity:'Harvesting',startTime:iso(1),endTime:new Date(new Date(iso(1)).getTime()+80*60000).toISOString(),durationMinutes:80,notes:'WS Blue Oyster — strong pull',status:'closed',createdBy:'Maria T.',timestamp:iso(1)},
   ];
 
-  // ── Samples ──
+  // -- Samples --
   DB.samples=[
-    {id:'demo-s-1',date:yd(3),variety:"Lion's Mane",harvestId:'demo-h-2',lotNumber:'LOT-2024-002',weight:1,recipient:'Chef Brown — Catbird Seat',recipientType:'restaurant',contact:'tyler@catbirdseat.com',notes:'Testing for new menu item',status:'sent',sentAt:yd(2),week:wkStart()},
-    {id:'demo-s-2',date:today,variety:'Coral Tooth',harvestId:'demo-h-7',lotNumber:'LOT-2024-007',weight:0.5,recipient:'Whole Foods Produce — Green Hills',recipientType:'retail',contact:'nashville.produce@wfm.com',notes:'New variety introduction',status:'pending',week:wkStart()},
+    {id:'demo-s-1',date:yd(3),variety:"Lion's Mane",harvestId:'demo-h-5',lotNumber:'WS-2026-002',weight:1,recipient:'Chef Brown — Catbird Seat',recipientType:'restaurant',contact:'tyler@catbirdseat.com',notes:'Testing for new seasonal menu item',status:'sent',sentAt:yd(2),week:wkStart()},
+    {id:'demo-s-2',date:today,variety:'Coral Tooth',harvestId:'demo-h-29',lotNumber:'TM-2026-007',weight:0.5,recipient:'Whole Foods Produce — Green Hills',recipientType:'retail',contact:'nashville.produce@wfm.com',notes:'New variety introduction — retail test',status:'pending',week:wkStart()},
+    {id:'demo-s-3',date:yd(4),variety:'Gold Oyster',harvestId:'demo-h-13',lotNumber:'WS-2026-005',weight:0.75,recipient:'Miel Restaurant — Seema Prasad',recipientType:'restaurant',contact:'orders@miel-nashville.com',notes:'Interested in weekly standing order',status:'sent',sentAt:yd(3),week:wkStart()},
+    {id:'demo-s-4',date:yd(1),variety:'Snow Oyster',harvestId:'demo-h-60',lotNumber:'WS-2026-025',weight:0.5,recipient:'The Pharmacy Burger',recipientType:'restaurant',contact:'sam@thepharmacynashville.com',notes:'Menu development — specialty burger program',status:'pending',week:wkStart()},
   ];
 
-  // ── Transfers (legacy, mirrors demo product movements for inventory calc) ──
+  // -- Transfers --
   DB.transfers=[
-    {id:'demo-t-1',harvestId:'demo-h-6',lotNumber:'LOT-2024-006',variety:'Blue Oyster',fromFacility:'Carthage',toFacility:'Carthage',weight:5,date:yd(1),notes:'',transferredBy:'Allen',timestamp:iso(1)},
+    {id:'demo-t-1',harvestId:'demo-h-30',lotNumber:'WS-2026-010',variety:'Blue Oyster',fromFacility:'Carthage',toFacility:"Hyde's Ferry Pike",weight:15,date:yd(1),notes:'Cross-facility for packing',transferredBy:'Allen',timestamp:iso(1)},
   ];
 
   renderC();
   const t=document.createElement('div');
-  t.textContent='🧪 Demo data loaded — in memory only, nothing saved to Firestore';
-  t.style.cssText='position:fixed;bottom:24px;right:24px;background:#2a5578;color:#fff;padding:12px 20px;border-radius:4px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:340px;';
+  t.textContent='Demo data loaded — 128 harvests, 36 containers, ~1653 lb/wk';
+  t.style.cssText='position:fixed;bottom:24px;right:24px;background:#2a5578;color:#fff;padding:12px 20px;border-radius:4px;font-size:13px;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.3);max-width:380px;';
   document.body.appendChild(t);
-  setTimeout(()=>t.remove(),5000);
+  setTimeout(()=>t.remove(),6000);
 }
 
 async function clearDemoData(){
