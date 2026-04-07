@@ -455,6 +455,7 @@ const DB = {
   fruitings:[], preservation:[], notifLog:[], signupRequests:[], packSessions:[],
   users:[], loginHistory:[], transfers:[], productMovements:[], auditLog:[], containerSessions:[],
   preservationBatches:[],
+  labBatches:[], blockDisposals:[],
   facilities:[], containerOverrides:{},
   adminPw:'totallyadmin2025', staffPw:'mushrooms2025', accountantPw:'tmbooks2025',
   emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false}
@@ -471,17 +472,18 @@ const ALL_INTERNAL_TABS = [
   {id:'new-order',l:'+ Order'},{id:'email-parse',l:'Parse Email'},
   {id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},
   {id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},
+  {id:'lab',l:'🧫 Lab'},
   {id:'analytics',l:'Analytics'},
   {id:'admin',l:'⚙ Admin',c:'at'},{id:'security',l:'🔒 Security',c:'at'},
   {id:'orders-all',l:'Orders',c:'ct'},{id:'reports',l:'📊 Reports',c:'at'},
   {id:'qb',l:'📒 QB',c:'at'}
 ];
 const DEFAULT_PERMS = {
-  admin: {today:true,week:true,'new-order':true,'email-parse':true,harvest:true,fruiting:true,inventory:true,preservation:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
-  staff: {today:true,week:true,'new-order':true,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
-  accountant: {today:true,week:true,'new-order':false,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
+  admin: {today:true,week:true,'new-order':true,'email-parse':true,harvest:true,fruiting:true,inventory:true,preservation:true,lab:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
+  staff: {today:true,week:true,'new-order':true,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,lab:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
+  accountant: {today:true,week:true,'new-order':false,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,lab:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
 };
-const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
+const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',lab:'Lab — Carthage',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
 
 // ── FIREBASE CONFIG ──
 const FIREBASE_CONFIG = {
@@ -521,17 +523,19 @@ const FS = {
 // ── LOAD ALL DATA FROM FIRESTORE ──
 async function loadDB(){
   try {
-    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog,containerSessions,preservationBatches] = await Promise.all([
+    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog,containerSessions,preservationBatches,labBatches,blockDisposals] = await Promise.all([
       FS.getAll('orders'), FS.getAll('clients'), FS.getAll('harvests'),
       FS.getAll('samples'), FS.getAll('fruitings'), FS.getAll('preservation'),
       FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('packSessions'),
       FS.getAll('users'), FS.getAll('loginHistory'), FS.getAll('transfers'), FS.getAll('productMovements'),
-      FS.getAll('auditLog'), FS.getAll('containerSessions'), FS.getAll('preservationBatches')
+      FS.getAll('auditLog'), FS.getAll('containerSessions'), FS.getAll('preservationBatches'),
+      FS.getAll('labBatches'), FS.getAll('blockDisposals')
     ]);
     DB.orders=orders; DB.clients=clients; DB.harvests=harvests;
     DB.samples=samples; DB.fruitings=fruitings; DB.preservation=preservation;
     DB.notifLog=notifLog; DB.signupRequests=signupRequests; DB.packSessions=packSessions;
     DB.users=users; DB.loginHistory=loginHistory; DB.transfers=transfers; DB.productMovements=productMovements; DB.auditLog=auditLog; DB.containerSessions=containerSessions; DB.preservationBatches=preservationBatches;
+    DB.labBatches=labBatches; DB.blockDisposals=blockDisposals;
     // Load EmailJS config from appConfig
     try{
       const cfgDoc=await fdb.collection('appConfig').doc('emailjs').get();
@@ -1566,7 +1570,7 @@ function buildNav(){
 
 function sw(id){ cv=id; document.querySelectorAll('.ttab').forEach(t=>t.classList.toggle('active',t.dataset.view===id)); renderC() }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,inventory:rInventory,preservation:rPreservation,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,inventory:rInventory,preservation:rPreservation,lab:rLab,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -2908,7 +2912,70 @@ function rHarvest(el){
           </tr>`}).join('')
       }</tbody>
     </table></div>
-    ${buildContainerSessionPanel('Harvesting')}`;
+    ${buildContainerSessionPanel('Harvesting')}
+
+    <!-- ── SPENT BLOCK REMOVAL ── -->
+    ${canEdit()?`
+    <div class="sh" style="margin-top:28px;">
+      <span>Log Spent / Removed Blocks</span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">BLOCKS PULLED FROM CONTAINERS</span>
+    </div>
+    <div class="card">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.6;">
+        Record blocks removed from a container because they are spent, dead, or contaminated.
+        This keeps fruiting block counts accurate in analytics.
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Date</label><input class="fi" type="date" id="sb-date" value="${tday()}"></div>
+        <div class="fgl"><label>Container</label>
+          <select class="fs" id="sb-c">
+            <option value="">Select container...</option>
+            ${getActiveContainers().map(c=>`<option value="${c.code}">${c.code} · ${c.facility}</option>`).join('')}
+            <option value="__other__">— Other —</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Blocks Removed</label><input class="fi" type="number" min="1" id="sb-cnt" placeholder="e.g. 6"></div>
+        <div class="fgl"><label>Reason</label>
+          <select class="fs" id="sb-reason">
+            <option value="spent">Spent — all flushes complete</option>
+            <option value="dead">Dead — no more growth</option>
+            <option value="contaminated">Contaminated — mold / bacteria</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="fgl" style="margin-top:4px;">
+        <label>Notes</label>
+        <input class="fi" id="sb-notes" placeholder="Flush count reached, signs of contamination, etc.">
+      </div>
+      <div class="form-acts">
+        <button class="btn b-r b-lg" onclick="logSpentBlocks()">Log Removal</button>
+      </div>
+      <div class="toast" id="sb-t">✓ Block removal logged</div>
+    </div>`:''
+    }
+
+    <!-- ── SPENT BLOCK HISTORY ── -->
+    ${(()=>{
+      const disp=[...DB.blockDisposals].sort((a,b)=>b.date.localeCompare(a.date));
+      if(!disp.length) return '';
+      const reasonCol={spent:'var(--text3)',dead:'var(--rust)',contaminated:'#9a2a2a',other:'var(--text2)'};
+      return `<div class="sh" style="margin-top:20px;"><span>Block Removal History</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${disp.length} ENTRIES</span></div>
+      <div class="tw"><table>
+        <thead><tr><th>Date</th><th>Container</th><th>Blocks</th><th>Reason</th><th>Logged By</th><th>Notes</th></tr></thead>
+        <tbody>${disp.map(d=>`<tr>
+          <td class="mn">${fDate(d.date)}</td>
+          <td>${d.container}</td>
+          <td class="mn" style="font-weight:700;color:var(--rust);">${d.blockCount}</td>
+          <td class="mn" style="color:${reasonCol[d.reason]||'var(--text2)'};">${d.reason}</td>
+          <td class="mn" style="font-size:11px;color:var(--text3);">${d.loggedBy||'—'}</td>
+          <td style="font-size:11px;color:var(--text3);">${d.notes||'—'}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`;
+    })()}
+  `;
   tickTimers();
 }
 
@@ -2937,6 +3004,27 @@ async function logHarv(){
   document.getElementById('hl-v').value='';
   document.getElementById('hl-g').value='';
   rHarvest(document.getElementById('main-views'));
+}
+
+async function logSpentBlocks(){
+  const date=document.getElementById('sb-date').value;
+  const containerRaw=document.getElementById('sb-c').value;
+  const container=containerRaw==='__other__'?'Other':containerRaw;
+  const blockCount=parseInt(document.getElementById('sb-cnt').value)||0;
+  const reason=document.getElementById('sb-reason').value;
+  const notes=document.getElementById('sb-notes').value.trim();
+  if(!date||!container||!blockCount){ alert('Date, container and block count are required.'); return; }
+  const data={date,container,blockCount,reason,notes,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+  if(!DB._isDemoMode){
+    const id=await FS.add('blockDisposals',data);
+    data.id=id;
+  } else {
+    data.id='demo-bd-'+Date.now().toString(36);
+  }
+  DB.blockDisposals.push(data);
+  logAudit('blocks_removed',`${blockCount} blocks removed from ${container} — ${reason}`);
+  toast('sb-t');
+  setTimeout(()=>renderC(),900);
 }
 
 // ── INVENTORY ──
@@ -4139,7 +4227,183 @@ function rAna(el){
       </table>
     </div>
 
-    ${buildForecastSection()}`;
+    ${buildForecastSection()}
+
+    <!-- ── YIELD AVERAGES ── -->
+    ${buildYieldAverages()}
+  `;
+}
+
+function buildYieldAverages(){
+  // Only count containers that have at least one fruiting record with blocks
+  // Yield metric: lbs harvested per block (avg across all harvest events for that grouping)
+  // "Only containers with growth" = containers that appear in DB.fruitings with blockCount > 0
+
+  const activeFruitContainers = new Set(
+    DB.fruitings.filter(f=>f.blockCount>0).map(f=>f.containerID)
+  );
+
+  // Build per-harvest enriched records — only for containers with fruiting blocks
+  const harvests = DB.harvests.filter(h=>activeFruitContainers.has(h.container)||activeFruitContainers.size===0);
+
+  // Helper: get block count for a container (latest fruiting record)
+  function blocksForContainer(containerID){
+    const runs = DB.fruitings.filter(f=>f.containerID===containerID&&f.blockCount>0)
+      .sort((a,b)=>b.date.localeCompare(a.date));
+    return runs.length ? (runs[0].blockCount||0) : 0;
+  }
+
+  // ── By Lot ──
+  const byLot={};
+  harvests.forEach(h=>{
+    if(!h.lotNumber) return;
+    if(!byLot[h.lotNumber]) byLot[h.lotNumber]={totalLb:0,count:0,variety:h.variety,container:h.container,facility:h.facility||'—'};
+    byLot[h.lotNumber].totalLb+=h.weight||0;
+    byLot[h.lotNumber].count++;
+  });
+
+  // ── By Container ──
+  const byContainer={};
+  harvests.forEach(h=>{
+    if(!activeFruitContainers.has(h.container)) return; // skip containers with no block records
+    if(!byContainer[h.container]) byContainer[h.container]={totalLb:0,count:0,facility:h.facility||'—',blockCount:blocksForContainer(h.container)};
+    byContainer[h.container].totalLb+=h.weight||0;
+    byContainer[h.container].count++;
+  });
+
+  // ── By Variety ──
+  const byVariety={};
+  harvests.forEach(h=>{
+    if(!h.variety) return;
+    if(!byVariety[h.variety]) byVariety[h.variety]={totalLb:0,count:0};
+    byVariety[h.variety].totalLb+=h.weight||0;
+    byVariety[h.variety].count++;
+  });
+
+  // ── By Facility (only containers with active growth) ──
+  const byFacility={};
+  harvests.forEach(h=>{
+    if(!activeFruitContainers.has(h.container)) return;
+    const fac=h.facility||'Unknown';
+    if(!byFacility[fac]) byFacility[fac]={totalLb:0,count:0,containers:new Set()};
+    byFacility[fac].totalLb+=h.weight||0;
+    byFacility[fac].count++;
+    byFacility[fac].containers.add(h.container);
+  });
+
+  // ── Overall master ──
+  const activeHarvests = harvests.filter(h=>activeFruitContainers.has(h.container));
+  const masterTotal = activeHarvests.reduce((s,h)=>s+(h.weight||0),0);
+  const masterCount = activeHarvests.length;
+  const masterAvg = masterCount>0 ? masterTotal/masterCount : 0;
+  const activeContainerCount = Object.keys(byContainer).length;
+
+  function avgBadge(avg){
+    const col = avg>=10?'var(--fern)':avg>=5?'var(--amber)':'var(--rust)';
+    return `<span style="font-family:'Syne Mono',monospace;font-size:12px;font-weight:700;color:${col};">${avg.toFixed(2)} lb/harvest</span>`;
+  }
+
+  const lotRows = Object.entries(byLot).sort((a,b)=>b[1].totalLb-a[1].totalLb).map(([lot,d])=>{
+    const avg = d.count>0?d.totalLb/d.count:0;
+    return `<tr>
+      <td class="mn" style="font-weight:600;color:var(--gold);font-family:'Syne Mono',monospace;">${lot}</td>
+      <td>${d.variety||'—'}</td>
+      <td class="mn">${d.container||'—'}</td>
+      <td class="mn" style="font-size:11px;color:var(--text3);">${d.facility}</td>
+      <td class="mn">${d.count}</td>
+      <td class="mn" style="color:var(--moss);font-weight:700;">${d.totalLb.toFixed(1)} lb</td>
+      <td class="mn">${avgBadge(avg)}</td>
+    </tr>`;
+  }).join('');
+
+  const containerRows = Object.entries(byContainer).sort((a,b)=>b[1].totalLb-a[1].totalLb).map(([c,d])=>{
+    const avg = d.count>0?d.totalLb/d.count:0;
+    const lbPerBlock = d.blockCount>0?(d.totalLb/d.blockCount).toFixed(2):'—';
+    return `<tr>
+      <td style="font-weight:600;">${c}</td>
+      <td class="mn" style="font-size:11px;color:var(--text3);">${d.facility}</td>
+      <td class="mn">${d.blockCount||'—'}</td>
+      <td class="mn">${d.count}</td>
+      <td class="mn" style="color:var(--moss);font-weight:700;">${d.totalLb.toFixed(1)} lb</td>
+      <td class="mn">${avgBadge(avg)}</td>
+      <td class="mn" style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--sage);">${lbPerBlock !== '—' ? lbPerBlock+' lb/block' : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  const varietyRows = Object.entries(byVariety).sort((a,b)=>b[1].totalLb-a[1].totalLb).map(([v,d])=>{
+    const avg = d.count>0?d.totalLb/d.count:0;
+    return `<tr>
+      <td style="font-weight:600;">${v}</td>
+      <td class="mn">${d.count}</td>
+      <td class="mn" style="color:var(--moss);font-weight:700;">${d.totalLb.toFixed(1)} lb</td>
+      <td class="mn">${avgBadge(avg)}</td>
+    </tr>`;
+  }).join('');
+
+  const facilityRows = Object.entries(byFacility).sort((a,b)=>b[1].totalLb-a[1].totalLb).map(([fac,d])=>{
+    const avg = d.count>0?d.totalLb/d.count:0;
+    return `<tr>
+      <td style="font-weight:600;">${fac}</td>
+      <td class="mn">${d.containers.size}</td>
+      <td class="mn">${d.count}</td>
+      <td class="mn" style="color:var(--moss);font-weight:700;">${d.totalLb.toFixed(1)} lb</td>
+      <td class="mn">${avgBadge(avg)}</td>
+    </tr>`;
+  }).join('');
+
+  if(masterCount===0) return `
+    <div class="sh" style="margin-top:32px;border-top:1px solid var(--border);padding-top:20px;"><span>Yield Averages</span></div>
+    <div class="empty" style="padding:20px;">No harvest data linked to fruiting containers yet.</div>`;
+
+  return `
+    <div class="sh" style="margin-top:32px;border-top:1px solid var(--border);padding-top:20px;">
+      <span>Yield Averages</span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">CONTAINERS WITH ACTIVE GROWTH ONLY</span>
+    </div>
+
+    <!-- Master average strip -->
+    <div class="stats" style="margin-bottom:24px;">
+      <div class="sc g"><div class="sc-l">Master Avg / Harvest</div><div class="sc-v" style="font-size:26px;">${masterAvg.toFixed(2)}<span style="font-size:14px"> lb</span></div><div class="sc-n">across all active containers</div></div>
+      <div class="sc"><div class="sc-l">Total Harvested</div><div class="sc-v">${masterTotal.toFixed(1)}<span style="font-size:16px"> lb</span></div><div class="sc-n">${masterCount} harvest events</div></div>
+      <div class="sc m"><div class="sc-l">Active Containers</div><div class="sc-v">${activeContainerCount}</div><div class="sc-n">with fruiting block data</div></div>
+    </div>
+
+    <div class="cr" style="gap:20px;">
+
+      <!-- By Variety -->
+      <div class="cc" style="flex:1;min-width:260px;">
+        <div class="cc-l">By Variety</div>
+        <div class="tw"><table>
+          <thead><tr><th>Variety</th><th>Harvests</th><th>Total</th><th>Avg / Harvest</th></tr></thead>
+          <tbody>${varietyRows||'<tr><td colspan="4" class="empty">No data</td></tr>'}</tbody>
+        </table></div>
+      </div>
+
+      <!-- By Facility -->
+      <div class="cc" style="flex:1;min-width:260px;">
+        <div class="cc-l">By Facility</div>
+        <div class="tw"><table>
+          <thead><tr><th>Facility</th><th>Containers</th><th>Harvests</th><th>Total</th><th>Avg / Harvest</th></tr></thead>
+          <tbody>${facilityRows||'<tr><td colspan="5" class="empty">No data</td></tr>'}</tbody>
+        </table></div>
+      </div>
+
+    </div>
+
+    <!-- By Container -->
+    <div class="sh" style="margin-top:20px;"><span>By Container</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">ONLY CONTAINERS WITH FRUITING BLOCKS</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Container</th><th>Facility</th><th>Blocks</th><th>Harvests</th><th>Total</th><th>Avg / Harvest</th><th>lb / Block</th></tr></thead>
+      <tbody>${containerRows||'<tr><td colspan="7" class="empty">No containers with block data yet</td></tr>'}</tbody>
+    </table></div>
+
+    <!-- By Lot -->
+    <div class="sh" style="margin-top:20px;"><span>By Lot Number</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Lot #</th><th>Variety</th><th>Container</th><th>Facility</th><th>Harvests</th><th>Total</th><th>Avg / Harvest</th></tr></thead>
+      <tbody>${lotRows||'<tr><td colspan="7" class="empty">No lot data yet</td></tr>'}</tbody>
+    </table></div>
+  `;
 }
 
 // ── SAMPLES ──
@@ -4625,6 +4889,253 @@ function rQB(el){
   `;
 }
 
+// ── LAB ──
+function nextLabBatchNum(){
+  const yr = new Date().getFullYear();
+  const existing = DB.labBatches
+    .filter(b=>b.batchNum&&b.batchNum.startsWith('LAB-'+yr+'-'))
+    .map(b=>parseInt(b.batchNum.slice(-3))||0);
+  const next = (existing.length?Math.max(...existing):0)+1;
+  return 'LAB-'+yr+'-'+String(next).padStart(3,'0');
+}
+
+function labStatusBadge(b){
+  // Determine how far through the 4-stage workflow this batch is
+  if(b.rackLocation||b.spawnDate) return {label:'Inoculated',col:'var(--fern)'};
+  if(b.sterilizationDate) return {label:'Sterilized',col:'var(--sage)'};
+  if(b.productionDate) return {label:'Mixed',col:'var(--amber)'};
+  return {label:'Draft',col:'var(--text3)'};
+}
+
+function rLab(el){
+  const allBatches = [...DB.labBatches].sort((a,b)=>(b.productionDate||b.date||'').localeCompare(a.productionDate||a.date||''));
+
+  // Section divider style
+  const secHead = (title) => `<div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:3px;font-weight:700;color:var(--text2);text-transform:uppercase;border-bottom:2px solid var(--border);padding-bottom:6px;margin:20px 0 14px;">— ${title} —</div>`;
+
+  el.innerHTML=`
+    <div class="ph">
+      <div class="ph-t">🧫 Lab — Carthage</div>
+      <div class="ph-s">Production Log · block making · sterilization · laboratory · inoculation room</div>
+    </div>
+
+    <!-- ══ PRODUCTION LOG FORM ══ -->
+    <div class="card">
+      <div class="card-t" style="font-size:15px;letter-spacing:1px;">New Production Log</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.6;">
+        One record per batch — fill in each section as you complete that stage.
+      </div>
+
+      <!-- Header fields -->
+      <div class="fg2" style="margin-top:14px;">
+        <div class="fgl"><label>Production Date</label><input class="fi" type="date" id="pl-pdate" value="${tday()}"></div>
+        <div class="fgl"><label>Substrate Batch</label><input class="fi" id="pl-sbatch" placeholder="e.g. SB-2026-01"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Lot Code</label><input class="fi" id="pl-lot" placeholder="e.g. LOT-2026-001"></div>
+        <div class="fgl"><label>Order / Run #</label><input class="fi" id="pl-order" placeholder="e.g. 1 of 3"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Strain / Variety</label>
+          <select class="fs" id="pl-strain">
+            <option value="">Select strain...</option>
+            ${VARIETIES.map(v=>`<option value="${v}">${v}</option>`).join('')}
+          </select>
+        </div>
+        <div class="fgl"><label>Batch # <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">AUTO</span></label>
+          <input class="fi" id="pl-batchnum" value="${nextLabBatchNum()}" placeholder="LAB-2026-001">
+        </div>
+      </div>
+
+      ${secHead('Production')}
+      <div class="fg2">
+        <div class="fgl"><label>Pounds of Substrate (lbs)</label><input class="fi" type="number" step="0.1" id="pl-sublbs" placeholder="e.g. 200"></div>
+        <div class="fgl"><label># of Buckets</label><input class="fi" type="number" id="pl-buckets" placeholder="e.g. 8"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Gallons of Water</label><input class="fi" type="number" step="0.1" id="pl-gallons" placeholder="e.g. 25"></div>
+        <div class="fgl"><label>Number of Blocks Produced</label><input class="fi" type="number" id="pl-blockcnt" placeholder="e.g. 40"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Add Water START Time</label><input class="fi" type="time" id="pl-wstart"></div>
+        <div class="fgl"><label>Add Water END Time</label><input class="fi" type="time" id="pl-wend"></div>
+        <div class="fgl"><label>Mix Time</label><input class="fi" type="time" id="pl-mixtime" placeholder="HH:MM"></div>
+      </div>
+      <div class="fgl">
+        <label>Production Notes</label>
+        <textarea class="fta" id="pl-prodnotes" placeholder="Substrate moisture, texture, any issues during mixing or bagging..."></textarea>
+      </div>
+
+      ${secHead('Sterilization')}
+      <div class="fg2">
+        <div class="fgl"><label>Sterilization Date</label><input class="fi" type="date" id="pl-sdate"></div>
+        <div class="fgl"><label>Autoclave Temperature (°F)</label><input class="fi" type="number" id="pl-actemp" placeholder="e.g. 250"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Cook Time (hours)</label><input class="fi" type="number" step="0.5" id="pl-cooktime" placeholder="e.g. 2.5"></div>
+        <div class="fgl"><label>Cook Time START</label><input class="fi" type="time" id="pl-cookstart"></div>
+        <div class="fgl"><label>Cook Time END</label><input class="fi" type="time" id="pl-cookend"></div>
+      </div>
+      <div class="fgl">
+        <label>Sterilization Notes</label>
+        <textarea class="fta" id="pl-sternotes" placeholder="Pressure reached, any anomalies, cool-down observations..."></textarea>
+      </div>
+
+      ${secHead('Laboratory')}
+      <div class="fg2">
+        <div class="fgl"><label>Spawn Date</label><input class="fi" type="date" id="pl-spawndate"></div>
+        <div class="fgl"><label>Spawn Source</label>
+          <select class="fs" id="pl-spawntype">
+            <option value="">Select spawn type...</option>
+            <option value="Grain Spawn">Grain Spawn</option>
+            <option value="Agar Culture">Agar Culture</option>
+            <option value="Liquid Culture (LC)">Liquid Culture (LC)</option>
+            <option value="Grain Stretch">Grain Spawn Stretch</option>
+            <option value="Sawdust Spawn">Sawdust Spawn</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Spawn Quantity / Rate</label><input class="fi" id="pl-spawnqty" placeholder="e.g. 10% by weight, 2 qt jars"></div>
+        <div class="fgl"><label>Spawn Lot #</label><input class="fi" id="pl-spawnlot" placeholder="e.g. supplier lot, culture ref"></div>
+      </div>
+      <div class="fgl">
+        <label>Laboratory Notes</label>
+        <textarea class="fta" id="pl-labnotes" placeholder="Block appearance after cooling, contamination checks, inoculant health..."></textarea>
+      </div>
+
+      ${secHead('Inoculation Room')}
+      <div class="fg2">
+        <div class="fgl"><label>Rack Location</label><input class="fi" id="pl-rack" placeholder="e.g. Rack A, Shelf 2 — Carthage Inc. Room 1"></div>
+        <div class="fgl"><label>Expected Colonization (days)</label><input class="fi" type="number" id="pl-coldays" placeholder="e.g. 14"></div>
+      </div>
+      <div class="fgl">
+        <label>Inoculation Room Notes</label>
+        <textarea class="fta" id="pl-roomnotes" placeholder="Environmental conditions, any visible growth, transfer notes..."></textarea>
+      </div>
+
+      <div class="form-acts">
+        <button class="btn b-m b-lg" onclick="logProductionBatch()">Save Production Log</button>
+      </div>
+      <div class="toast" id="pl-t">✓ Production log saved</div>
+    </div>
+
+    <!-- ══ LOG TABLE ══ -->
+    <div class="sh" style="margin-top:28px;">
+      <span>Production Log History</span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${allBatches.length} RECORDS</span>
+    </div>
+    ${allBatches.length===0
+      ? '<div class="empty" style="padding:24px;">No production logs yet.</div>'
+      : allBatches.map(b=>{
+          const st = labStatusBadge(b);
+          return `<details style="border:1px solid var(--border);border-radius:6px;margin-bottom:8px;background:white;overflow:hidden;">
+            <summary style="padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;list-style:none;user-select:none;">
+              <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--fern);font-size:12px;">${b.batchNum||b.id}</span>
+              <span style="font-weight:600;font-size:13px;">${b.strain||b.variety||'—'}</span>
+              <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${fDate(b.productionDate||b.date)}</span>
+              ${b.blockCount?`<span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text2);">${b.blockCount} blocks</span>`:''}
+              <span style="margin-left:auto;font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;color:${st.col};background:${st.col}22;border:1px solid ${st.col}44;border-radius:3px;padding:2px 8px;">${st.label}</span>
+            </summary>
+            <div style="padding:0 16px 16px;border-top:1px solid var(--border);margin-top:0;">
+              <div class="cr" style="gap:16px;margin-top:14px;">
+                <div style="flex:1;">
+                  <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin-bottom:8px;">PRODUCTION</div>
+                  ${b.substrateBatch?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Substrate Batch: </span>${b.substrateBatch}</div>`:''}
+                  ${b.lotCode?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Lot Code: </span>${b.lotCode}</div>`:''}
+                  ${b.order?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Order: </span>${b.order}</div>`:''}
+                  ${b.substrateLbs?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Substrate: </span>${b.substrateLbs} lbs${b.buckets?' / '+b.buckets+' buckets':''}</div>`:''}
+                  ${b.gallonsWater?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Water: </span>${b.gallonsWater} gal</div>`:''}
+                  ${b.waterStartTime?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Water: </span>${b.waterStartTime} → ${b.waterEndTime||'?'}</div>`:''}
+                  ${b.mixTime?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Mix Time: </span>${b.mixTime}</div>`:''}
+                  ${b.blockCount?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Blocks Produced: </span><strong>${b.blockCount}</strong></div>`:''}
+                  ${b.prodNotes?`<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic;">${b.prodNotes}</div>`:''}
+                </div>
+                <div style="flex:1;">
+                  <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin-bottom:8px;">STERILIZATION</div>
+                  ${b.sterilizationDate?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Date: </span>${fDate(b.sterilizationDate)}</div>`:'<div style="font-size:11px;color:var(--text3);font-style:italic;">Not yet logged</div>'}
+                  ${b.autoclaveTemp?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Temp: </span>${b.autoclaveTemp}°F</div>`:''}
+                  ${b.cookTimeHours?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Cook Time: </span>${b.cookTimeHours} hr</div>`:''}
+                  ${b.cookTimeStart?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Cook: </span>${b.cookTimeStart} → ${b.cookTimeEnd||'?'}</div>`:''}
+                  ${b.sterNotes?`<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic;">${b.sterNotes}</div>`:''}
+                </div>
+                <div style="flex:1;">
+                  <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin-bottom:8px;">LABORATORY / INOCULATION</div>
+                  ${b.spawnDate?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Spawn Date: </span>${fDate(b.spawnDate)}</div>`:'<div style="font-size:11px;color:var(--text3);font-style:italic;">Not yet logged</div>'}
+                  ${b.spawnSource?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Spawn Source: </span>${b.spawnSource}</div>`:''}
+                  ${b.spawnQuantity?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Qty / Rate: </span>${b.spawnQuantity}</div>`:''}
+                  ${b.spawnLot?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Spawn Lot: </span>${b.spawnLot}</div>`:''}
+                  ${b.rackLocation?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Rack: </span>${b.rackLocation}</div>`:''}
+                  ${b.expectedColDays?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Expected colonization: </span>${b.expectedColDays} days</div>`:''}
+                  ${b.labNotes?`<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic;">${b.labNotes}</div>`:''}
+                  ${b.roomNotes?`<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic;">${b.roomNotes}</div>`:''}
+                </div>
+              </div>
+            </div>
+          </details>`;
+        }).join('')
+    }
+  `;
+}
+
+async function logProductionBatch(){
+  const batchNum  = document.getElementById('pl-batchnum').value.trim();
+  const productionDate = document.getElementById('pl-pdate').value;
+  const strain    = document.getElementById('pl-strain').value;
+  const blockCount= parseInt(document.getElementById('pl-blockcnt').value)||0;
+  if(!productionDate||!batchNum||!strain){ alert('Production date, batch # and strain are required.'); return; }
+
+  const data = {
+    batchNum,
+    productionDate,
+    substrateBatch : document.getElementById('pl-sbatch').value.trim(),
+    lotCode        : document.getElementById('pl-lot').value.trim(),
+    order          : document.getElementById('pl-order').value.trim(),
+    strain,
+    // Production
+    substrateLbs   : parseFloat(document.getElementById('pl-sublbs').value)||0,
+    buckets        : parseInt(document.getElementById('pl-buckets').value)||0,
+    gallonsWater   : parseFloat(document.getElementById('pl-gallons').value)||0,
+    blockCount,
+    waterStartTime : document.getElementById('pl-wstart').value,
+    waterEndTime   : document.getElementById('pl-wend').value,
+    mixTime        : document.getElementById('pl-mixtime').value,
+    prodNotes      : document.getElementById('pl-prodnotes').value.trim(),
+    // Sterilization
+    sterilizationDate : document.getElementById('pl-sdate').value,
+    autoclaveTemp  : parseInt(document.getElementById('pl-actemp').value)||0,
+    cookTimeHours  : parseFloat(document.getElementById('pl-cooktime').value)||0,
+    cookTimeStart  : document.getElementById('pl-cookstart').value,
+    cookTimeEnd    : document.getElementById('pl-cookend').value,
+    sterNotes      : document.getElementById('pl-sternotes').value.trim(),
+    // Laboratory
+    spawnDate      : document.getElementById('pl-spawndate').value,
+    spawnSource    : document.getElementById('pl-spawntype').value,
+    spawnQuantity  : document.getElementById('pl-spawnqty').value.trim(),
+    spawnLot       : document.getElementById('pl-spawnlot').value.trim(),
+    labNotes       : document.getElementById('pl-labnotes').value.trim(),
+    // Inoculation Room
+    rackLocation   : document.getElementById('pl-rack').value.trim(),
+    expectedColDays: parseInt(document.getElementById('pl-coldays').value)||0,
+    roomNotes      : document.getElementById('pl-roomnotes').value.trim(),
+    // Meta
+    createdBy: S.name||S.role,
+    timestamp: new Date().toISOString()
+  };
+
+  if(!DB._isDemoMode){
+    const id = await FS.add('labBatches', data);
+    data.id=id;
+  } else {
+    data.id='demo-lb-'+Date.now().toString(36);
+  }
+  DB.labBatches.push(data);
+  logAudit('lab_production_log',`${batchNum} — ${blockCount||0} blocks · ${strain}`);
+  toast('pl-t');
+  setTimeout(()=>renderC(),900);
+}
+
 // ── ADMIN ──
 // ── DEMO / SEED DATA ──
 function seedDemoData(){
@@ -4698,6 +5209,63 @@ function seedDemoData(){
       ],
       totalWeightIn:5,weightOut:4.8,onHandWeight:2.3,status:'partial',
       notes:'Multi-lot batch. 2.5lb already dispatched to Catbird Seat.',createdBy:'Allen M.',timestamp:iso(1)},
+  ];
+
+  // ── Lab Batches (Production Logs) ──
+  DB.labBatches=[
+    {
+      id:'demo-lb-1', batchNum:'LAB-2026-001',
+      productionDate:yd(14), substrateBatch:'SB-2026-01', lotCode:'LOT-2026-LAB-001',
+      order:'1 of 2', strain:'Blue Oyster',
+      substrateLbs:200, buckets:8, gallonsWater:26, blockCount:40,
+      waterStartTime:'07:00', waterEndTime:'07:45', mixTime:'08:00',
+      prodNotes:'Good moisture, substrate packed tight. No clumping.',
+      sterilizationDate:yd(14), autoclaveTemp:250, cookTimeHours:2.5,
+      cookTimeStart:'09:00', cookTimeEnd:'11:30',
+      sterNotes:'Pressure held steady. Blocks cooled overnight.',
+      spawnDate:yd(12), spawnSource:'Grain Spawn', spawnQuantity:'10% by weight — 20 lbs grain',
+      spawnLot:'GS-2026-007', labNotes:'All blocks inoculated under still air box. Clean workflow.',
+      rackLocation:'Rack A, Shelf 1-2 — Carthage Inc. Room 1', expectedColDays:16,
+      roomNotes:'Temp 72°F, humidity 85%. First signs of mycelium at day 4.',
+      createdBy:'Allen M.', timestamp:iso(14)
+    },
+    {
+      id:'demo-lb-2', batchNum:'LAB-2026-002',
+      productionDate:yd(7), substrateBatch:'SB-2026-02', lotCode:'LOT-2026-LAB-002',
+      order:'1 of 1', strain:"Lion's Mane",
+      substrateLbs:100, buckets:4, gallonsWater:13, blockCount:20,
+      waterStartTime:'07:30', waterEndTime:'08:00', mixTime:'08:15',
+      prodNotes:"Master's mix trial. Higher bran ratio.",
+      sterilizationDate:yd(7), autoclaveTemp:250, cookTimeHours:3,
+      cookTimeStart:'09:30', cookTimeEnd:'12:30',
+      sterNotes:'Extended cook time for master\'s mix. Blocks firm after cooling.',
+      spawnDate:yd(5), spawnSource:"Liquid Culture (LC)", spawnQuantity:'10cc per bag',
+      spawnLot:'LC-LM-04', labNotes:'LC syringe healthy — thick white mycelium. No contamination visible at inoculation.',
+      rackLocation:'Rack B, Shelf 3 — Carthage Inc. Room 1', expectedColDays:18,
+      roomNotes:'',
+      createdBy:'Allen M.', timestamp:iso(7)
+    },
+    {
+      id:'demo-lb-3', batchNum:'LAB-2026-003',
+      productionDate:yd(2), substrateBatch:'SB-2026-03', lotCode:'LOT-2026-LAB-003',
+      order:'2 of 2', strain:'Chestnut',
+      substrateLbs:150, buckets:6, gallonsWater:19, blockCount:30,
+      waterStartTime:'07:00', waterEndTime:'07:40', mixTime:'07:55',
+      prodNotes:'Second run of the week. Substrate looked great.',
+      sterilizationDate:yd(2), autoclaveTemp:250, cookTimeHours:2.5,
+      cookTimeStart:'09:00', cookTimeEnd:'11:30',
+      sterNotes:'Normal run. Blocks still warm as of end of day.',
+      spawnDate:'', spawnSource:'', spawnQuantity:'', spawnLot:'',
+      labNotes:'', rackLocation:'', expectedColDays:0, roomNotes:'',
+      createdBy:'Allen M.', timestamp:iso(2)
+    },
+  ];
+
+  // ── Block Disposals ──
+  DB.blockDisposals=[
+    {id:'demo-bd-1',date:yd(5),container:'GH-03-01',blockCount:4,reason:'spent',notes:'Third flush complete, no more pins',loggedBy:'Jake M.',timestamp:iso(5)},
+    {id:'demo-bd-2',date:yd(2),container:'GH-02-01',blockCount:2,reason:'contaminated',notes:'Green mold on 2 blocks, isolated and removed',loggedBy:'Sarah K.',timestamp:iso(2)},
+    {id:'demo-bd-3',date:yd(1),container:'CA-03-01',blockCount:6,reason:'spent',notes:'Last harvest was very light, called it',loggedBy:'Allen M.',timestamp:iso(1)},
   ];
 
   // ── Product Movements ──
