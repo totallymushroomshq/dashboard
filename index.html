@@ -3178,7 +3178,7 @@ const VARIETY_TURNAROUND={
 };
 
 function rInventory(el){
-  const PRESERVE_METHODS=['Dehydrate','Freeze Dry','Freeze (Fresh Frozen)','Waste / Spoilage','Other'];
+  const PRESERVE_METHODS=['Fresh Frozen','Freeze Dried','Dehydrated','Waste / Compost'];
 
   // ── RETURN LEFTOVERS BANNER ──
   const openSess = DB.packSessions.find(ps=>ps.date===tday()&&ps.status==='open');
@@ -3637,7 +3637,7 @@ async function saveInventoryDeduct(harvestId, maxOnHand){
 function openPreserveModal(harvestId){
   const h = DB.harvests.find(x=>x.id===harvestId); if(!h) return;
   const onHand = Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0));
-  const METHODS=['Dehydrate','Freeze Dry','Freeze (Fresh Frozen)','Waste / Spoilage','Other'];
+  const METHODS=['Fresh Frozen','Freeze Dried','Dehydrated','Waste / Compost'];
   document.getElementById('em-title').textContent='Move to Preservation';
   document.getElementById('em-body').innerHTML=`
     <div style="background:var(--gold-lt);border:1px solid var(--border-gold);border-radius:3px;padding:10px 14px;margin-bottom:20px;">
@@ -3702,10 +3702,10 @@ async function savePreservation(harvestId, maxOnHand){
 
 
 // ── PRESERVATION ──
-const PRESERVE_METHODS=['Dehydrate','Freeze Dry','Freeze (Fresh Frozen)','Waste / Spoilage','Other'];
-const PRESERVE_COLORS={'Dehydrate':'#b8820a','Freeze Dry':'#2a5578','Freeze (Fresh Frozen)':'#3a7aaa','Waste / Spoilage':'#b84c20','Other':'#5a4a30'};
+const PRESERVE_METHODS=['Fresh Frozen','Freeze Dried','Dehydrated','Waste / Compost'];
+const PRESERVE_COLORS={'Fresh Frozen':'#3a7aaa','Freeze Dried':'#2a5578','Dehydrated':'#b8820a','Waste / Compost':'#b84c20'};
 
-let _prvSources = []; // [{harvestId, lotNumber, variety, weightIn}]
+let _prvSources = []; // [{type:'harvest'|'prsv', harvestId?, lotNumber?, batchId?, batchNumber?, variety, weightIn}]
 
 function nextPRSVNumber(){
   const yr = new Date().getFullYear();
@@ -3716,41 +3716,112 @@ function nextPRSVNumber(){
   return 'PRSV-'+yr+'-'+String(next).padStart(3,'0');
 }
 
+function onPrvMethodChange(){
+  const method = document.getElementById('prv-method')?.value;
+  if(!method) return;
+  const isWaste = method==='Waste / Compost';
+  const isFreezeDried = method==='Freeze Dried';
+  // Show/hide weight out row
+  const woutRow = document.getElementById('prv-wout-row');
+  if(woutRow) woutRow.style.display = isWaste ? 'none' : '';
+  // Update source label
+  const lbl = document.getElementById('prv-source-label');
+  if(lbl) lbl.textContent = isFreezeDried
+    ? 'Source — Frozen Batches or Fresh Lots'
+    : isWaste ? 'Source — Harvest Lots (what is being discarded)'
+    : 'Source — Harvest Lots';
+  // Clear and rebuild picker
+  _prvSources = [];
+  renderPrvSourceList();
+  rebuildPrvLotPicker(isFreezeDried);
+}
+
+function rebuildPrvLotPicker(showFrozen){
+  const sel = document.getElementById('prv-add-lot'); if(!sel) return;
+  let opts = '<option value="">Select source...</option>';
+  if(showFrozen){
+    const frozen = DB.preservationBatches
+      .filter(b=>b.method==='Fresh Frozen'&&(b.onHandWeight||0)>0.01)
+      .sort((a,c)=>a.date.localeCompare(c.date)); // FIFO
+    if(frozen.length){
+      opts += '<optgroup label="\u2014 Frozen Batches (FIFO) \u2014">';
+      frozen.forEach(b=>{
+        const v = [...new Set((b.sources||[]).map(s=>s.variety))].join('/');
+        opts += `<option value="prsv:${b.id}">${b.batchNumber} \u00b7 ${v} \u00b7 ${(b.onHandWeight||0).toFixed(1)} lb \u2014 frozen ${fDate(b.date)}</option>`;
+      });
+      opts += '</optgroup><optgroup label="\u2014 Fresh Lots (direct freeze dry) \u2014">';
+    }
+  }
+  const avail = DB.harvests
+    .filter(h=>Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0))>0.01)
+    .sort((a,b)=>b.date.localeCompare(a.date));
+  avail.forEach(h=>{
+    const oh = Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0));
+    opts += `<option value="${h.id}">${h.lotNumber} \u2014 ${h.variety} (${oh.toFixed(1)} lb avail)</option>`;
+  });
+  if(showFrozen) opts += '</optgroup>';
+  sel.innerHTML = opts;
+}
+
+function prefillFreezeDry(batchId){
+  const methodSel = document.getElementById('prv-method');
+  if(!methodSel) return;
+  methodSel.value = 'Freeze Dried';
+  onPrvMethodChange();
+  setTimeout(()=>{
+    const sel = document.getElementById('prv-add-lot');
+    if(sel){ sel.value='prsv:'+batchId; }
+    document.querySelector('#prv-wout-row input')?.focus();
+    document.getElementById('prv-date')?.scrollIntoView({behavior:'smooth',block:'center'});
+  },80);
+}
+
 function renderPrvSourceList(){
-  const el = document.getElementById('prv-source-list');
-  if(!el) return;
+  const el = document.getElementById('prv-source-list'); if(!el) return;
   if(_prvSources.length===0){
-    el.innerHTML='<div style="color:var(--text3);font-size:12px;font-style:italic;padding:8px 0;">No lots added yet — use the picker above.</div>';
-    const tot = document.getElementById('prv-total-in');
-    if(tot) tot.textContent='0.0 lb';
+    el.innerHTML='<div style="color:var(--text3);font-size:12px;font-style:italic;padding:8px 0;">No sources added yet — use the picker above.</div>';
+    const tot=document.getElementById('prv-total-in'); if(tot) tot.textContent='0.0 lb';
     return;
   }
   const total = _prvSources.reduce((s,x)=>s+(x.weightIn||0),0);
   el.innerHTML = _prvSources.map((src,i)=>`
     <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--paper);border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px;">
-      <div>
-        <span style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:var(--gold);">${src.lotNumber}</span>
-        <span style="font-size:12px;color:var(--text2);margin-left:8px;">${src.variety}</span>
-        <span style="font-size:12px;font-weight:600;color:var(--moss);margin-left:8px;">${(src.weightIn||0).toFixed(1)} lb</span>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        ${src.type==='prsv'
+          ? `<span style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:#3a7aaa;">${src.batchNumber}</span><span style="font-family:'Syne Mono',monospace;font-size:8px;font-weight:700;color:#3a7aaa;background:rgba(58,122,170,.12);border:1px solid rgba(58,122,170,.3);border-radius:2px;padding:1px 5px;letter-spacing:1px;">FROZEN</span>`
+          : `<span style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:var(--gold);">${src.lotNumber}</span>`
+        }
+        <span style="font-size:12px;color:var(--text2);">${src.variety}</span>
+        <span style="font-size:12px;font-weight:600;color:var(--moss);">${(src.weightIn||0).toFixed(1)} lb</span>
       </div>
-      <button onclick="removePrvSource(${i})" style="background:none;border:none;color:var(--rust);font-size:14px;cursor:pointer;padding:2px 8px;line-height:1;">✕</button>
+      <button onclick="removePrvSource(${i})" style="background:none;border:none;color:var(--rust);font-size:14px;cursor:pointer;padding:2px 8px;line-height:1;">\u2715</button>
     </div>`).join('');
-  const tot = document.getElementById('prv-total-in');
-  if(tot) tot.textContent = total.toFixed(1)+' lb';
+  const tot=document.getElementById('prv-total-in'); if(tot) tot.textContent=total.toFixed(1)+' lb';
 }
 
 function addPrvSource(){
-  const lotSel = document.getElementById('prv-add-lot');
+  const sel = document.getElementById('prv-add-lot');
+  const val = sel?.value;
   const wtIn = parseFloat(document.getElementById('prv-add-wt').value)||0;
-  if(!lotSel||!lotSel.value){ alert('Select a harvest lot.'); return; }
+  if(!val){ alert('Select a source.'); return; }
   if(wtIn<=0){ alert('Enter a weight greater than 0.'); return; }
-  const h = DB.harvests.find(x=>x.id===lotSel.value); if(!h) return;
-  const alreadyAdded = _prvSources.reduce((s,x)=>x.harvestId===h.id?s+(x.weightIn||0):s, 0);
-  const maxOH = Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0)) - alreadyAdded;
-  if(wtIn>maxOH+0.01){ alert(`Only ${maxOH.toFixed(1)} lb available on ${h.lotNumber}.`); return; }
-  _prvSources.push({ harvestId:h.id, lotNumber:h.lotNumber, variety:h.variety, weightIn:wtIn });
+  if(val.startsWith('prsv:')){
+    const batchId = val.slice(5);
+    const b = DB.preservationBatches.find(x=>x.id===batchId); if(!b) return;
+    const alreadyUsed = _prvSources.reduce((s,x)=>x.type==='prsv'&&x.batchId===batchId?s+(x.weightIn||0):s,0);
+    const avail = (b.onHandWeight||0)-alreadyUsed;
+    if(wtIn>avail+0.01){ alert(`Only ${avail.toFixed(1)} lb available from ${b.batchNumber}.`); return; }
+    const variety = [...new Set((b.sources||[]).map(s=>s.variety))].join('/');
+    _prvSources.push({type:'prsv',batchId:b.id,batchNumber:b.batchNumber,variety,weightIn:wtIn});
+  } else {
+    const h = DB.harvests.find(x=>x.id===val); if(!h) return;
+    const alreadyAdded = _prvSources.reduce((s,x)=>x.type!=='prsv'&&x.harvestId===h.id?s+(x.weightIn||0):s,0);
+    const maxOH = Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0))-alreadyAdded;
+    if(wtIn>maxOH+0.01){ alert(`Only ${maxOH.toFixed(1)} lb available on ${h.lotNumber}.`); return; }
+    _prvSources.push({type:'harvest',harvestId:h.id,lotNumber:h.lotNumber,variety:h.variety,weightIn:wtIn});
+  }
   document.getElementById('prv-add-wt').value='';
-  lotSel.value='';
+  sel.value='';
   renderPrvSourceList();
 }
 
@@ -3766,12 +3837,16 @@ function rPreservation(el){
   const legacy  = [...DB.preservation].sort((a,b)=>b.date.localeCompare(a.date));
 
   // Stats
-  const totalBatches   = batches.length;
+  const totalBatches   = batches.filter(b=>!b.isWaste).length;
   const totalIn        = batches.reduce((s,b)=>s+(b.totalWeightIn||0),0);
   const totalOut       = batches.reduce((s,b)=>s+(b.weightOut||0),0);
-  const totalOnHand    = batches.reduce((s,b)=>s+(b.onHandWeight||0),0);
-  const totalDispatched= batches.reduce((s,b)=>s+Math.max(0,(b.weightOut||0)-(b.onHandWeight||0)),0);
-  const onHandBatches  = batches.filter(b=>(b.onHandWeight||0)>0.009);
+  const totalWaste     = batches.filter(b=>b.isWaste).reduce((s,b)=>s+(b.totalWeightIn||0),0);
+  const totalFreezer   = batches.filter(b=>b.method==='Fresh Frozen').reduce((s,b)=>s+(b.onHandWeight||0),0);
+  const totalOnHand    = batches.filter(b=>b.method!=='Fresh Frozen'&&!b.isWaste).reduce((s,b)=>s+(b.onHandWeight||0),0);
+  const totalDispatched= batches.filter(b=>b.method!=='Fresh Frozen'&&!b.isWaste).reduce((s,b)=>s+Math.max(0,(b.weightOut||0)-(b.onHandWeight||0)),0);
+  const onHandBatches  = batches.filter(b=>b.method!=='Fresh Frozen'&&!b.isWaste&&(b.onHandWeight||0)>0.009);
+  const frozenBatches  = batches.filter(b=>b.method==='Fresh Frozen'&&(b.onHandWeight||0)>0.009)
+                                .sort((a,c)=>a.date.localeCompare(c.date)); // FIFO
 
   // Available harvest lots for picker
   const availLots = DB.harvests
@@ -3805,7 +3880,9 @@ function rPreservation(el){
         const varieties = [...new Set((b.sources||[]).map(s=>s.variety))].join(', ')||'—';
         const yPct = b.totalWeightIn>0&&b.weightOut ? ((b.weightOut/b.totalWeightIn)*100).toFixed(0)+'%' : '—';
         const st = b.status||'in-stock';
-        const statusBadge = st==='in-stock'
+        const statusBadge = st==='waste'
+          ? `<span style="font-size:9px;background:rgba(184,76,32,.1);color:var(--rust);border:1px solid rgba(184,76,32,.35);border-radius:2px;padding:2px 6px;font-family:'Syne Mono',monospace;letter-spacing:.5px;">WASTE/COMPOST</span>`
+          : st==='in-stock'
           ? `<span style="font-size:9px;background:rgba(84,116,72,.1);color:var(--moss);border:1px solid rgba(84,116,72,.3);border-radius:2px;padding:2px 6px;font-family:'Syne Mono',monospace;letter-spacing:.5px;">IN STOCK</span>`
           : st==='dispatched'
           ? `<span style="font-size:9px;background:rgba(42,85,120,.1);color:var(--blue);border:1px solid rgba(42,85,120,.3);border-radius:2px;padding:2px 6px;font-family:'Syne Mono',monospace;letter-spacing:.5px;">DISPATCHED</span>`
@@ -3838,13 +3915,13 @@ function rPreservation(el){
   }).join('');
 
   el.innerHTML=`
-    <div class="ph"><div class="ph-t">Preservation</div><div class="ph-s">PRSV batch tracking · multi-lot sourcing · preserved inventory · dispatch to market</div></div>
+    <div class="ph"><div class="ph-t">Preservation</div><div class="ph-s">Freezer inventory (FIFO) · freeze dried · dehydrated · waste tracking · full chain traceability</div></div>
 
     <div class="stats" style="margin-bottom:28px;">
-      <div class="sc g"><div class="sc-l">PRSV Batches</div><div class="sc-v">${totalBatches}</div><div class="sc-n">all time</div></div>
-      <div class="sc"><div class="sc-l">Total In</div><div class="sc-v">${totalIn.toFixed(1)}</div><div class="sc-n">lbs into preservation</div></div>
-      <div class="sc b"><div class="sc-l">On Hand</div><div class="sc-v" style="color:var(--blue)">${totalOnHand.toFixed(1)}</div><div class="sc-n">preserved inventory</div></div>
-      <div class="sc m"><div class="sc-l">Dispatched</div><div class="sc-v">${totalDispatched.toFixed(1)}</div><div class="sc-n">lbs sent to market</div></div>
+      <div class="sc b"><div class="sc-l">Freezer Stock</div><div class="sc-v" style="color:#3a7aaa">${totalFreezer.toFixed(1)}<span style="font-size:14px"> lb</span></div><div class="sc-n">${frozenBatches.length} batch${frozenBatches.length!==1?'es':''} · FIFO ready</div></div>
+      <div class="sc g"><div class="sc-l">Processed On Hand</div><div class="sc-v">${totalOnHand.toFixed(1)}<span style="font-size:14px"> lb</span></div><div class="sc-n">freeze dried / dehydrated</div></div>
+      <div class="sc m"><div class="sc-l">Dispatched</div><div class="sc-v">${totalDispatched.toFixed(1)}<span style="font-size:14px"> lb</span></div><div class="sc-n">sold from preservation</div></div>
+      <div class="sc ${totalWaste>0?'r':''}"><div class="sc-l">Waste / Loss</div><div class="sc-v" style="color:${totalWaste>0?'var(--rust)':'var(--text2)'}">${totalWaste.toFixed(1)}<span style="font-size:14px"> lb</span></div><div class="sc-n">composted all time</div></div>
     </div>
 
     <div class="sh"><span>Preserved Inventory — On Hand</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:${onHandBatches.length>0?'var(--moss)':'var(--text3)'};">${onHandBatches.length} BATCH${onHandBatches.length!==1?'ES':''} AVAILABLE</span></div>
@@ -3853,8 +3930,36 @@ function rPreservation(el){
       <tbody>${onHandRows}</tbody>
     </table></div>
 
+
+    <div class="sh" style="margin-top:0;">
+      <span>Freezer Inventory <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1.5px;">— FIFO ORDER (OLDEST FIRST)</span></span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:${totalFreezer>0?'#3a7aaa':'var(--text3)'};">${frozenBatches.length} BATCH${frozenBatches.length!==1?'ES':''} · ${totalFreezer.toFixed(1)} LB</span>
+    </div>
+    ${frozenBatches.length===0
+      ? '<div class="empty" style="margin-bottom:28px;">Freezer is empty — log a Fresh Frozen batch below to stock up</div>'
+      : `<div class="tw" style="margin-bottom:28px;"><table>
+          <thead><tr><th>Batch #</th><th>Date Frozen</th><th>Age</th><th>Varieties</th><th>Original</th><th style="color:#3a7aaa;">On Hand</th><th></th></tr></thead>
+          <tbody>${frozenBatches.map(b=>{
+            const daysFrozen=Math.floor((new Date()-new Date(b.date+'T12:00:00'))/(1000*60*60*24));
+            const varieties=[...new Set((b.sources||[]).map(s=>s.variety))].join(', ')||'\u2014';
+            const ageCol=daysFrozen>90?'var(--rust)':daysFrozen>60?'var(--amber)':'var(--moss)';
+            const ageTip=daysFrozen>90?'\u26a0\ufe0f Over 90 days':daysFrozen>60?'Getting long':'\u2713 Good';
+            return \`<tr>
+              <td style="font-family:'Syne Mono',monospace;font-size:12px;font-weight:700;color:#3a7aaa;">\${b.batchNumber}</td>
+              <td class="mn">\${fDate(b.date)}</td>
+              <td class="mn" style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:\${ageCol};" title="\${ageTip}">\${daysFrozen}d</td>
+              <td style="font-size:12px;">\${varieties}</td>
+              <td class="mn">\${(b.totalWeightIn||0).toFixed(1)} lb</td>
+              <td class="mn" style="font-weight:700;color:#3a7aaa;">\${(b.onHandWeight||0).toFixed(1)} lb</td>
+              <td><button class="btn b-sm" style="background:rgba(42,85,120,.1);color:#2a5578;border:1px solid rgba(42,85,120,.3);white-space:nowrap;" onclick="prefillFreezeDry('\${b.id}')">\u2192 Freeze Dry</button></td>
+            </tr>\`;
+          }).join('')}
+          </tbody>
+        </table></div>`
+    }
+
     ${canEdit()?`
-    <div class="sh"><span>Log a New PRSV Batch</span>
+    <div class="sh"><span>Log a New Processing Batch</span>
       <span style="font-family:'Syne Mono',monospace;font-size:9px;background:rgba(84,116,72,.1);color:var(--fern);border:1px solid rgba(84,116,72,.3);border-radius:2px;padding:2px 8px;letter-spacing:.5px;">NEXT: ${nextBatch}</span>
     </div>
     <div class="card" style="margin-bottom:24px;">
@@ -3865,7 +3970,7 @@ function rPreservation(el){
         </div>
         <div class="fgl">
           <label>Preservation Method</label>
-          <select class="fs" id="prv-method">
+          <select class="fs" id="prv-method" onchange="onPrvMethodChange()">
             <option value="">Select method...</option>
             ${PRESERVE_METHODS.map(m=>`<option value="${m}">${m}</option>`).join('')}
           </select>
@@ -3874,14 +3979,14 @@ function rPreservation(el){
           <label>Facility</label>
           <input class="fi" value="Carthage" readonly style="background:var(--paper);color:var(--text2);cursor:not-allowed;">
         </div>
-        <div class="fgl">
+        <div class="fgl" id="prv-wout-row">
           <label>Weight Out / Yield (lbs)</label>
           <input class="fi" type="number" step="0.1" min="0" id="prv-wout" placeholder="lbs after processing (dried, frozen, etc)">
         </div>
       </div>
 
       <div style="border-top:1px solid var(--border);padding-top:16px;margin-top:4px;margin-bottom:14px;">
-        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:10px;">Source Harvest Lots</div>
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:10px;" id="prv-source-label">Source — Harvest Lots</div>
         <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;">
           <div style="flex:1;min-width:220px;">
             <label style="font-size:11px;color:var(--text2);display:block;margin-bottom:4px;">Harvest Lot</label>
@@ -3935,21 +4040,31 @@ function rPreservation(el){
 async function logPreservationBatch(){
   const date   = document.getElementById('prv-date').value;
   const method = document.getElementById('prv-method').value;
-  const wout   = parseFloat(document.getElementById('prv-wout').value)||0;
+  const isWaste = method==='Waste / Compost';
+  const wout   = isWaste ? 0 : (parseFloat(document.getElementById('prv-wout').value)||0);
   const notes  = document.getElementById('prv-notes').value.trim();
 
-  if(!method){ alert('Please select a preservation method.'); return; }
-  if(_prvSources.length===0){ alert('Add at least one harvest lot as a source.'); return; }
-  if(!wout||wout<=0){ alert('Weight Out / Yield is required (enter the lbs after processing).'); return; }
+  if(!method){ alert('Please select a processing method.'); return; }
+  if(_prvSources.length===0){ alert('Add at least one source.'); return; }
+  if(!isWaste&&(!wout||wout<=0)){ alert('Weight Out / Yield is required (lbs after processing).'); return; }
 
   const totalIn    = _prvSources.reduce((s,x)=>s+(x.weightIn||0),0);
   const batchNumber = nextPRSVNumber();
 
-  // Deduct preservedWeight from each source harvest record
+  // Deduct from each source
   for(const src of _prvSources){
-    const h = DB.harvests.find(x=>x.id===src.harvestId); if(!h) continue;
-    h.preservedWeight = (h.preservedWeight||0) + src.weightIn;
-    FS.update('harvests', h.id, {preservedWeight: h.preservedWeight});
+    if(src.type==='prsv'){
+      // Deduct from frozen batch on-hand
+      const b = DB.preservationBatches.find(x=>x.id===src.batchId); if(!b) continue;
+      b.onHandWeight = Math.max(0,(b.onHandWeight||0)-src.weightIn);
+      if(b.onHandWeight<0.01) b.status='dispatched';
+      FS.update('preservationBatches',b.id,{onHandWeight:b.onHandWeight,status:b.status});
+    } else {
+      // Deduct from harvest preserved weight
+      const h = DB.harvests.find(x=>x.id===src.harvestId); if(!h) continue;
+      h.preservedWeight = (h.preservedWeight||0)+src.weightIn;
+      FS.update('harvests',h.id,{preservedWeight:h.preservedWeight});
+    }
   }
 
   const batchData = {
@@ -3957,23 +4072,36 @@ async function logPreservationBatch(){
     sources: _prvSources.map(s=>({...s})),
     totalWeightIn: totalIn,
     weightOut: wout,
-    onHandWeight: wout,
-    status: 'in-stock',
+    onHandWeight: isWaste ? 0 : wout,
+    status: isWaste ? 'waste' : 'in-stock',
+    isWaste: isWaste||false,
     notes,
     createdBy: S.name||S.role||'unknown',
     timestamp: new Date().toISOString()
   };
 
-  const bId = await FS.add('preservationBatches', batchData);
-  batchData.id = bId;
+  if(!DB._isDemoMode){
+    const bId = await FS.add('preservationBatches',batchData);
+    batchData.id=bId;
+  } else {
+    batchData.id='demo-pb-'+Date.now().toString(36);
+  }
   DB.preservationBatches.push(batchData);
 
-  const srcSummary = _prvSources.map(s=>`${s.lotNumber} (${s.weightIn.toFixed(1)}lb)`).join(', ');
-  logAudit('preservation_logged', `${batchNumber} — ${method} — ${totalIn.toFixed(1)}lb in, ${wout.toFixed(1)}lb out — Sources: ${srcSummary}`);
+  const srcSummary = _prvSources.map(s=>(s.type==='prsv'?s.batchNumber:s.lotNumber)+' ('+s.weightIn.toFixed(1)+'lb)').join(', ');
+  const auditKey = isWaste ? 'preservation_waste' : 'preservation_logged';
+  const auditMsg = isWaste
+    ? `${batchNumber} \u2014 WASTE/COMPOST \u2014 ${totalIn.toFixed(1)}lb lost \u2014 Sources: ${srcSummary}`
+    : `${batchNumber} \u2014 ${method} \u2014 ${totalIn.toFixed(1)}lb in, ${wout.toFixed(1)}lb out \u2014 Sources: ${srcSummary}`;
+  logAudit(auditKey, auditMsg);
 
+  const toastEl = document.getElementById('prv-t');
+  if(toastEl) toastEl.textContent = isWaste
+    ? `\u2713 Waste logged \u2014 ${totalIn.toFixed(1)} lb recorded as loss`
+    : `\u2713 ${batchNumber} logged \u2014 ${wout.toFixed(1)} lb ${method.toLowerCase()} added to inventory`;
   _prvSources = [];
   toast('prv-t');
-  setTimeout(()=>renderC(), 900);
+  setTimeout(()=>renderC(),900);
 }
 
 function openDispatchModal(batchId){
@@ -5687,8 +5815,8 @@ function seedDemoData(){
       ],
       totalWeightIn:5,weightOut:4.8,onHandWeight:2.3,status:'partial',
       notes:'Multi-lot batch. 2.5lb dispatched to Catbird Seat.',createdBy:'Allen M.',timestamp:iso(1)},
-    {id:'demo-pb-4',batchNumber:'PRSV-2026-004',date:yd(6),method:'Powder',facility:'Carthage',
-      sources:[{harvestId:'demo-h-38',lotNumber:'TM-2026-015',variety:'Shiitake',weightIn:8}],
+    {id:'demo-pb-4',batchNumber:'PRSV-2026-004',date:yd(6),method:'Dehydrated',facility:'Carthage',
+      sources:[{type:'harvest',harvestId:'demo-h-38',lotNumber:'TM-2026-015',variety:'Shiitake',weightIn:8}],
       totalWeightIn:8,weightOut:1.1,onHandWeight:1.1,status:'in-stock',
       notes:'Fine powder — 7:1 dry ratio. High-value product.',createdBy:'Allen M.',timestamp:iso(6)},
   ];
