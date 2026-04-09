@@ -1091,7 +1091,7 @@ function openDayCloseout(){
       <div style="margin-bottom:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
           <span style="font-size:12px;font-weight:600;color:var(--gold);">${fac}</span>
-          <button class="btn b-g b-sm" onclick="markAllNoActivity('${fac}','${today}')">All No Activity</button>
+          <button class="btn b-g b-sm" data-fac="${fac}" data-today="${today}" onclick="markAllNoActivity(this.dataset.fac,this.dataset.today)">All No Activity</button>
         </div>
         ${containers.map(c=>`
         <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin-bottom:3px;background:rgba(255,255,255,.02);border-radius:3px;" id="noact-row-${c.code.replace(/[^a-z0-9]/gi,'_')}">
@@ -3324,7 +3324,7 @@ function rInventory(el){
     <div class="ph"><div class="ph-t">Inventory</div><div class="ph-s">Live fresh stock — updates when orders are packed or lots are moved to preservation</div></div>
 
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;">
-      ${['all',...DB.facilities].map(f=>`<button onclick="filterInventory('${f}')" style="padding:6px 14px;border:1px solid ${_fac===f?'var(--gold)':'var(--border)'};background:${_fac===f?'rgba(184,130,10,.12)':'var(--white)'};color:${_fac===f?'var(--gold)':'var(--text3)'};border-radius:3px;cursor:pointer;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;font-weight:${_fac===f?'700':'400'};">${f==='all'?'All Facilities':f}</button>`).join('')}
+      ${['all',...DB.facilities].map(f=>`<button data-fac="${f}" onclick="filterInventory(this.dataset.fac)" style="padding:6px 14px;border:1px solid ${_fac===f?'var(--gold)':'var(--border)'};background:${_fac===f?'rgba(184,130,10,.12)':'var(--white)'};color:${_fac===f?'var(--gold)':'var(--text3)'};border-radius:3px;cursor:pointer;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;font-weight:${_fac===f?'700':'400'};">${f==='all'?'All Facilities':f}</button>`).join('')}
     </div>
     ${_fac!=='all'?`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:16px;padding:8px 12px;background:rgba(184,130,10,.05);border:1px solid rgba(184,130,10,.15);border-radius:3px;">📍 FILTERED: ${_fac} — showing stock at this facility only</div>`:''}
 
