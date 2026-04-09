@@ -2616,6 +2616,14 @@ const VARIETIES = ['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','C
 // To reorder the dropdown, move rows within each group below.
 const ALL_FACILITIES = ["Hyde's Ferry Pike",'Opryland','Carthage','Missouri','Owner','CGF'];
 DB.facilities = [...ALL_FACILITIES]; // backfill — DB was initialized before this const
+
+// Facilities that actually hold inventory (all harvests route to one of these two)
+const INVENTORY_FACILITIES = ["Hyde's Ferry Pike", 'Carthage'];
+
+// Map any grow-site facility → its inventory-holding destination
+function invFacDest(rawFacility){
+  return rawFacility === 'Carthage' ? 'Carthage' : "Hyde's Ferry Pike";
+}
 // active:true = shows in harvest dropdown & inventory filter by default
 // To move a container between facilities: change facility value
 // To temporarily deactivate: use Admin → Container Management toggles
@@ -3141,11 +3149,119 @@ function filterInventory(fac){
   rInventory(document.getElementById('main-views'));
 }
 
+// Quick variety-level transfer: pick lots automatically (FIFO) or let user choose
+let _vtData = null; // stores data for pending variety transfer
+function openVarietyTransfer(variety){
+  const _fac = _invFacility||'all';
+  const fromFac = _fac==='all' ? INVENTORY_FACILITIES[0] : _fac;
+  const toFac = fromFac===INVENTORY_FACILITIES[0] ? INVENTORY_FACILITIES[1] : INVENTORY_FACILITIES[0];
+  // Get lots of this variety at fromFac with stock, FIFO order
+  const availLots = DB.harvests
+    .filter(h=>h.variety===variety)
+    .map(h=>({...h, avail:facLotOnHand(h,fromFac)}))
+    .filter(h=>h.avail>0)
+    .sort((a,b)=>a.date.localeCompare(b.date)); // oldest first — FIFO
+  if(!availLots.length){ alert('No '+variety+' stock at '+fromFac+'.'); return; }
+  const totalAvail = availLots.reduce((s,l)=>s+l.avail,0);
+
+  const lotOptions = availLots.map(l=>
+    '<option value="'+l.id+'">'+l.lotNumber+' · '+fDate(l.date)+' · '+l.avail.toFixed(1)+' lb avail</option>'
+  ).join('');
+
+  document.getElementById('em-title').textContent = 'Transfer '+variety+' → '+toFac;
+  document.getElementById('em-body').innerHTML =
+    '<div style="background:rgba(42,85,120,.06);border:1px solid rgba(42,85,120,.2);border-radius:3px;padding:12px 16px;margin-bottom:18px;font-family:monospace;font-size:11px;">'+
+      '<span style="color:var(--text3);letter-spacing:1px;text-transform:uppercase;font-size:9px;">Route</span><br>'+
+      '<strong style="font-size:13px;color:var(--blue);">'+fromFac+' → '+toFac+'</strong>'+
+      '<span style="margin-left:16px;color:var(--text3);">'+totalAvail.toFixed(1)+' lb total available</span>'+
+    '</div>'+
+    '<div class="fg2" style="margin-bottom:16px;">'+
+      '<div class="fgl"><label>Source Lot (FIFO default)</label>'+
+        '<select class="fs" id="vt-lot">'+
+          '<option value="__all__">Split across all lots (FIFO)</option>'+
+          lotOptions+
+        '</select>'+
+      '</div>'+
+      '<div class="fgl"><label>Weight to Transfer (lbs)</label>'+
+        '<input class="fi" type="number" step="0.1" min="0.1" max="'+totalAvail.toFixed(2)+'" id="vt-weight" placeholder="lbs">'+
+      '</div>'+
+      '<div class="fgl"><label>Date</label>'+
+        '<input class="fi" type="date" id="vt-date" value="'+tday()+'">'+
+      '</div>'+
+      '<div class="fgl"><label>Driver / Method</label>'+
+        '<input class="fi" id="vt-driver" placeholder="Driver name or van/self">'+
+      '</div>'+
+      '<div class="fgl" style="grid-column:span 2;"><label>Notes</label>'+
+        '<input class="fi" id="vt-notes" placeholder="Temp, purpose (freeze dry batch, etc.)...">'+
+      '</div>'+
+    '</div>'+
+    '<div class="form-acts">'+
+      '<button class="btn b-m b-lg" onclick="saveVarietyTransfer()">Log Transfer</button>'+
+      '<button class="btn b-g" onclick="closeModal()">Cancel</button>'+
+    '</div>';
+  _vtData = {variety, fromFac, toFac, availLots: availLots.map(l=>({id:l.id, avail:l.avail, lot:l.lotNumber}))};
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+async function saveVarietyTransfer(){
+  if(!_vtData){ alert('Transfer data missing, please reopen.'); return; }
+  const {variety, fromFac, toFac, availLots} = _vtData;
+  const weight = parseFloat(document.getElementById('vt-weight').value)||0;
+  const date = document.getElementById('vt-date').value;
+  const driver = document.getElementById('vt-driver').value.trim();
+  const notes = document.getElementById('vt-notes').value.trim();
+  const lotSel = document.getElementById('vt-lot').value;
+  if(!weight||weight<=0){ alert('Enter weight to transfer.'); return; }
+  if(!date){ alert('Date required.'); return; }
+  const totalAvail = availLots.reduce((s,l)=>s+l.avail,0);
+  if(weight>totalAvail+0.01){ alert('Max available: '+totalAvail.toFixed(1)+' lb'); return; }
+
+  // Build list of lots to deduct from (FIFO or single)
+  let deductions = [];
+  if(lotSel==='__all__'){
+    // FIFO split across lots
+    let remaining = weight;
+    for(const l of availLots){
+      if(remaining<=0) break;
+      const take = Math.min(remaining, l.avail);
+      deductions.push({id:l.id, lot:l.lot, take:parseFloat(take.toFixed(3))});
+      remaining -= take;
+    }
+  } else {
+    const lot = availLots.find(l=>l.id===lotSel);
+    if(!lot){ alert('Lot not found.'); return; }
+    if(weight>lot.avail+0.01){ alert('Max for this lot: '+lot.avail.toFixed(1)+' lb'); return; }
+    deductions = [{id:lot.id, lot:lot.lot, take:parseFloat(weight.toFixed(3))}];
+  }
+
+  const by = S.name||S.email||'Staff';
+  const ts = new Date().toISOString();
+
+  // Save a transfer record per lot deduction
+  for(const d of deductions){
+    const h = DB.harvests.find(x=>x.id===d.id);
+    if(!h) continue;
+    const tData = {
+      harvestId:d.id, lotNumber:d.lot, variety,
+      fromFacility:fromFac, toFacility:toFac,
+      weight:d.take, date, notes:notes+(driver?' · Driver:'+driver:''),
+      transferredBy:by, timestamp:ts
+    };
+    const tid = await FS.add('transfers',tData);
+    DB.transfers.push({id:tid,...tData});
+  }
+
+  logAudit('transfer', variety+' '+weight.toFixed(1)+'lb transferred '+fromFac+' → '+toFac+(driver?' via '+driver:''));
+  _vtData = null;
+  closeModal();
+  rInventory(document.getElementById('main-views'));
+}
+
 // Returns facility-adjusted on-hand for a single harvest lot
 function facLotOnHand(h, fac){
   const total=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0));
   if(fac==='all') return total;
-  let atFac=(h.facility===fac)?total:0;
+  let atFac=(invFacDest(h.facility||'')===fac)?total:0;
   DB.transfers.filter(t=>t.harvestId===h.id).forEach(t=>{
     if(t.toFacility===fac) atFac+=t.weight;
     if(t.fromFacility===fac) atFac-=t.weight;
@@ -3270,7 +3386,7 @@ function rInventory(el){
       const lPct = h.weight>0 ? loh/h.weight : 0;
       const lCol = lPct>0.5?'#3a6030':lPct>0.2?'#b8820a':'#b84c20';
       const isEmpty = loh<=0;
-      const hasMultiFac = DB.facilities.length>1;
+      const hasMultiFac = INVENTORY_FACILITIES.length>1;
       return `<tr class="lot-sub-${vid}" style="display:none;background:#fafaf7;">
         <td style="padding:6px 12px 6px 32px;font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);">${h.lotNumber}</td>
         <td style="padding:6px 12px;font-size:11px;color:var(--text3);">${h.container}<br><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:1px 5px;">${h.facility||'—'}</span></td>
@@ -3312,7 +3428,10 @@ function rInventory(el){
           <span class="mn" style="font-weight:700;color:${col};min-width:48px;">${onHand.toFixed(1)} lb</span>
         </div>
       </td>
-      <td></td>
+      <td style="padding:4px 8px;">
+        ${onHand>0&&canEdit()&&_fac!=='Carthage'?`<button class="btn b-sm" style="background:rgba(42,85,120,.08);color:var(--blue);border:1px solid rgba(42,85,120,.2);white-space:nowrap;" data-variety="${v}" onclick="event.stopPropagation();openVarietyTransfer(this.dataset.variety)">→ Carthage</button>`:''}
+        ${onHand>0&&canEdit()&&_fac==='Carthage'?`<button class="btn b-sm" style="background:rgba(58,96,48,.08);color:var(--fern);border:1px solid rgba(58,96,48,.2);white-space:nowrap;" data-variety="${v}" onclick="event.stopPropagation();openVarietyTransfer(this.dataset.variety)">→ Hyde&#39;s</button>`:''}
+      </td>
     </tr>${lotSubRows}`;
   }).join('');
 
@@ -3324,7 +3443,7 @@ function rInventory(el){
     <div class="ph"><div class="ph-t">Inventory</div><div class="ph-s">Live fresh stock — updates when orders are packed or lots are moved to preservation</div></div>
 
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;">
-      ${['all',...DB.facilities].map(f=>`<button data-fac="${f}" onclick="filterInventory(this.dataset.fac)" style="padding:6px 14px;border:1px solid ${_fac===f?'var(--gold)':'var(--border)'};background:${_fac===f?'rgba(184,130,10,.12)':'var(--white)'};color:${_fac===f?'var(--gold)':'var(--text3)'};border-radius:3px;cursor:pointer;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;font-weight:${_fac===f?'700':'400'};">${f==='all'?'All Facilities':f}</button>`).join('')}
+      ${['all',...INVENTORY_FACILITIES].map(f=>`<button data-fac="${f}" onclick="filterInventory(this.dataset.fac)" style="padding:6px 14px;border:1px solid ${_fac===f?'var(--gold)':'var(--border)'};background:${_fac===f?'rgba(184,130,10,.12)':'var(--white)'};color:${_fac===f?'var(--gold)':'var(--text3)'};border-radius:3px;cursor:pointer;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;font-weight:${_fac===f?'700':'400'};">${f==='all'?'All Facilities':f}</button>`).join('')}
     </div>
     ${_fac!=='all'?`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:16px;padding:8px 12px;background:rgba(184,130,10,.05);border:1px solid rgba(184,130,10,.15);border-radius:3px;">📍 FILTERED: ${_fac} — showing stock at this facility only</div>`:''}
 
@@ -3414,10 +3533,12 @@ function toggleLotRows(vid){
 // ── PRODUCT MOVEMENT ──
 const PRODUCT_STATES = ['Fresh','Fresh Frozen','Freeze Dried','Air Dried / Dehydrated','Other'];
 
+let _pmHarvestId=null, _pmFromFac=null, _pmMaxWeight=0;
 function openTransferModal(harvestId){
   const h=DB.harvests.find(x=>x.id===harvestId); if(!h) return;
-  const fromFac=h.facility||DB.facilities[0]||'Unknown';
+  const fromFac=invFacDest(h.facility||'')||INVENTORY_FACILITIES[0];
   const atFac=facLotOnHand(h,fromFac);
+  _pmHarvestId=harvestId; _pmFromFac=fromFac; _pmMaxWeight=atFac;
   const farmInfo=CONTAINERS.find(c=>c.code===h.container)||{code:h.container||'—',farm:'—',facility:fromFac};
   const now=new Date();
   const timeStr=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
@@ -3463,7 +3584,7 @@ function openTransferModal(harvestId){
       </div>
       <div class="fgl" id="mv-tofac-wrap"><label>To Facility</label>
         <select class="fs" id="mv-tofac">
-          ${DB.facilities.filter(f=>f!==fromFac).map(f=>`<option value="${f}">${f}</option>`).join('')}
+          ${INVENTORY_FACILITIES.filter(f=>f!==fromFac).map(f=>`<option value="${f}">${f}</option>`).join('')}
         </select>
       </div>
       <div class="fgl" id="mv-toclient-wrap" style="display:none;"><label>Customer / Recipient</label>
@@ -3501,7 +3622,7 @@ function openTransferModal(harvestId){
     </div>
 
     <div class="form-acts">
-      <button class="btn b-m b-lg" onclick="saveProductMovement('${harvestId}','${fromFac}',${atFac.toFixed(3)})">Log Movement</button>
+      <button class="btn b-m b-lg" onclick="saveProductMovement()">Log Movement</button>
       <button class="btn b-g" onclick="closeModal()">Cancel</button>
     </div>`;
   document.getElementById('edit-modal').classList.add('open');
@@ -3517,7 +3638,9 @@ function onMovDestType(){
   };
 }
 
-async function saveProductMovement(harvestId, fromFac, maxWeight){
+async function saveProductMovement(){
+  const harvestId=_pmHarvestId, fromFac=_pmFromFac, maxWeight=_pmMaxWeight;
+  if(!harvestId||!fromFac){ alert('Transfer data missing, please reopen.'); return; }
   const weight=parseFloat(document.getElementById('mv-weight').value)||0;
   const date=document.getElementById('mv-date').value;
   const time=document.getElementById('mv-time').value;
@@ -4142,7 +4265,7 @@ function openDispatchModal(batchId){
       <div class="fgl" id="dsp-fac-row" style="display:none;">
         <label>To Facility</label>
         <select class="fs" id="dsp-fac">
-          ${DB.facilities.filter(f=>f!=='Carthage').map(f=>`<option value="${f}">${f}</option>`).join('')}
+          ${INVENTORY_FACILITIES.filter(f=>f!=='Carthage').map(f=>`<option value="${f}">${f}</option>`).join('')}
         </select>
       </div>
       <div class="fgl">
