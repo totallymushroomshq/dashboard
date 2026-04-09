@@ -3853,6 +3853,29 @@ function rPreservation(el){
     .filter(h=>Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0))>0)
     .sort((a,b)=>b.date.localeCompare(a.date));
 
+
+
+  // Frozen batch rows — pre-built to avoid nested template literal issues
+  const frozenRows = frozenBatches.length===0
+    ? '<div class="empty" style="margin-bottom:28px;">Freezer is empty — log a Fresh Frozen batch below to stock up</div>'
+    : '<div class="tw" style="margin-bottom:28px;"><table>'
+      +'<thead><tr><th>Batch #</th><th>Date Frozen</th><th>Age</th><th>Varieties</th><th>Original</th><th style="color:#3a7aaa;">On Hand</th><th></th></tr></thead><tbody>'
+      + frozenBatches.map(b=>{
+          const daysFrozen=Math.floor((new Date()-new Date(b.date+'T12:00:00'))/(1000*60*60*24));
+          const varieties=[...new Set((b.sources||[]).map(s=>s.variety))].join(', ')||'—';
+          const ageCol=daysFrozen>90?'var(--rust)':daysFrozen>60?'var(--amber)':'var(--moss)';
+          const ageTip=daysFrozen>90?'⚠️ Over 90 days':daysFrozen>60?'Getting long':'✓ Good';
+          return '<tr>'
+            +'<td style="font-family:\'Syne Mono\',monospace;font-size:12px;font-weight:700;color:#3a7aaa;">'+b.batchNumber+'</td>'
+            +'<td class="mn">'+fDate(b.date)+'</td>'
+            +'<td class="mn" style="font-family:\'Syne Mono\',monospace;font-size:11px;font-weight:700;color:'+ageCol+';" title="'+ageTip+'">'+daysFrozen+'d</td>'
+            +'<td style="font-size:12px;">'+varieties+'</td>'
+            +'<td class="mn">'+(b.totalWeightIn||0).toFixed(1)+' lb</td>'
+            +'<td class="mn" style="font-weight:700;color:#3a7aaa;">'+(b.onHandWeight||0).toFixed(1)+' lb</td>'
+            +'<td><button class="btn b-sm" style="background:rgba(42,85,120,.1);color:#2a5578;border:1px solid rgba(42,85,120,.3);white-space:nowrap;" onclick="prefillFreezeDry(\''+b.id+'\')">→ Freeze Dry</button></td>'
+            +'</tr>';
+        }).join('')
+      +'</tbody></table></div>';
   const nextBatch = nextPRSVNumber();
 
   // On-hand inventory rows
@@ -3935,28 +3958,7 @@ function rPreservation(el){
       <span>Freezer Inventory <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1.5px;">— FIFO ORDER (OLDEST FIRST)</span></span>
       <span style="font-family:'Syne Mono',monospace;font-size:9px;color:${totalFreezer>0?'#3a7aaa':'var(--text3)'};">${frozenBatches.length} BATCH${frozenBatches.length!==1?'ES':''} · ${totalFreezer.toFixed(1)} LB</span>
     </div>
-    ${frozenBatches.length===0
-      ? '<div class="empty" style="margin-bottom:28px;">Freezer is empty — log a Fresh Frozen batch below to stock up</div>'
-      : `<div class="tw" style="margin-bottom:28px;"><table>
-          <thead><tr><th>Batch #</th><th>Date Frozen</th><th>Age</th><th>Varieties</th><th>Original</th><th style="color:#3a7aaa;">On Hand</th><th></th></tr></thead>
-          <tbody>${frozenBatches.map(b=>{
-            const daysFrozen=Math.floor((new Date()-new Date(b.date+'T12:00:00'))/(1000*60*60*24));
-            const varieties=[...new Set((b.sources||[]).map(s=>s.variety))].join(', ')||'\u2014';
-            const ageCol=daysFrozen>90?'var(--rust)':daysFrozen>60?'var(--amber)':'var(--moss)';
-            const ageTip=daysFrozen>90?'\u26a0\ufe0f Over 90 days':daysFrozen>60?'Getting long':'\u2713 Good';
-            return \`<tr>
-              <td style="font-family:'Syne Mono',monospace;font-size:12px;font-weight:700;color:#3a7aaa;">\${b.batchNumber}</td>
-              <td class="mn">\${fDate(b.date)}</td>
-              <td class="mn" style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:\${ageCol};" title="\${ageTip}">\${daysFrozen}d</td>
-              <td style="font-size:12px;">\${varieties}</td>
-              <td class="mn">\${(b.totalWeightIn||0).toFixed(1)} lb</td>
-              <td class="mn" style="font-weight:700;color:#3a7aaa;">\${(b.onHandWeight||0).toFixed(1)} lb</td>
-              <td><button class="btn b-sm" style="background:rgba(42,85,120,.1);color:#2a5578;border:1px solid rgba(42,85,120,.3);white-space:nowrap;" onclick="prefillFreezeDry('\${b.id}')">\u2192 Freeze Dry</button></td>
-            </tr>\`;
-          }).join('')}
-          </tbody>
-        </table></div>`
-    }
+    ${frozenRows}
 
     ${canEdit()?`
     <div class="sh"><span>Log a New Processing Batch</span>
