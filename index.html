@@ -2455,7 +2455,7 @@ async function subNewOrd(){
   const day=document.getElementById('no-d').value;
   if(!day){ alert('Delivery day is required.'); return }
   const cr=DB.clients.find(c=>c.name.toLowerCase()===client.toLowerCase());
-  const o={clientId:cr?.id||null,client,day,status:'pending',
+  const o={clientId:cr?.id||null,client,day,status:'pending',receivedAt:new Date().toISOString(),receivedAt:new Date().toISOString(),
     oyster:parseInt(document.getElementById('no-oy')?.value)||0,
     chefs:parseInt(document.getElementById('no-ch')?.value)||0,
     lions:parseInt(document.getElementById('no-li')?.value)||0,
@@ -4806,7 +4806,7 @@ function dlQBInvoicesIIF(fromDate, toDate){
     const dateStr = formatQBDate(o.week||o.date||tday());
     const total = eRev(o);
     const items = buildOrderLineItems(o);
-    const memo = `Mushroom delivery${o.week?' wk '+o.week:''}${o.orderRef?' Ref:'+o.orderRef:''}`;
+    const memo = `Mushroom delivery${o.week?' wk '+o.week:''}${o.orderRef?' Ref:'+o.orderRef:''}${o.usedLots&&o.usedLots.length?' Lots:'+o.usedLots.join(','):''}`;
 
     // Main transaction line (debit to Accounts Receivable)
     lines.push(['TRNS','INVOICE',dateStr,'Accounts Receivable',o.client,total.toFixed(2),assigned[o.id],memo,'N','Y','Net 30'].join('\t'));
@@ -4908,6 +4908,70 @@ async function markAllQBExported(fromDate, toDate){
   }
   logAudit('other',`Marked ${toMark.length} order(s) as QB exported`);
   renderC();
+}
+
+
+function dlBlockProductionCSV(fromDate, toDate){
+  const batches = [...DB.labBatches]
+    .filter(b=>(!fromDate||(b.productionDate||b.date||'')>=fromDate)&&(!toDate||(b.productionDate||b.date||'')<=toDate))
+    .sort((a,b)=>(a.productionDate||a.date||'').localeCompare(b.productionDate||b.date||''));
+  if(!batches.length){ alert('No production logs in this date range.'); return; }
+
+  const headers = [
+    'Batch #','Production Date','Strain / Variety','Substrate Batch','Lot Code','Order / Run #','Substrate Supplier / Origin',
+    'Substrate Lbs','Buckets','Gallons Water','Add Water Start','Add Water End','Mix Time','Blocks Produced',
+    'Sterilization Date','Autoclave Temp (F)','Cook Hours','Cook Start','Cook End',
+    'Spawn Date','Spawn Source','Spawn Qty / Rate','Spawn Lot #',
+    'Rack Location','Expected Colonization (days)','Created By','Timestamp'
+  ];
+  const rows = [headers];
+  batches.forEach(b=>{
+    rows.push([
+      b.batchNum||'', b.productionDate||b.date||'', b.strain||b.variety||'',
+      b.substrateBatch||'', b.lotCode||'', b.order||'', b.substrateOrigin||'',
+      b.substrateLbs||0, b.buckets||0, b.gallonsWater||0,
+      b.waterStartTime||'', b.waterEndTime||'', b.mixTime||'', b.blockCount||0,
+      b.sterilizationDate||'', b.autoclaveTemp||'', b.cookTimeHours||'',
+      b.cookTimeStart||'', b.cookTimeEnd||'',
+      b.spawnDate||'', b.spawnSource||'', b.spawnQuantity||'', b.spawnLot||'',
+      b.rackLocation||'', b.expectedColDays||'', b.createdBy||'', b.timestamp||''
+    ]);
+  });
+  const csv = rows.map(r=>r.map(c=>{ const s=String(c==null?'':c); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; }).join(',')).join('\r\n');
+  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='tm-block-production-'+tday()+'.csv'; a.click();
+}
+
+
+function dlBlockProductionCSV(fromDate, toDate){
+  const batches = [...DB.labBatches]
+    .filter(b=>(!fromDate||(b.productionDate||b.date||'')>=fromDate)&&(!toDate||(b.productionDate||b.date||'')<=toDate))
+    .sort((a,b)=>(a.productionDate||a.date||'').localeCompare(b.productionDate||b.date||''));
+  if(!batches.length){ alert('No production logs in this date range.'); return; }
+
+  const headers = [
+    'Batch #','Production Date','Strain / Variety','Substrate Batch','Lot Code','Order / Run #','Substrate Supplier / Origin',
+    'Substrate Lbs','Buckets','Gallons Water','Add Water Start','Add Water End','Mix Time','Blocks Produced',
+    'Sterilization Date','Autoclave Temp (F)','Cook Hours','Cook Start','Cook End',
+    'Spawn Date','Spawn Source','Spawn Qty / Rate','Spawn Lot #',
+    'Rack Location','Expected Colonization (days)','Created By','Timestamp'
+  ];
+  const rows = [headers];
+  batches.forEach(b=>{
+    rows.push([
+      b.batchNum||'', b.productionDate||b.date||'', b.strain||b.variety||'',
+      b.substrateBatch||'', b.lotCode||'', b.order||'', b.substrateOrigin||'',
+      b.substrateLbs||0, b.buckets||0, b.gallonsWater||0,
+      b.waterStartTime||'', b.waterEndTime||'', b.mixTime||'', b.blockCount||0,
+      b.sterilizationDate||'', b.autoclaveTemp||'', b.cookTimeHours||'',
+      b.cookTimeStart||'', b.cookTimeEnd||'',
+      b.spawnDate||'', b.spawnSource||'', b.spawnQuantity||'', b.spawnLot||'',
+      b.rackLocation||'', b.expectedColDays||'', b.createdBy||'', b.timestamp||''
+    ]);
+  });
+  const csv = rows.map(r=>r.map(c=>{ const s=String(c==null?'':c); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; }).join(',')).join('\r\n');
+  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='tm-block-production-'+tday()+'.csv'; a.click();
 }
 
 function rQB(el){
@@ -5027,6 +5091,11 @@ function rQB(el){
         <div style="font-size:13px;font-weight:600;color:var(--black);">COGS Labor CSV ↓</div>
         <div style="font-size:11px;color:var(--text3);">${(totalLabor/60).toFixed(1)} hrs in range · enter as expense in QB</div>
       </button>
+      <button style="${btnStyle}" onclick="dlBlockProductionCSV(document.getElementById('qb-from')?.value, document.getElementById('qb-to')?.value)">
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--fern);text-transform:uppercase;">Block Production</div>
+        <div style="font-size:13px;font-weight:600;color:var(--black);">Production Log CSV ↓</div>
+        <div style="font-size:11px;color:var(--text3);">${DB.labBatches.length} batches · substrate, sterilization &amp; inoculation</div>
+      </button>
     </div>
 
     <div class="sh"><span>Export History</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${exported.length} EXPORTED</span></div>
@@ -5045,6 +5114,8 @@ function rQB(el){
       <div>4. At end of week, export <strong>QB Invoice IIF</strong> → import into QB Desktop</div>
       <div>5. Come back here → click <strong>Mark All Exported</strong> to track what's been sent</div>
       <div>6. Export <strong>COGS Labor CSV</strong> monthly and enter labor as a job cost / expense</div>
+      <div>7. Export <strong>Production Log CSV</strong> for Katherine &mdash; complete substrate, sterilization &amp; inoculation data per batch</div>
+      <div>7. Export <strong>Production Log CSV</strong> for Katherine &mdash; complete substrate, sterilization &amp; inoculation data per batch</div>
       <div style="margin-top:12px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);">IIF import: QB Desktop → File → Utilities → Import → IIF Files → select the .iif file</div>
     </div>
   `;
@@ -5095,6 +5166,12 @@ function rLab(el){
       <div class="fg2">
         <div class="fgl"><label>Lot Code</label><input class="fi" id="pl-lot" placeholder="e.g. LOT-2026-001"></div>
         <div class="fgl"><label>Order / Run #</label><input class="fi" id="pl-order" placeholder="e.g. 1 of 3"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Substrate Supplier / Origin</label><input class="fi" id="pl-suborigin" placeholder="e.g. Nashville Straw Co., in-house sawdust mix"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Substrate Supplier / Origin</label><input class="fi" id="pl-suborigin" placeholder="e.g. Nashville Straw Co., in-house sawdust mix"></div>
       </div>
       <div class="fg2">
         <div class="fgl"><label>Strain / Variety</label>
@@ -5203,6 +5280,8 @@ function rLab(el){
               <div class="cr" style="gap:16px;margin-top:14px;">
                 <div style="flex:1;">
                   <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin-bottom:8px;">PRODUCTION</div>
+                  ${b.substrateOrigin?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Substrate Source: </span>${b.substrateOrigin}</div>`:''}
+                  ${b.substrateOrigin?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Substrate Source: </span>${b.substrateOrigin}</div>`:''}
                   ${b.substrateBatch?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Substrate Batch: </span>${b.substrateBatch}</div>`:''}
                   ${b.lotCode?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Lot Code: </span>${b.lotCode}</div>`:''}
                   ${b.order?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Order: </span>${b.order}</div>`:''}
@@ -5250,9 +5329,10 @@ async function logProductionBatch(){
   const data = {
     batchNum,
     productionDate,
-    substrateBatch : document.getElementById('pl-sbatch').value.trim(),
-    lotCode        : document.getElementById('pl-lot').value.trim(),
-    order          : document.getElementById('pl-order').value.trim(),
+    substrateBatch   : document.getElementById('pl-sbatch').value.trim(),
+    lotCode          : document.getElementById('pl-lot').value.trim(),
+    order            : document.getElementById('pl-order').value.trim(),
+    substrateOrigin  : document.getElementById('pl-suborigin')?.value.trim()||'',
     strain,
     // Production
     substrateLbs   : parseFloat(document.getElementById('pl-sublbs').value)||0,
