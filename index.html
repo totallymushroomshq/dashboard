@@ -75,13 +75,30 @@ body{font-family:'Syne',sans-serif;background:var(--paper);color:var(--text);min
 .tbi{max-width:1280px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:58px}
 .tb-brand{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:700;color:var(--white);flex-shrink:0}
 .tb-brand em{color:var(--amber);font-style:normal}
-.tb-tabs{display:flex;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;flex:1;margin:0 16px}
-.tb-tabs::-webkit-scrollbar{display:none}
-.ttab{padding:7px 13px;border:none;background:transparent;color:rgba(255,255,255,.45);cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;border-radius:3px;white-space:nowrap;transition:color .15s,background .15s}
-.ttab:hover{color:rgba(255,255,255,.85);background:rgba(255,255,255,.07)}
-.ttab.active{color:var(--white);background:rgba(255,255,255,.12)}
-.ttab.at{color:var(--amber)}.ttab.at.active{background:rgba(212,152,12,.15)}
-.ttab.ct{color:#88bbdd}.ttab.ct.active{background:rgba(42,85,120,.3)}
+/* ── Hamburger button ── */
+.hbg-btn{display:flex;flex-direction:column;justify-content:center;gap:5px;width:36px;height:36px;padding:6px;background:transparent;border:none;cursor:pointer;border-radius:4px;flex-shrink:0;transition:background .15s;margin-right:10px}
+.hbg-btn:hover{background:rgba(255,255,255,.1)}
+.hbg-btn span{display:block;height:2px;background:rgba(255,255,255,.75);border-radius:2px;transition:all .2s}
+.hbg-btn:hover span{background:var(--white)}
+/* ── Drawer overlay ── */
+.drw-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:990;opacity:0;pointer-events:none;transition:opacity .25s}
+.drw-overlay.open{opacity:1;pointer-events:all}
+/* ── Drawer panel ── */
+.drw{position:fixed;top:0;left:0;height:100vh;width:260px;background:#1c1c1a;z-index:1000;transform:translateX(-100%);transition:transform .28s cubic-bezier(.4,0,.2,1);overflow-y:auto;display:flex;flex-direction:column;padding-bottom:40px}
+.drw.open{transform:translateX(0)}
+.drw-head{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 14px;border-bottom:1px solid rgba(255,255,255,.09);flex-shrink:0}
+.drw-head .tb-brand{font-size:18px}
+.drw-close{background:transparent;border:none;color:rgba(255,255,255,.4);font-size:18px;cursor:pointer;padding:4px 8px;border-radius:3px;line-height:1;transition:color .12s,background .12s}
+.drw-close:hover{color:var(--white);background:rgba(255,255,255,.08)}
+.drw-group{padding:18px 0 4px}
+.drw-grp-lbl{font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;color:rgba(255,255,255,.25);padding:0 18px 6px}
+.drw-item{display:block;width:100%;text-align:left;padding:10px 18px;background:transparent;border:none;color:rgba(255,255,255,.6);font-family:'Syne',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:background .12s,color .12s;border-left:3px solid transparent}
+.drw-item:hover{background:rgba(255,255,255,.06);color:rgba(255,255,255,.9)}
+.drw-item.active{color:var(--amber);background:rgba(212,152,12,.1);border-left-color:var(--amber)}
+.drw-item.drw-sys{color:rgba(255,180,60,.5)}.drw-item.drw-sys.active{color:var(--amber)}
+.drw-item.drw-acct{color:rgba(136,187,221,.6)}.drw-item.drw-acct.active{color:#88bbdd;background:rgba(42,85,120,.2);border-left-color:#88bbdd}
+/* ── Current view label in topbar ── */
+.tb-cv{font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.35);flex:1;padding:0 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tb-r{display:flex;align-items:center;gap:10px;flex-shrink:0}
 /* ── Date Nav ── */
 /* ── Date Nav bar ── */
@@ -326,7 +343,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 
 @media(max-width:900px){.cr,.wc3{grid-template-columns:1fr}}
 @media(max-width:640px){
-  .tbi{padding:0 14px}.tb-brand{font-size:18px}.ttab{padding:6px 9px;font-size:10px}
+  .tbi{padding:0 14px}.tb-brand{font-size:18px}
   .main{padding:20px 14px}.ph-t{font-size:28px}.stats{grid-template-columns:1fr 1fr}
   .gate-card{padding:32px 24px}.vg{grid-template-columns:1fr 1fr}
 }
@@ -404,8 +421,11 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 <div id="app" style="display:none;">
   <nav class="topbar">
     <div class="tbi">
+      <button class="hbg-btn" id="hbg-btn" onclick="toggleDrawer()" aria-label="Open menu">
+        <span></span><span></span><span></span>
+      </button>
       <div class="tb-brand">Totally <em>Mushrooms</em></div>
-      <div class="tb-tabs" id="nav-tabs"></div>
+      <div class="tb-cv" id="tb-cv"></div>
       <div class="tb-r">
         <div id="date-nav" style="display:none;"></div>
         <div class="rpill" id="role-pill"></div>
@@ -413,6 +433,15 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
       </div>
     </div>
   </nav>
+  <!-- NAV DRAWER -->
+  <div class="drw-overlay" id="drw-overlay" onclick="closeDrawer()"></div>
+  <div class="drw" id="drw">
+    <div class="drw-head">
+      <div class="tb-brand">Totally <em>Mushrooms</em></div>
+      <button class="drw-close" onclick="closeDrawer()" aria-label="Close menu">&#x2715;</button>
+    </div>
+    <div id="drw-nav"></div>
+  </div>
   <main class="main" id="main-views"></main>
 </div>
 
@@ -1558,40 +1587,92 @@ const NAVS={
 };
 let cv=null;
 
+function toggleDrawer(){
+  const drw=document.getElementById('drw'), ov=document.getElementById('drw-overlay');
+  const opening=!drw.classList.contains('open');
+  drw.classList.toggle('open'); ov.classList.toggle('open');
+  if(opening){ const first=drw.querySelector('.drw-item'); if(first) first.focus(); }
+}
+function closeDrawer(){
+  document.getElementById('drw')?.classList.remove('open');
+  document.getElementById('drw-overlay')?.classList.remove('open');
+}
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDrawer(); });
+
 function buildNav(){
-  const tabs=document.getElementById('nav-tabs'), pill=document.getElementById('role-pill');
-  tabs.innerHTML='';
+  const nav=document.getElementById('drw-nav'), pill=document.getElementById('role-pill');
+  nav.innerHTML='';
   const role=S.role;
 
-  // Client nav — unchanged
+  // Client nav
   if(role==='client'){
     const cl=DB.clients.find(x=>x.id===S.clientId);
     pill.textContent=(cl?cl.name.split(' ')[0]:'CLIENT').toUpperCase();
     pill.className='rpill client';
-    NAVS.client.forEach((item,i)=>{ const b=document.createElement('button'); b.className='ttab'+(item.c?' '+item.c:''); b.textContent=item.l; b.dataset.view=item.id; b.onclick=()=>sw(item.id); tabs.appendChild(b); if(i===0) sw(item.id) });
+    const grp=document.createElement('div'); grp.className='drw-group';
+    grp.innerHTML='<div class="drw-grp-lbl">My Account</div>';
+    NAVS.client.forEach((item,i)=>{
+      const b=document.createElement('button');
+      b.className='drw-item'; b.textContent=item.l; b.dataset.view=item.id;
+      b.onclick=()=>sw(item.id); grp.appendChild(b); if(i===0) sw(item.id);
+    });
+    nav.appendChild(grp);
     return;
   }
 
-  // Internal user pill
+  // Role pill
   if(role==='admin'){
-    pill.textContent=S.name?S.name.split(' ')[0].toUpperCase()+' · ADMIN':'ADMIN';
+    pill.textContent=S.name?S.name.split(' ')[0].toUpperCase()+' \u00b7 ADMIN':'ADMIN';
     pill.className='rpill admin';
   } else if(role==='staff'){
-    pill.textContent=S.name?S.name.split(' ')[0].toUpperCase()+' · STAFF':'STAFF';
+    pill.textContent=S.name?S.name.split(' ')[0].toUpperCase()+' \u00b7 STAFF':'STAFF';
     pill.className='rpill staff';
   } else if(role==='accountant'){
-    pill.textContent=S.name?S.name.split(' ')[0].toUpperCase()+' · ACCTS':'ACCOUNTS';
+    pill.textContent=S.name?S.name.split(' ')[0].toUpperCase()+' \u00b7 ACCTS':'ACCOUNTS';
     pill.className='rpill';
   }
 
-  // Build tab list from permissions (or defaults)
   const perms=S.permissions||DEFAULT_PERMS[role]||DEFAULT_PERMS.staff;
-  const tabList=ALL_INTERNAL_TABS.filter(t=>perms[t.id]);
-  tabList.forEach((item,i)=>{ const b=document.createElement('button'); b.className='ttab'+(item.c?' '+item.c:''); b.textContent=item.l; b.dataset.view=item.id; b.onclick=()=>sw(item.id); tabs.appendChild(b); if(i===0) sw(item.id) });
+  const allowed=new Set(ALL_INTERNAL_TABS.filter(t=>perms[t.id]).map(t=>t.id));
+
+  const GROUPS=[
+    {label:'Daily',       ids:['today','week','new-order','email-parse']},
+    {label:'Operations',  ids:['harvest','fruiting','inventory','preservation']},
+    {label:'Production',  ids:['lab']},
+    {label:'Business',    ids:['analytics','orders-all','reports','qb'], cls:'drw-acct'},
+    {label:'System',      ids:['admin','security'], cls:'drw-sys'},
+  ];
+
+  let firstId=null;
+  GROUPS.forEach(grp=>{
+    const items=grp.ids.filter(id=>allowed.has(id));
+    if(!items.length) return;
+    const section=document.createElement('div'); section.className='drw-group';
+    section.innerHTML='<div class="drw-grp-lbl">'+grp.label+'</div>';
+    items.forEach(id=>{
+      const tab=ALL_INTERNAL_TABS.find(t=>t.id===id); if(!tab) return;
+      const b=document.createElement('button');
+      b.className='drw-item'+(grp.cls?' '+grp.cls:'');
+      b.textContent=TAB_LABELS[id]||tab.l;
+      b.dataset.view=id;
+      b.onclick=()=>sw(id);
+      section.appendChild(b);
+      if(!firstId) firstId=id;
+    });
+    nav.appendChild(section);
+  });
+
+  if(firstId) sw(firstId);
   updateDateNav();
 }
 
-function sw(id){ cv=id; document.querySelectorAll('.ttab').forEach(t=>t.classList.toggle('active',t.dataset.view===id)); renderC() }
+function sw(id){
+  cv=id;
+  closeDrawer();
+  document.querySelectorAll('.drw-item').forEach(t=>t.classList.toggle('active',t.dataset.view===id));
+  const lbl=document.getElementById('tb-cv'); if(lbl) lbl.textContent=TAB_LABELS[id]||'';
+  renderC();
+}
 function canEdit(){ return S.role!=='accountant' }
 function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,inventory:rInventory,preservation:rPreservation,lab:rLab,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
