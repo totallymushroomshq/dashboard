@@ -446,6 +446,17 @@ async function loadDB(){
 
 // ── SAVE APP CONFIG ──
 function saveConfig(){ fdb.collection('appConfig').doc('main').set({adminPw:DB.adminPw,staffPw:DB.staffPw,accountantPw:DB.accountantPw},{merge:true}); }
+async function testFirestore(){
+  const el=document.getElementById('fb-test-result');
+  el.style.color='var(--amber)'; el.textContent='Testing...';
+  try {
+    const ref = await fdb.collection('_test').add({ts: Date.now()});
+    await fdb.collection('_test').doc(ref.id).delete();
+    el.style.color='var(--sage)'; el.textContent='✓ Firestore write + delete worked! DB is connected.';
+  } catch(e){
+    el.style.color='var(--rust)'; el.textContent='✗ Firestore error: '+e.message;
+  }
+}
 
 
 
@@ -2414,7 +2425,8 @@ function rAdmin(el){
     <div style="margin-bottom:28px;"><div class="sh">Notification Log</div>
       ${DB.notifLog.length===0?'<div class="empty">No notifications sent this session</div>':DB.notifLog.slice().reverse().map(n=>`<div style="padding:10px 14px;background:var(--bark);border:1px solid rgba(196,168,130,.08);border-radius:3px;margin-bottom:6px;font-size:12px;"><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--spore);margin-right:12px;">${n.ts}</span><span style="color:var(--amber);">${n.clientName}</span><span style="color:var(--spore);"> · ${n.type}</span><div style="color:var(--warm);margin-top:4px;font-size:11px;">${n.msg}</div></div>`).join('')}
     </div>
-    <div><div class="sh">Google Sheets Sync</div><div class="card" style="margin-bottom:0;"><div style="font-family:'Syne Mono',monospace;font-size:12px;color:var(--sage);line-height:2.2;"><div>📋 Sheet ID: <span style="color:var(--warm);">[ Add your Google Sheet ID here ]</span></div><div>🔗 Status: <span style="color:var(--rust);">Not connected — see integration guide</span></div></div></div></div>`;
+    <div><div class="sh">Google Sheets Sync</div><div class="card" style="margin-bottom:0;"><div style="font-family:'Syne Mono',monospace;font-size:12px;color:var(--sage);line-height:2.2;"><div>📋 Sheet ID: <span style="color:var(--warm);">[ Add your Google Sheet ID here ]</span></div><div>🔗 Status: <span style="color:var(--rust);">Not connected — see integration guide</span></div></div></div></div>
+    <div style="margin-top:28px;"><div class="sh">Firebase Connection Test</div><div class="card" style="margin-bottom:0;"><div style="font-size:12px;color:var(--spore);margin-bottom:12px;">Use this to verify Firestore writes are working.</div><button class="btn b-m" onclick="testFirestore()">Run Write Test</button><div id="fb-test-result" style="margin-top:12px;font-family:'Syne Mono',monospace;font-size:12px;"></div></div></div>`;
 
   if(newSR.length>0){ const srl=el.querySelector('#sr-list'); newSR.forEach(sr=>rSR(sr,srl)) }
   const ag=el.querySelector('#aa-g'); const std=DB.orders.filter(o=>!o.custom); if(std.length===0) ag.innerHTML='<div class="empty">No standard orders</div>'; else std.forEach(o=>rOC(o,ag,o.status==='pending'));
@@ -2525,7 +2537,7 @@ async function saveNewClient(){
       alert('✓ Client "'+name+'" created.\n\nThey can log in now with the password you set.');
     }
     rAdmin(document.getElementById('main-views'));
-  } catch(e){ alert('Error saving client: '+e.message); console.error(e); }
+  } catch(e){ showErrBanner('Save client failed: '+e.message); console.error(e); }
 }
 
 // ── EDIT CLIENT MODAL ──
