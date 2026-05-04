@@ -419,7 +419,7 @@ window.onunhandledrejection = function(e){ showErrBanner(e.reason?.message||Stri
 'use strict';
 const DB = {
   orders:[], clients:[], harvests:[], samples:[],
-  fruitings:[], preservation:[], notifLog:[], signupRequests:[],
+  fruitings:[], preservation:[], notifLog:[], signupRequests:[], employees:[],
   adminPw:'totallyadmin2025', staffPw:'mushrooms2025', accountantPw:'tmbooks2025'
 };
 
@@ -441,13 +441,7 @@ const fdb = firebase.firestore();
 // ── FIRESTORE HELPER ──
 const FS = {
   async getAll(col){ const s=await fdb.collection(col).get(); return s.docs.map(d=>({id:d.id,...d.data()})); },
-  async add(col,data){
-    try {
-      const ref=await fdb.collection(col).add(data);
-      alert('✓ Saved to Firestore: '+col+'\nID: '+ref.id);
-      return ref.id;
-    } catch(e){ alert('✗ Firestore write failed ('+col+'): '+e.message); throw e; }
-  },
+  async add(col,data){ const ref=await fdb.collection(col).add(data); return ref.id; },
   async set(col,id,data){ await fdb.collection(col).doc(String(id)).set(data); },
   async update(col,id,data){ await fdb.collection(col).doc(String(id)).update(data); },
   async del(col,id){ await fdb.collection(col).doc(String(id)).delete(); }
@@ -459,11 +453,11 @@ async function loadDB(){
     const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests] = await Promise.all([
       FS.getAll('orders'), FS.getAll('clients'), FS.getAll('harvests'),
       FS.getAll('samples'), FS.getAll('fruitings'), FS.getAll('preservation'),
-      FS.getAll('notifLog'), FS.getAll('signupRequests')
+      FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('employees')
     ]);
     DB.orders=orders; DB.clients=clients; DB.harvests=harvests;
     DB.samples=samples; DB.fruitings=fruitings; DB.preservation=preservation;
-    DB.notifLog=notifLog; DB.signupRequests=signupRequests;
+    DB.notifLog=notifLog; DB.signupRequests=signupRequests; DB.employees=employees;
   } catch(e){ console.error('Firestore load error:',e); throw e; }
 }
 
@@ -509,6 +503,8 @@ function login(){
   if(pw===DB.adminPw){ S={role:'admin',clientId:null}; launch(); return }
   if(pw===DB.staffPw){ S={role:'staff',clientId:null}; launch(); return }
   if(pw===DB.accountantPw){ S={role:'accountant',clientId:null}; launch(); return }
+  const emp=DB.employees.find(x=>x.pw===pw&&x.status==='active');
+  if(emp){ S={role:'staff',clientId:null,employeeId:emp.id,employeeName:emp.name}; launch(); return }
   const c=DB.clients.find(x=>x.pw===pw&&x.status==='approved');
   if(c){ S={role:'client',clientId:c.id}; launch(); return }
   const fp=DB.clients.find(x=>x.firstLogin&&x.status==='approved'&&('tm-'+x.id)===pw.toLowerCase());
@@ -557,11 +553,13 @@ window.addEventListener('DOMContentLoaded', async ()=>{
 
 function launch(){ document.getElementById('gate').style.display='none'; document.getElementById('app').style.display='block'; buildNav(); renderC() }
 
+function gTab(pane, btn){ document.querySelectorAll('.gpane').forEach(p=>p.classList.remove('a')); document.getElementById('gp-'+pane).classList.add('a'); document.querySelectorAll('.gmt').forEach(b=>b.classList.remove('a')); btn.classList.add('a'); }
+
 function doLogout(){ S={role:null,clientId:null}; document.getElementById('gate').style.display='flex'; document.getElementById('app').style.display='none'; document.getElementById('pw').value=''; document.querySelectorAll('.gpane').forEach(p=>p.classList.remove('a')); document.getElementById('gp-login').classList.add('a'); document.querySelectorAll('.gmt').forEach((b,i)=>b.classList.toggle('a',i===0)) }
 
 // ── NAV ──
 const NAVS={
-  admin:[{id:'today',l:'Today'},{id:'week',l:'Week'},{id:'new-order',l:'+ Order'},{id:'email-parse',l:'Parse Email'},{id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},{id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},{id:'analytics',l:'Analytics'},{id:'admin',l:'⚙ Admin',c:'at'}],
+  admin:[{id:'today',l:'Today'},{id:'week',l:'Week'},{id:'new-order',l:'+ Order'},{id:'email-parse',l:'Parse Email'},{id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},{id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},{id:'analytics',l:'Analytics'},{id:'orders-all',l:'Orders'},{id:'reports',l:'📊 Reports'},{id:'admin',l:'⚙ Admin',c:'at'}],
   staff:[{id:'today',l:'Today'},{id:'week',l:'Week'},{id:'new-order',l:'+ Order'},{id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},{id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},{id:'analytics',l:'Analytics'}],
   accountant:[{id:'today',l:'Today'},{id:'week',l:'Week'},{id:'orders-all',l:'Orders'},{id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},{id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},{id:'analytics',l:'Analytics'},{id:'reports',l:'📊 Reports',c:'at'}],
   client:[{id:'c-order',l:'Place Order',c:'ct'},{id:'c-standing',l:'Standing Order',c:'ct'},{id:'c-history',l:'History',c:'ct'},{id:'c-settings',l:'Settings',c:'ct'}]
@@ -2445,6 +2443,18 @@ function rAdmin(el){
         <td><div style="display:flex;gap:6px;"><button class="btn b-a b-sm" onclick="openEdit('${c.id}')">Edit</button><button class="btn b-r b-sm" onclick="rmClient('${c.id}')">Remove</button></div></td>
       </tr>`).join('')}</tbody></table></div>
     </div>
+    <div style="margin-bottom:28px;">
+      <div class="sh"><span>Employee Accounts</span><div style="display:flex;align-items:center;gap:10px;"><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${DB.employees.length} employees</span><button class="btn b-m b-sm" onclick="openAddEmployee()">+ Add Employee</button></div></div>
+      ${DB.employees.length===0?'<div class="empty">No employee accounts yet — add team members so they can log in individually</div>':
+      '<div class="tw"><table><thead><tr><th>Name</th><th>Role</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead><tbody>'+
+      DB.employees.map(e=>`<tr>
+        <td>${e.name}</td>
+        <td class="mn">${e.role||'Staff'}</td>
+        <td class="mn">${e.email||'—'}</td>
+        <td class="mn"><span style="color:${e.status==='active'?'var(--sage)':'var(--rust)'}">${e.status||'active'}</span></td>
+        <td><button class="btn b-r b-sm" onclick="rmEmployee('${e.id}')">Remove</button></td>
+      </tr>`).join('')+'</tbody></table></div>'}
+    </div>
     <div style="margin-bottom:28px;"><div class="sh">Notification Log</div>
       ${DB.notifLog.length===0?'<div class="empty">No notifications sent this session</div>':DB.notifLog.slice().reverse().map(n=>`<div style="padding:10px 14px;background:var(--bark);border:1px solid rgba(196,168,130,.08);border-radius:3px;margin-bottom:6px;font-size:12px;"><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--spore);margin-right:12px;">${n.ts}</span><span style="color:var(--amber);">${n.clientName}</span><span style="color:var(--spore);"> · ${n.type}</span><div style="color:var(--warm);margin-top:4px;font-size:11px;">${n.msg}</div></div>`).join('')}
     </div>
@@ -2620,6 +2630,47 @@ function saveEdit(cid){
 }
 
 function rmClient(id){ if(!confirm('Remove this client? Their order history remains.')) return; DB.clients=DB.clients.filter(c=>c.id!==id); FS.del('clients',id); rAdmin(document.getElementById('main-views')) }
+
+// ── EMPLOYEE ACCOUNTS ──
+function openAddEmployee(){
+  document.getElementById('em-title').textContent='Add Employee';
+  document.getElementById('em-body').innerHTML=`
+    <div style="font-size:11px;color:var(--text3);margin-bottom:18px;font-family:'Syne Mono',monospace;line-height:1.8;">Employee accounts give individual staff members their own login with standard staff-level access.</div>
+    <div class="fg2">
+      <div class="fgl"><label>Full Name</label><input class="fi" id="ae-n" placeholder="e.g. Jamie Rivera"></div>
+      <div class="fgl"><label>Role / Title</label><input class="fi" id="ae-r" placeholder="e.g. Harvester, Packer, Driver"></div>
+      <div class="fgl"><label>Email</label><input class="fi" type="email" id="ae-e" placeholder="jamie@email.com"></div>
+      <div class="fgl"><label>Phone</label><input class="fi" type="tel" id="ae-ph" placeholder="+1 615 000 0000"></div>
+      <div class="fgl"><label>Password</label><input class="fi" type="text" id="ae-pw" placeholder="Set their login password"></div>
+    </div>
+    <div class="form-acts" style="margin-top:20px;">
+      <button class="btn b-m b-lg" onclick="saveNewEmployee()">Create Employee</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="ae-t">✓ Employee created</div>
+  `;
+  document.getElementById('edit-modal').classList.add('open');
+}
+
+async function saveNewEmployee(){
+  try {
+    const name=document.getElementById('ae-n').value.trim();
+    const pw=document.getElementById('ae-pw').value.trim();
+    if(!name){ alert('Name is required.'); return }
+    if(!pw||pw.length<6){ alert('Password must be at least 6 characters.'); return }
+    const eData={name, role:document.getElementById('ae-r').value.trim()||'Staff',
+      email:document.getElementById('ae-e').value.trim(), phone:document.getElementById('ae-ph').value.trim(),
+      pw, status:'active'};
+    const eId = await FS.add('employees', eData);
+    eData.id = eId;
+    DB.employees.push(eData);
+    closeModal();
+    alert('✓ Employee "'+name+'" created.\n\nThey can log in with the password you set.');
+    rAdmin(document.getElementById('main-views'));
+  } catch(e){ alert('Error saving employee: '+e.message); console.error(e); }
+}
+
+function rmEmployee(id){ if(!confirm('Remove this employee account?')) return; DB.employees=DB.employees.filter(e=>e.id!==id); FS.del('employees',id); rAdmin(document.getElementById('main-views')) }
 
 function closeModal(){ document.getElementById('edit-modal').classList.remove('open') }
 document.getElementById('edit-modal').addEventListener('click',function(e){ if(e.target===this) closeModal() });
