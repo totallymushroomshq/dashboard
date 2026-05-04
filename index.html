@@ -48,7 +48,7 @@ body{font-family:'Syne',sans-serif;background:var(--paper);color:var(--text);min
 .gpane.a{display:block}
 
 .fl{display:flex;flex-direction:column;gap:7px;margin-bottom:18px}
-.fl label{font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3)}
+.fl label{font-family:'Syne Mono',monospace;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--text3)}
 .fi,.fs,.fta{padding:11px 13px;background:var(--paper);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'Syne',sans-serif;font-size:13px;outline:none;transition:border-color .2s,background .15s;width:100%}
 .fi:focus,.fs:focus,.fta:focus{border-color:var(--gold);background:var(--white)}
 .fs option{background:var(--white)}
@@ -211,7 +211,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 /* ── FORM ── */
 .fg2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
 .fgl{display:flex;flex-direction:column;gap:7px}
-.fgl label{font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3)}
+.fgl label{font-family:'Syne Mono',monospace;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--text3)}
 .vg{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin:18px 0}
 .vi{background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:14px;transition:border-color .2s}
 .vi:focus-within{border-color:var(--gold);background:var(--white)}
@@ -472,11 +472,17 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 
 <script>
-window.onerror = function(msg, src, line, col, err){
+function showErrBanner(msg){
   var d = document.getElementById('js-crash-banner');
-  if(!d){ d=document.createElement('div'); d.id='js-crash-banner'; d.style.cssText='position:fixed;top:0;left:0;right:0;background:#b84c20;color:#fff;padding:14px 20px;font-family:monospace;font-size:13px;z-index:99999;line-height:1.6;'; document.body.appendChild(d); }
-  d.innerHTML = '<strong>JS ERROR (line '+line+'):</strong> '+msg+'<br><span style="opacity:.7;font-size:11px;">'+src+'</span>';
-  return false;
+  if(!d){ d=document.createElement('div'); d.id='js-crash-banner'; d.style.cssText='position:fixed;top:0;left:0;right:0;background:#b84c20;color:#fff;padding:14px 20px;font-family:monospace;font-size:13px;z-index:99999;line-height:1.6;cursor:pointer;'; d.onclick=function(){d.style.display='none';}; document.body.appendChild(d); }
+  d.style.display='block';
+  d.innerHTML = '<strong>ERROR:</strong> '+msg+' &nbsp;<span style="opacity:.6;font-size:11px;">(click to dismiss)</span>';
+}
+window.onerror = function(msg, src, line, col, err){
+  showErrBanner('(line '+line+') '+msg); return false;
+};
+window.onunhandledrejection = function(e){
+  showErrBanner('Async error: '+(e.reason?.message||e.reason||'unknown'));
 };
 'use strict';
 const DB = {
@@ -6290,13 +6296,15 @@ async function saveNewClient(){
     cData.id = cid;
     DB.clients.push(cData);
     closeModal();
-    if(!pw){
-      alert('✓ Client "'+name+'" created.\n\nNo password was set — their temp login code is:\n\ntm-'+cid+'\n\nSend this to them so they can set their own password on first login.');
-    } else {
-      alert('✓ Client "'+name+'" created.\n\nThey can log in now with the password you set.');
-    }
     rAdmin(document.getElementById('main-views'));
-  } catch(e){ alert('Error saving client: '+e.message); console.error(e); }
+    const msg = pw ? '✓ Client "'+name+'" created.' : '✓ Client "'+name+'" created. Temp code: tm-'+cid;
+    showBanner(msg, 'success');
+  } catch(e){
+    const errEl = document.getElementById('ac-err');
+    if(errEl){ errEl.textContent='Error: '+e.message; errEl.style.display='block'; }
+    else { showBanner('Error saving client: '+e.message, 'error'); }
+    console.error(e);
+  }
 }
 
 // ── EDIT CLIENT MODAL ──
