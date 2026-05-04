@@ -505,14 +505,16 @@ function finFirstLogin(){
 }
 
 async function subSignup(){
-  const n=document.getElementById('su-n').value.trim(), c=document.getElementById('su-c').value.trim(), e=document.getElementById('su-e').value.trim();
-  if(!n||!c||!e){ document.getElementById('su-err').style.display='block'; setTimeout(()=>document.getElementById('su-err').style.display='none',3000); return }
-  const srData={venue:n,contact:c,email:e,phone:document.getElementById('su-p').value.trim(),day:document.getElementById('su-d').value,note:document.getElementById('su-note').value.trim(),submitted:tday(),status:'new'};
-  const srId = await FS.add('signupRequests', srData);
-  srData.id = srId;
-  DB.signupRequests.push(srData);
-  document.getElementById('su-ok').style.display='block';
-  ['su-n','su-c','su-e','su-p','su-note'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value='' })
+  try {
+    const n=document.getElementById('su-n').value.trim(), c=document.getElementById('su-c').value.trim(), e=document.getElementById('su-e').value.trim();
+    if(!n||!c||!e){ document.getElementById('su-err').style.display='block'; setTimeout(()=>document.getElementById('su-err').style.display='none',3000); return }
+    const srData={venue:n,contact:c,email:e,phone:document.getElementById('su-p').value.trim(),day:document.getElementById('su-d').value,note:document.getElementById('su-note').value.trim(),submitted:tday(),status:'new'};
+    const srId = await FS.add('signupRequests', srData);
+    srData.id = srId;
+    DB.signupRequests.push(srData);
+    document.getElementById('su-ok').style.display='block';
+    ['su-n','su-c','su-e','su-p','su-note'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value='' })
+  } catch(e){ alert('Error: '+e.message); console.error(e); }
 }
 
 window.addEventListener('DOMContentLoaded', async ()=>{
@@ -1174,62 +1176,64 @@ function switchReqType(val){
 function adj(id,d){ const el=document.getElementById(id); if(!el) return; el.value=Math.max(0,(parseInt(el.value)||0)+d) }
 
 async function subNewOrd(){
-  const rt=document.getElementById('no-rt')?.value||'standard';
-  const client=document.getElementById('no-c').value.trim();
-  if(!client){ alert('Client / recipient name is required.'); return }
+  try {
+    const rt=document.getElementById('no-rt')?.value||'standard';
+    const client=document.getElementById('no-c').value.trim();
+    if(!client){ alert('Client / recipient name is required.'); return }
 
-  // ── SAMPLE ──
-  if(rt==='sample'){
-    const date=document.getElementById('no-sd').value;
-    if(!date){ alert('Sample date is required.'); return }
-    const oyster=parseInt(document.getElementById('no-oy')?.value)||0;
-    const chefs=parseInt(document.getElementById('no-ch')?.value)||0;
-    const lions=parseInt(document.getElementById('no-li')?.value)||0;
-    const chestnut=parseInt(document.getElementById('no-cs')?.value)||0;
-    const lionsPack=parseInt(document.getElementById('no-lrp')?.value)||0;
-    const chefsPack=parseInt(document.getElementById('no-crp')?.value)||0;
-    if(!oyster&&!chefs&&!lions&&!chestnut&&!lionsPack&&!chefsPack){ alert('Add at least one item to the sample.'); return }
-    const sData={date,week:wkStart(),recipient:client,recipientType:document.getElementById('no-stype')?.value||'Other',contact:document.getElementById('no-scontact')?.value.trim()||'',oyster,chefs,lions,chestnut,lionsPack,chefsPack,notes:document.getElementById('no-n').value.trim(),status:'pending'};
-    const sId=await FS.add('samples',sData);
-    DB.samples.push({id:sId,...sData});
+    // ── SAMPLE ──
+    if(rt==='sample'){
+      const date=document.getElementById('no-sd').value;
+      if(!date){ alert('Sample date is required.'); return }
+      const oyster=parseInt(document.getElementById('no-oy')?.value)||0;
+      const chefs=parseInt(document.getElementById('no-ch')?.value)||0;
+      const lions=parseInt(document.getElementById('no-li')?.value)||0;
+      const chestnut=parseInt(document.getElementById('no-cs')?.value)||0;
+      const lionsPack=parseInt(document.getElementById('no-lrp')?.value)||0;
+      const chefsPack=parseInt(document.getElementById('no-crp')?.value)||0;
+      if(!oyster&&!chefs&&!lions&&!chestnut&&!lionsPack&&!chefsPack){ alert('Add at least one item to the sample.'); return }
+      const sData={date,week:wkStart(),recipient:client,recipientType:document.getElementById('no-stype')?.value||'Other',contact:document.getElementById('no-scontact')?.value.trim()||'',oyster,chefs,lions,chestnut,lionsPack,chefsPack,notes:document.getElementById('no-n').value.trim(),status:'pending'};
+      const sId=await FS.add('samples',sData);
+      DB.samples.push({id:sId,...sData});
+      const toastEl=document.getElementById('no-t');
+      if(toastEl){toastEl.textContent='✓ Sample logged';toastEl.style.background='rgba(90,42,130,.07)';toastEl.style.borderColor='rgba(90,42,130,.2)';toastEl.style.color='#6a3a9a';}
+      toast('no-t'); clrNewOrd(); return;
+    }
+
+    // ── ORDER (Standard / Wholesale / Custom) ──
+    const day=document.getElementById('no-d').value;
+    if(!day){ alert('Delivery day is required.'); return }
+    const cr=DB.clients.find(c=>c.name.toLowerCase()===client.toLowerCase());
+    const o={clientId:cr?.id||null,client,day,status:'pending',
+      oyster:parseInt(document.getElementById('no-oy')?.value)||0,
+      chefs:parseInt(document.getElementById('no-ch')?.value)||0,
+      lions:parseInt(document.getElementById('no-li')?.value)||0,
+      chestnut:parseInt(document.getElementById('no-cs')?.value)||0,
+      shiitake:parseInt(document.getElementById('no-shi')?.value)||0,
+      lionsPack:parseInt(document.getElementById('no-lrp')?.value)||0,
+      chefsPack:parseInt(document.getElementById('no-crp')?.value)||0,
+      notes:document.getElementById('no-n').value.trim(),
+      week:document.getElementById('no-w')?.value||wkStart(),
+      custom:rt!=='standard',
+      isStanding:document.getElementById('no-s')?.value==='1'
+    };
+    if(rt==='wholesale'){
+      o.customType='wholesale';
+      o.price=parseFloat(document.getElementById('no-wh-p')?.value)||o.price;
+    }
+    if(rt==='custom'){
+      o.customType='custom'; o.customVarieties=document.getElementById('no-cu-v')?.value.trim()||'';
+      o.price=parseFloat(document.getElementById('no-cu-p')?.value)||o.price;
+      const cn=document.getElementById('no-cu-n')?.value.trim();
+      if(cn) o.notes+=(o.notes?' | ':'')+cn;
+    }
+    const oId=await FS.add('orders',o);
+    o.id=oId;
+    DB.orders.push(o);
     const toastEl=document.getElementById('no-t');
-    if(toastEl){toastEl.textContent='✓ Sample logged';toastEl.style.background='rgba(90,42,130,.07)';toastEl.style.borderColor='rgba(90,42,130,.2)';toastEl.style.color='#6a3a9a';}
-    toast('no-t'); clrNewOrd(); return;
-  }
-
-  // ── ORDER (Standard / Wholesale / Custom) ──
-  const day=document.getElementById('no-d').value;
-  if(!day){ alert('Delivery day is required.'); return }
-  const cr=DB.clients.find(c=>c.name.toLowerCase()===client.toLowerCase());
-  const o={clientId:cr?.id||null,client,day,status:'pending',
-    oyster:parseInt(document.getElementById('no-oy')?.value)||0,
-    chefs:parseInt(document.getElementById('no-ch')?.value)||0,
-    lions:parseInt(document.getElementById('no-li')?.value)||0,
-    chestnut:parseInt(document.getElementById('no-cs')?.value)||0,
-    shiitake:parseInt(document.getElementById('no-shi')?.value)||0,
-    lionsPack:parseInt(document.getElementById('no-lrp')?.value)||0,
-    chefsPack:parseInt(document.getElementById('no-crp')?.value)||0,
-    notes:document.getElementById('no-n').value.trim(),
-    week:document.getElementById('no-w')?.value||wkStart(),
-    custom:rt!=='standard',
-    isStanding:document.getElementById('no-s')?.value==='1'
-  };
-  if(rt==='wholesale'){
-    o.customType='wholesale';
-    o.price=parseFloat(document.getElementById('no-wh-p')?.value)||o.price;
-  }
-  if(rt==='custom'){
-    o.customType='custom'; o.customVarieties=document.getElementById('no-cu-v')?.value.trim()||'';
-    o.price=parseFloat(document.getElementById('no-cu-p')?.value)||o.price;
-    const cn=document.getElementById('no-cu-n')?.value.trim();
-    if(cn) o.notes+=(o.notes?' | ':'')+cn;
-  }
-  const oId=await FS.add('orders',o);
-  o.id=oId;
-  DB.orders.push(o);
-  const toastEl=document.getElementById('no-t');
-  if(toastEl){toastEl.textContent='✓ Order submitted — awaiting farm approval';toastEl.style.background='';toastEl.style.borderColor='';toastEl.style.color='';}
-  toast('no-t'); clrNewOrd();
+    if(toastEl){toastEl.textContent='✓ Order submitted — awaiting farm approval';toastEl.style.background='';toastEl.style.borderColor='';toastEl.style.color='';}
+    toast('no-t'); clrNewOrd();
+  } catch(e){ alert('Error: '+e.message); console.error(e); }
 }
 
 function clrNewOrd(){
@@ -1468,22 +1472,24 @@ function rFruiting(el){
 }
 
 async function subFruiting(){
-  const date=document.getElementById('fr-dt')?.value||tday();
-  const containerID=document.getElementById('fr-cid')?.value.trim()||'';
-  const lotNumber=document.getElementById('fr-lot')?.value.trim()||'';
-  const variety=document.getElementById('fr-variety')?.value||'';
-  const blockCount=parseInt(document.getElementById('fr-bc')?.value)||0;
-  const blockWeightLb=parseFloat(document.getElementById('fr-bw')?.value)||0;
-  if(!containerID){ alert('Container ID is required.'); return }
-  if(!lotNumber){ alert('Lot number is required.'); return }
-  if(!variety){ alert('Variety is required.'); return }
-  if(blockCount<1){ alert('Block count must be at least 1.'); return }
-  if(!blockWeightLb){ alert('Block weight (lb) is required.'); return }
-  const info=detectLot(lotNumber);
-  const fData={date,containerID,lotNumber,vendor:info?.vendor||'Unknown',variety,blockCount,blockWeightLb,notes:document.getElementById('fr-notes')?.value.trim()||'',status:'fruiting'};
-  const fId=await FS.add('fruitings',fData);
-  DB.fruitings.push({id:fId,...fData});
-  toast('fr-t'); clrFruiting(); renderC();
+  try {
+    const date=document.getElementById('fr-dt')?.value||tday();
+    const containerID=document.getElementById('fr-cid')?.value.trim()||'';
+    const lotNumber=document.getElementById('fr-lot')?.value.trim()||'';
+    const variety=document.getElementById('fr-variety')?.value||'';
+    const blockCount=parseInt(document.getElementById('fr-bc')?.value)||0;
+    const blockWeightLb=parseFloat(document.getElementById('fr-bw')?.value)||0;
+    if(!containerID){ alert('Container ID is required.'); return }
+    if(!lotNumber){ alert('Lot number is required.'); return }
+    if(!variety){ alert('Variety is required.'); return }
+    if(blockCount<1){ alert('Block count must be at least 1.'); return }
+    if(!blockWeightLb){ alert('Block weight (lb) is required.'); return }
+    const info=detectLot(lotNumber);
+    const fData={date,containerID,lotNumber,vendor:info?.vendor||'Unknown',variety,blockCount,blockWeightLb,notes:document.getElementById('fr-notes')?.value.trim()||'',status:'fruiting'};
+    const fId=await FS.add('fruitings',fData);
+    DB.fruitings.push({id:fId,...fData});
+    toast('fr-t'); clrFruiting(); renderC();
+  } catch(e){ alert('Error: '+e.message); console.error(e); }
 }
 
 function clrFruiting(){
@@ -1556,25 +1562,27 @@ function rHarvest(el){
 }
 
 async function logHarv(){
-  const date=document.getElementById('hl-dt').value;
-  const container=document.getElementById('hl-c').value.trim();
-  const lotNumber=document.getElementById('hl-lot').value.trim();
-  const variety=document.getElementById('hl-v').value;
-  const grade=document.getElementById('hl-g').value;
-  const weight=parseFloat(document.getElementById('hl-w').value)||0;
-  const notes=document.getElementById('hl-n').value.trim();
-  if(!date||!container||!lotNumber||!variety||!grade){
-    alert('Date, container, lot number, variety and grade are all required.'); return;
-  }
-  if(!weight||weight<=0){ alert('Weight (lbs) is required.'); return; }
-  const hData={date,container,lotNumber,variety,grade,weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes};
-  const hId=await FS.add('harvests',hData);
-  DB.harvests.push({id:hId,...hData});
-  toast('hl-t');
-  ['hl-c','hl-lot','hl-w','hl-n'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value='' });
-  document.getElementById('hl-v').value='';
-  document.getElementById('hl-g').value='';
-  rHarvest(document.getElementById('main-views'));
+  try {
+    const date=document.getElementById('hl-dt').value;
+    const container=document.getElementById('hl-c').value.trim();
+    const lotNumber=document.getElementById('hl-lot').value.trim();
+    const variety=document.getElementById('hl-v').value;
+    const grade=document.getElementById('hl-g').value;
+    const weight=parseFloat(document.getElementById('hl-w').value)||0;
+    const notes=document.getElementById('hl-n').value.trim();
+    if(!date||!container||!lotNumber||!variety||!grade){
+      alert('Date, container, lot number, variety and grade are all required.'); return;
+    }
+    if(!weight||weight<=0){ alert('Weight (lbs) is required.'); return; }
+    const hData={date,container,lotNumber,variety,grade,weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes};
+    const hId=await FS.add('harvests',hData);
+    DB.harvests.push({id:hId,...hData});
+    toast('hl-t');
+    ['hl-c','hl-lot','hl-w','hl-n'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value='' });
+    document.getElementById('hl-v').value='';
+    document.getElementById('hl-g').value='';
+    rHarvest(document.getElementById('main-views'));
+  } catch(e){ alert('Error: '+e.message); console.error(e); }
 }
 
 // ── INVENTORY ──
@@ -1816,22 +1824,24 @@ function openPreserveModal(harvestId){
 }
 
 async function savePreservation(harvestId, maxOnHand){
-  const method = document.getElementById('pm-method').value;
-  const wt = parseFloat(document.getElementById('pm-wt').value)||0;
-  const wout = parseFloat(document.getElementById('pm-wout').value)||0;
-  const date = document.getElementById('pm-date').value;
-  const notes = document.getElementById('pm-notes').value.trim();
-  if(!method){ alert('Please select a preservation method.'); return; }
-  if(!wt||wt<=0){ alert('Weight in is required.'); return; }
-  if(wt>maxOnHand+0.01){ alert(`Only ${maxOnHand.toFixed(1)} lb available on this lot.`); return; }
-  const h = DB.harvests.find(x=>x.id===harvestId); if(!h) return;
-  h.preservedWeight = (h.preservedWeight||0) + wt;
-  FS.update('harvests',h.id,{preservedWeight:h.preservedWeight});
-  const pData={date,harvestId,lotNumber:h.lotNumber,variety:h.variety,container:h.container,method,weightIn:wt,weightOut:wout||null,notes};
-  const pId=await FS.add('preservation',pData);
-  DB.preservation.push({id:pId,...pData});
-  closeModal();
-  renderC();
+  try {
+    const method = document.getElementById('pm-method').value;
+    const wt = parseFloat(document.getElementById('pm-wt').value)||0;
+    const wout = parseFloat(document.getElementById('pm-wout').value)||0;
+    const date = document.getElementById('pm-date').value;
+    const notes = document.getElementById('pm-notes').value.trim();
+    if(!method){ alert('Please select a preservation method.'); return; }
+    if(!wt||wt<=0){ alert('Weight in is required.'); return; }
+    if(wt>maxOnHand+0.01){ alert(`Only ${maxOnHand.toFixed(1)} lb available on this lot.`); return; }
+    const h = DB.harvests.find(x=>x.id===harvestId); if(!h) return;
+    h.preservedWeight = (h.preservedWeight||0) + wt;
+    FS.update('harvests',h.id,{preservedWeight:h.preservedWeight});
+    const pData={date,harvestId,lotNumber:h.lotNumber,variety:h.variety,container:h.container,method,weightIn:wt,weightOut:wout||null,notes};
+    const pId=await FS.add('preservation',pData);
+    DB.preservation.push({id:pId,...pData});
+    closeModal();
+    renderC();
+  } catch(e){ alert('Error: '+e.message); console.error(e); }
 }
 
 
@@ -1984,30 +1994,32 @@ function rPreservation(el){
 }
 
 async function logPreservation(){
-  const lotId = parseInt(document.getElementById('plog-lot').value);
-  const method = document.getElementById('plog-method').value;
-  const wt = parseFloat(document.getElementById('plog-wt').value)||0;
-  const wout = parseFloat(document.getElementById('plog-wout').value)||0;
-  const date = document.getElementById('plog-date').value;
-  const notes = document.getElementById('plog-notes').value.trim();
+  try {
+    const lotId = parseInt(document.getElementById('plog-lot').value);
+    const method = document.getElementById('plog-method').value;
+    const wt = parseFloat(document.getElementById('plog-wt').value)||0;
+    const wout = parseFloat(document.getElementById('plog-wout').value)||0;
+    const date = document.getElementById('plog-date').value;
+    const notes = document.getElementById('plog-notes').value.trim();
 
-  if(!lotId){ alert('Please select a lot.'); return; }
-  if(!method){ alert('Please select a method.'); return; }
-  if(!wt||wt<=0){ alert('Weight in is required.'); return; }
+    if(!lotId){ alert('Please select a lot.'); return; }
+    if(!method){ alert('Please select a method.'); return; }
+    if(!wt||wt<=0){ alert('Weight in is required.'); return; }
 
-  const h = DB.harvests.find(x=>x.id===lotId); if(!h) return;
-  const maxOH = Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0));
-  if(wt>maxOH+0.01){ alert(`Only ${maxOH.toFixed(1)} lb available on ${h.lotNumber}.`); return; }
+    const h = DB.harvests.find(x=>x.id===lotId); if(!h) return;
+    const maxOH = Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.preservedWeight||0));
+    if(wt>maxOH+0.01){ alert(`Only ${maxOH.toFixed(1)} lb available on ${h.lotNumber}.`); return; }
 
-  h.preservedWeight = (h.preservedWeight||0) + wt;
-  FS.update('harvests', h.id, {preservedWeight: h.preservedWeight});
-  const pData = {date, harvestId:h.id, lotNumber:h.lotNumber, variety:h.variety,
-    container:h.container, method, weightIn:wt, weightOut:wout||null, notes};
-  const pId = await FS.add('preservation', pData);
-  pData.id = pId;
-  DB.preservation.push(pData);
-  toast('plog-t');
-  setTimeout(()=>renderC(), 900);
+    h.preservedWeight = (h.preservedWeight||0) + wt;
+    FS.update('harvests', h.id, {preservedWeight: h.preservedWeight});
+    const pData = {date, harvestId:h.id, lotNumber:h.lotNumber, variety:h.variety,
+      container:h.container, method, weightIn:wt, weightOut:wout||null, notes};
+    const pId = await FS.add('preservation', pData);
+    pData.id = pId;
+    DB.preservation.push(pData);
+    toast('plog-t');
+    setTimeout(()=>renderC(), 900);
+  } catch(e){ alert('Error: '+e.message); console.error(e); }
 }
 
 // ── HARVEST FORECAST HELPER (used by Analytics tab) ──
@@ -2364,25 +2376,27 @@ function rNewSample(el){
 }
 
 async function subNewSample(){
-  const recipient=document.getElementById('ns-rec').value.trim();
-  const recipientType=document.getElementById('ns-type').value;
-  const contact=document.getElementById('ns-contact').value.trim();
-  const date=document.getElementById('ns-date').value;
-  if(!recipient||!date){ alert('Recipient and date are required.'); return }
-  const varieties={};
-  VARIETIES.forEach(v=>{
-    const el=document.getElementById('nsv-'+v.replace(/[^a-z0-9]/gi,'_'));
-    const val=parseFloat(el?.value)||0;
-    if(val>0) varieties[v]=val;
-  });
-  if(Object.keys(varieties).length===0){ alert('Enter at least one variety with a weight in oz.'); return }
-  const sData={date, week:wkStart(), recipient, recipientType:recipientType||'Other', contact,
-    varieties, notes:document.getElementById('ns-notes').value.trim(), status:'pending'};
-  const sId = await FS.add('samples', sData);
-  sData.id = sId;
-  DB.samples.push(sData);
-  toast('ns-t');
-  clrNewSample();
+  try {
+    const recipient=document.getElementById('ns-rec').value.trim();
+    const recipientType=document.getElementById('ns-type').value;
+    const contact=document.getElementById('ns-contact').value.trim();
+    const date=document.getElementById('ns-date').value;
+    if(!recipient||!date){ alert('Recipient and date are required.'); return }
+    const varieties={};
+    VARIETIES.forEach(v=>{
+      const el=document.getElementById('nsv-'+v.replace(/[^a-z0-9]/gi,'_'));
+      const val=parseFloat(el?.value)||0;
+      if(val>0) varieties[v]=val;
+    });
+    if(Object.keys(varieties).length===0){ alert('Enter at least one variety with a weight in oz.'); return }
+    const sData={date, week:wkStart(), recipient, recipientType:recipientType||'Other', contact,
+      varieties, notes:document.getElementById('ns-notes').value.trim(), status:'pending'};
+    const sId = await FS.add('samples', sData);
+    sData.id = sId;
+    DB.samples.push(sData);
+    toast('ns-t');
+    clrNewSample();
+  } catch(e){ alert('Error: '+e.message); console.error(e); }
 }
 
 function clrNewSample(){
@@ -2443,16 +2457,18 @@ function appSR(id){
 }
 
 async function finSR(srId){
-  const sr=DB.signupRequests.find(s=>s.id===srId); if(!sr) return;
-  const cData={name:sr.venue,type:document.getElementById('as-t').value,contact:sr.contact,email:sr.email,phone:sr.phone,day:document.getElementById('as-d').value,notes:document.getElementById('as-n').value.trim(),pw:null,notifPref:'email',notifEmail:sr.email,notifPhone:sr.phone,firstLogin:true,status:'approved',isWholesale:document.getElementById('as-t').value==='Wholesale'};
-  const cid = await FS.add('clients', cData);
-  cData.id = cid;
-  DB.clients.push(cData);
-  sr.status='approved';
-  FS.update('signupRequests',srId,{status:'approved'});
-  closeModal();
-  alert(`✓ Account created for ${sr.venue}.\n\nTemp login code: tm-${cid}\n\nSend this to ${sr.email} so they can complete their first login and set their own password.`);
-  rAdmin(document.getElementById('main-views'))
+  try {
+    const sr=DB.signupRequests.find(s=>s.id===srId); if(!sr) return;
+    const cData={name:sr.venue,type:document.getElementById('as-t').value,contact:sr.contact,email:sr.email,phone:sr.phone,day:document.getElementById('as-d').value,notes:document.getElementById('as-n').value.trim(),pw:null,notifPref:'email',notifEmail:sr.email,notifPhone:sr.phone,firstLogin:true,status:'approved',isWholesale:document.getElementById('as-t').value==='Wholesale'};
+    const cid = await FS.add('clients', cData);
+    cData.id = cid;
+    DB.clients.push(cData);
+    sr.status='approved';
+    FS.update('signupRequests',srId,{status:'approved'});
+    closeModal();
+    alert(`✓ Account created for ${sr.venue}.\n\nTemp login code: tm-${cid}\n\nSend this to ${sr.email} so they can complete their first login and set their own password.`);
+    rAdmin(document.getElementById('main-views'))
+  } catch(e){ alert('Error: '+e.message); console.error(e); }
 }
 
 function decSR(id){ if(!confirm('Decline this signup request?')) return; const sr=DB.signupRequests.find(s=>s.id===id); if(!sr) return; sr.status='declined'; FS.update('signupRequests',id,{status:'declined'}); rAdmin(document.getElementById('main-views')) }
@@ -2613,20 +2629,22 @@ function rCOrd(el){
 }
 
 async function subCOrd(){
-  const c=gC();
-  const oyster=parseInt(document.getElementById('co-oy').value)||0;
-  const chefs=parseInt(document.getElementById('co-ch').value)||0;
-  const lions=parseInt(document.getElementById('co-li').value)||0;
-  const chestnut=parseInt(document.getElementById('co-cs').value)||0;
-  const shiitake=parseInt(document.getElementById('co-shi').value)||0;
-  const lionsPack=parseInt(document.getElementById('co-lrp').value)||0;
-  const chefsPack=parseInt(document.getElementById('co-crp').value)||0;
-  if(!oyster&&!chefs&&!lions&&!chestnut&&!shiitake&&!lionsPack&&!chefsPack){ alert('Add at least one item.'); return }
-  const oData={clientId:S.clientId,client:c.name,day:document.getElementById('co-d').value,status:'pending',oyster,chefs,lions,chestnut,shiitake,lionsPack,chefsPack,notes:document.getElementById('co-n').value.trim(),week:wkStart(),custom:false,isStanding:false};
-  const oId = await FS.add('orders', oData);
-  oData.id = oId;
-  DB.orders.push(oData);
-  toast('co-t'); ['co-oy','co-ch','co-li','co-cs','co-shi','co-lrp','co-crp'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value='0' })
+  try {
+    const c=gC();
+    const oyster=parseInt(document.getElementById('co-oy').value)||0;
+    const chefs=parseInt(document.getElementById('co-ch').value)||0;
+    const lions=parseInt(document.getElementById('co-li').value)||0;
+    const chestnut=parseInt(document.getElementById('co-cs').value)||0;
+    const shiitake=parseInt(document.getElementById('co-shi').value)||0;
+    const lionsPack=parseInt(document.getElementById('co-lrp').value)||0;
+    const chefsPack=parseInt(document.getElementById('co-crp').value)||0;
+    if(!oyster&&!chefs&&!lions&&!chestnut&&!shiitake&&!lionsPack&&!chefsPack){ alert('Add at least one item.'); return }
+    const oData={clientId:S.clientId,client:c.name,day:document.getElementById('co-d').value,status:'pending',oyster,chefs,lions,chestnut,shiitake,lionsPack,chefsPack,notes:document.getElementById('co-n').value.trim(),week:wkStart(),custom:false,isStanding:false};
+    const oId = await FS.add('orders', oData);
+    oData.id = oId;
+    DB.orders.push(oData);
+    toast('co-t'); ['co-oy','co-ch','co-li','co-cs','co-shi','co-lrp','co-crp'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value='0' })
+  } catch(e){ alert('Error: '+e.message); console.error(e); }
 }
 
 function rCStand(el){
@@ -2643,7 +2661,7 @@ function rCStand(el){
     </div>`;
 }
 
-async function subSO(sid){ const r=document.getElementById('so-r')?.value?.trim(); if(!r){ alert('Please add a reason.'); return } const o=DB.orders.find(x=>x.id===sid); const oData={clientId:S.clientId,client:gC().name,day:o?.day||'Monday',status:'pending',oyster:parseInt(document.getElementById('so-oy').value)||0,chefs:parseInt(document.getElementById('so-ch').value)||0,lions:parseInt(document.getElementById('so-li').value)||0,chestnut:parseInt(document.getElementById('so-cs').value)||0,shiitake:parseInt(document.getElementById('so-shi').value)||0,notes:'Standing order edit: '+r,week:wkStart(),custom:false,isStanding:true}; const oId=await FS.add('orders',oData); oData.id=oId; DB.orders.push(oData); toast('so-t') }
+async function subSO(sid){ try { const r=document.getElementById('so-r')?.value?.trim(); if(!r){ alert('Please add a reason.'); return } const o=DB.orders.find(x=>x.id===sid); const oData={clientId:S.clientId,client:gC().name,day:o?.day||'Monday',status:'pending',oyster:parseInt(document.getElementById('so-oy').value)||0,chefs:parseInt(document.getElementById('so-ch').value)||0,lions:parseInt(document.getElementById('so-li').value)||0,chestnut:parseInt(document.getElementById('so-cs').value)||0,shiitake:parseInt(document.getElementById('so-shi').value)||0,notes:'Standing order edit: '+r,week:wkStart(),custom:false,isStanding:true}; const oId=await FS.add('orders',oData); oData.id=oId; DB.orders.push(oData); toast('so-t') } catch(e){ alert('Error: '+e.message); console.error(e); } }
 
 function rCHist(el){
   const c=gC(), h=[...DB.orders.filter(o=>o.clientId===S.clientId)].sort((a,b)=>b.week.localeCompare(a.week));
