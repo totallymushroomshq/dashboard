@@ -478,6 +478,15 @@ function showErrBanner(msg){
   d.style.display='block';
   d.innerHTML = '<strong>ERROR:</strong> '+msg+' &nbsp;<span style="opacity:.6;font-size:11px;">(click to dismiss)</span>';
 }
+function showBanner(msg, type){
+  var bg = type==='success' ? '#3a6030' : type==='warn' ? '#8a6020' : '#b84c20';
+  var d = document.getElementById('js-banner');
+  if(!d){ d=document.createElement('div'); d.id='js-banner'; d.style.cssText='position:fixed;top:0;left:0;right:0;padding:13px 20px;font-family:monospace;font-size:13px;z-index:99999;line-height:1.6;cursor:pointer;color:#fff;'; d.onclick=function(){d.style.display='none';}; document.body.appendChild(d); }
+  d.style.background=bg;
+  d.style.display='block';
+  d.innerHTML = msg + ' &nbsp;<span style="opacity:.6;font-size:11px;">(click to dismiss)</span>';
+  setTimeout(function(){ d.style.display='none'; }, 4000);
+}
 window.onerror = function(msg, src, line, col, err){
   showErrBanner('(line '+line+') '+msg); return false;
 };
@@ -1432,6 +1441,7 @@ function showLoginErr(msg){
 // ── GATE ──
 let S={role:null,clientId:null,uid:null,email:null,name:null,permissions:null,newDevice:false};
 let _sessionTimer=null;
+let batchSel = new Set(); // selected order IDs for batch actions
 const SESSION_TIMEOUT=2*60*60*1000; // 2 hours inactivity
 
 
@@ -1969,7 +1979,15 @@ function rOC(o,container,showApprove){
     }
   }
 
+  // Batch checkbox (admin/staff only)
+  const batchChk = (S.role==='admin'||S.role==='staff')
+    ? `<label style="position:absolute;top:10px;right:10px;display:flex;align-items:center;gap:6px;cursor:pointer;z-index:2;">
+        <input type="checkbox" id="bchk-${o.id}" ${batchSel.has(o.id)?'checked':''} onchange="toggleBatch('${o.id}',this)" style="width:15px;height:15px;accent-color:var(--fern);cursor:pointer;">
+       </label>` : '';
+
+  div.style.position='relative';
   div.innerHTML=`
+    ${batchChk}
     <div class="oc-c">${o.client}<span class="bdg ${statusBadgeClass(o)}">${statusLabel(o)}</span></div>
     <div class="oc-m">${o.day.toUpperCase()} · ${o.week==='standing'?'STANDING TEMPLATE':('WEEK OF '+fDate(o.week))}</div>
     ${o.orderRef?`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--blue);letter-spacing:1px;margin-bottom:2px;">${o.orderRef}</div>`:''}
@@ -1980,6 +1998,83 @@ function rOC(o,container,showApprove){
     ${o.subNote?`<div style="background:var(--gold-lt);border:1px solid var(--border-gold);border-radius:3px;padding:10px;margin-top:10px;font-size:11px;color:var(--text2);">Sub: ${o.subNote}</div>`:''}
   `;
   container.appendChild(div);
+}
+
+// ── BATCH ORDER ACTIONS ──
+function toggleBatch(id, chk){
+  if(chk.checked) batchSel.add(id); else batchSel.delete(id);
+  renderBatchBar();
+}
+function selectAllOrders(containerEl){
+  containerEl.querySelectorAll('[id^="bchk-"]').forEach(chk=>{
+    batchSel.add(chk.id.replace('bchk-',''));
+    chk.checked=true;
+  });
+  renderBatchBar();
+}
+function clearBatch(){
+  batchSel.clear();
+  document.querySelectorAll('[id^="bchk-"]').forEach(chk=>chk.checked=false);
+  renderBatchBar();
+}
+function renderBatchBar(){
+  let bar=document.getElementById('batch-bar');
+  if(batchSel.size===0){ if(bar) bar.style.display='none'; return; }
+  if(!bar){
+    bar=document.createElement('div'); bar.id='batch-bar';
+    bar.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--bark);border:1px solid var(--border);border-radius:6px;padding:12px 20px;display:flex;align-items:center;gap:12px;z-index:8888;box-shadow:0 4px 24px rgba(0,0,0,.25);font-size:13px;';
+    document.body.appendChild(bar);
+  }
+  bar.style.display='flex';
+  bar.innerHTML=`
+    <span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);letter-spacing:1px;">${batchSel.size} selected</span>
+    <button class="btn b-m b-sm" onclick="batchApprove()">✓ Approve All</button>
+    <button class="btn b-r b-sm" onclick="batchReject()">✗ Reject All</button>
+    <button class="btn b-sm" style="background:rgba(184,76,32,.15);color:var(--rust);border:1px solid rgba(184,76,32,.25);" onclick="batchDelete()">🗑 Delete All</button>
+    <button class="btn b-sm" style="background:rgba(122,58,154,.1);color:#7a3a9a;border:1px solid rgba(122,58,154,.2);" onclick="batchMarkPacked()">📦 Pack All</button>
+    <button class="btn b-g b-sm" onclick="clearBatch()">✕ Clear</button>
+  `;
+}
+async function batchApprove(){
+  if(!batchSel.size) return;
+  if(!confirm('Approve '+batchSel.size+' orders?')) return;
+  for(const id of [...batchSel]){
+    const o=DB.orders.find(x=>x.id===id); if(!o||o.status!=='pending') continue;
+    o.status='confirmed';
+    FS.update('orders',id,{status:'confirmed'});
+    const c=DB.clients.find(x=>x.id===o.clientId);
+    notify(o.clientId,'Hi '+(c?.contact||'there')+', your '+o.day+' order is confirmed! '+oSum(o)+'.','approval');
+  }
+  clearBatch(); renderC();
+}
+async function batchReject(){
+  if(!batchSel.size) return;
+  if(!confirm('Reject '+batchSel.size+' orders?')) return;
+  for(const id of [...batchSel]){
+    const o=DB.orders.find(x=>x.id===id); if(!o) continue;
+    notify(o.clientId,'Hi '+(DB.clients.find(x=>x.id===o.clientId)?.contact||'there')+', we can\'t fulfil your '+o.day+' order this week. Please contact us.','rejection');
+    FS.del('orders',id);
+  }
+  DB.orders=DB.orders.filter(o=>!batchSel.has(o.id));
+  clearBatch(); renderC();
+}
+async function batchDelete(){
+  if(!batchSel.size) return;
+  if(!confirm('Permanently delete '+batchSel.size+' orders? This cannot be undone.')) return;
+  for(const id of [...batchSel]) FS.del('orders',id);
+  DB.orders=DB.orders.filter(o=>!batchSel.has(o.id));
+  clearBatch(); renderC();
+}
+async function batchMarkPacked(){
+  if(!batchSel.size) return;
+  if(!confirm('Mark '+batchSel.size+' orders as packed?')) return;
+  for(const id of [...batchSel]){
+    const o=DB.orders.find(x=>x.id===id); if(!o||o.status!=='confirmed') continue;
+    o.status='packed'; o.packedAt=new Date().toLocaleString();
+    deductInventory(o);
+    FS.update('orders',id,{status:'packed',packedAt:o.packedAt});
+  }
+  clearBatch(); renderC();
 }
 
 // ── PACK SESSION FUNCTIONS ──
