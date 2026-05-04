@@ -461,22 +461,29 @@ function dAgo(n){ const d=new Date(); d.setDate(d.getDate()-n); return d.toISOSt
 function wkStart(){ const d=new Date(),day=d.getDay(),diff=d.getDate()-day+(day===0?-6:1); return new Date(d.setDate(diff)).toISOString().split('T')[0] }
 function todayName(){ return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()] }
 function fDate(s){ if(!s) return '—'; return new Date(s+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}) }
-const BOX_LB = 3; // lbs per 3-lb box
-// ── PRODUCT CATALOG ── code → {name, desc, priceLb, varieties[]}
+const BOX_LB = 3;          // lbs per 3-lb box (legacy alias; prefer p.unitLb)
+const PACK_LB = 0.25;      // lbs per ¼-lb retail pack
+const STD_PRICE_LB = 8.00; // default $/lb for retail packs (LM, CM)
+// ── PRODUCT CATALOG ── code → {name, desc, priceLb, unitLb, varieties[]}
+// unitLb: physical weight of one unit. 3 = standard box, 0.25 = retail pack.
 const PRODUCTS = [
-  {code:'MO8',  name:'Mixed Oyster Box', desc:'Oyster Mix — 3LB mix of all farm oyster varieties',                         priceLb:8.00,  varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Black Pearl']},
-  {code:'CB09', name:'Shiitake',         desc:'Shiitake Mushroom 3LB — Chonk Shiitake, dense & meaty',                    priceLb:10.00, varieties:['Shiitake']},
-  {code:'CM5',  name:"Chef's Mix",       desc:"Chef's Mix 3LB — culinary mix, NO Lion's Mane & NO King Trumpet",          priceLb:9.00,  varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Chestnut','Shiitake','Lynx Paw','Coral Tooth']},
-  {code:'CB07', name:'Black Pearl',      desc:'Black Pearl Mushroom 3LB',                                                  priceLb:8.50,  varieties:['Black Pearl']},
-  {code:'CB08', name:"Lion's Mane",      desc:"Lion's Mane Mushroom 3LB",                                                  priceLb:8.00,  varieties:["Lion's Mane"]},
-  {code:'CH01', name:'Chestnut #1',      desc:'Chestnut 3LB — TOP GRADE, intact veil, youngest harvest',                  priceLb:10.00, varieties:['Chestnut']},
-  {code:'CH02', name:'Chestnut #2',      desc:'Chestnut 3LB — HIGH GRADE, open veil, younger harvest',                   priceLb:9.00,  varieties:['Chestnut']},
-  {code:'WD01', name:'Wild Mix',         desc:'3LB Wild, Local & Bioregional specialty mix — Lynx Paw, Coral Tooth, etc.', priceLb:9.50,  varieties:['Lynx Paw','Coral Tooth','Gold Enoki','White Enoki']},
+  {code:'MO8',  name:'Mixed Oyster Box', desc:'Oyster Mix — 3LB mix of all farm oyster varieties',                         priceLb:8.00,  unitLb:3,    varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Black Pearl']},
+  {code:'CB09', name:'Shiitake',         desc:'Shiitake Mushroom 3LB — Chonk Shiitake, dense & meaty',                    priceLb:10.00, unitLb:3,    varieties:['Shiitake']},
+  {code:'CM5',  name:"Chef's Mix",       desc:"Chef's Mix 3LB — culinary mix, NO Lion's Mane & NO King Trumpet",          priceLb:9.00,  unitLb:3,    varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Chestnut','Shiitake','Lynx Paw','Coral Tooth']},
+  {code:'CB07', name:'Black Pearl',      desc:'Black Pearl Mushroom 3LB',                                                  priceLb:8.50,  unitLb:3,    varieties:['Black Pearl']},
+  {code:'CB08', name:"Lion's Mane",      desc:"Lion's Mane Mushroom 3LB",                                                  priceLb:8.00,  unitLb:3,    varieties:["Lion's Mane"]},
+  {code:'CH01', name:'Chestnut #1',      desc:'Chestnut 3LB — TOP GRADE, intact veil, youngest harvest',                  priceLb:10.00, unitLb:3,    varieties:['Chestnut']},
+  {code:'CH02', name:'Chestnut #2',      desc:'Chestnut 3LB — HIGH GRADE, open veil, younger harvest',                   priceLb:9.00,  unitLb:3,    varieties:['Chestnut']},
+  {code:'WD01', name:'Wild Mix',         desc:'3LB Wild, Local & Bioregional specialty mix — Lynx Paw, Coral Tooth, etc.', priceLb:9.50,  unitLb:3,    varieties:['Lynx Paw','Coral Tooth','Gold Enoki','White Enoki']},
+  // Retail ¼-lb packs
+  {code:'LRP',  name:"Lion's Mane ¼lb Pack", desc:"Lion's Mane — ¼ lb retail pack",                                       priceLb:STD_PRICE_LB, unitLb:PACK_LB, varieties:["Lion's Mane"]},
+  {code:'CRP',  name:"Chef's Mix ¼lb Pack",  desc:"Chef's Mix — ¼ lb retail pack",                                        priceLb:STD_PRICE_LB, unitLb:PACK_LB, varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Chestnut','Shiitake','Lynx Paw','Coral Tooth']},
 ];
 function getProd(code){ return PRODUCTS.find(p=>p.code===code)||null; }
-function bxs(o){ return PRODUCTS.reduce((s,p)=>(s+(o[p.code]||0)),0); }
+// bxs counts 3-lb boxes only (excludes retail packs) — used for "boxes shipped" metrics.
+function bxs(o){ return PRODUCTS.filter(p=>p.unitLb===3).reduce((s,p)=>(s+(o[p.code]||0)),0); }
 function oSum(o){ const p=PRODUCTS.filter(p=>o[p.code]>0).map(p=>o[p.code]+'× '+p.name); if(o.custom) p.push('★ '+o.customType); return p.join(' · ')||'Custom/Wholesale'; }
-function eRev(o){ if(o.custom&&o.price) return o.price; return PRODUCTS.reduce((s,p)=>(s+(o[p.code]||0)*BOX_LB*p.priceLb),0); }
+function eRev(o){ if(o.custom&&o.price) return o.price; return PRODUCTS.reduce((s,p)=>(s+(o[p.code]||0)*p.unitLb*p.priceLb),0); }
 function wkOrds(){ return DB.orders.filter(o=>o.week===wkStart()) }
 function toast(id,msg){ const el=document.getElementById(id); if(!el) return; if(msg) el.textContent=msg; el.style.display='block'; setTimeout(()=>el.style.display='none',3000) }
 function notify(cid,msg,type){ 
@@ -1106,12 +1113,9 @@ function rNewOrd(el){
       <!-- ── BOXES: Standard + Sample + Wholesale all use this ── -->
       <div id="rt-boxes">
         <div class="sh" style="margin-top:22px;margin-bottom:8px;">Products — 3 lb Boxes</div>
-        <div class="vg">${PRODUCTS.map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-right:6px;">${p.code}</span>${p.name}</div><div class="vi-d">${p.desc} · <strong>$${p.priceLb}/lb = $${(BOX_LB*p.priceLb).toFixed(2)}/box</strong></div><input class="qi" type="number" min="0" id="no-${p.code}" value="0"><div class="qu">× 3 lb box</div></div>`).join('')}</div>
+        <div class="vg">${PRODUCTS.filter(p=>p.unitLb===3).map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-right:6px;">${p.code}</span>${p.name}</div><div class="vi-d">${p.desc} · <strong>$${p.priceLb.toFixed(2)}/lb = $${(p.unitLb*p.priceLb).toFixed(2)}/box</strong></div><input class="qi" type="number" min="0" id="no-${p.code}" value="0"><div class="qu">× ${p.unitLb} lb box</div></div>`).join('')}</div>
         <div class="sh" style="margin-top:18px;margin-bottom:8px;">Retail Packs — ¼ lb</div>
-        <div class="vg">
-          <div class="vi"><div class="vi-n">Lion's Mane</div><div class="vi-d">$${STD_PRICE_LB}/lb · ¼ lb = $${PACK_LB*STD_PRICE_LB} each</div><input class="qi" type="number" min="0" id="no-lrp" value="0"><div class="qu">× ¼ lb pack</div></div>
-          <div class="vi"><div class="vi-n">Chef's Mix</div><div class="vi-d">$${STD_PRICE_LB}/lb · ¼ lb = $${PACK_LB*STD_PRICE_LB} each</div><input class="qi" type="number" min="0" id="no-crp" value="0"><div class="qu">× ¼ lb pack</div></div>
-        </div>
+        <div class="vg">${PRODUCTS.filter(p=>p.unitLb===PACK_LB).map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-right:6px;">${p.code}</span>${p.name}</div><div class="vi-d">${p.desc} · <strong>$${p.priceLb.toFixed(2)}/lb = $${(p.unitLb*p.priceLb).toFixed(2)}/pack</strong></div><input class="qi" type="number" min="0" id="no-${p.code}" value="0"><div class="qu">× ¼ lb pack</div></div>`).join('')}</div>
         <!-- Wholesale price override — shown only for wholesale type -->
         <div id="rt-wh-extras" style="display:none;margin-top:18px;">
           <div class="sh" style="margin-bottom:8px;">Wholesale — Agreed Price Override</div>
@@ -2603,12 +2607,9 @@ function rCOrd(el){
     <div class="card"><div class="card-t">Place This Week's Order</div>
     <div class="fg2"><div class="fgl"><label>Delivery Day</label><select class="fs" id="co-d">${['Monday','Wednesday','Friday'].map(d=>`<option ${c.day===d?'selected':''}>${d}</option>`).join('')}</select></div></div>
     <div style="margin:20px 0 10px;" class="sh">Products — 3 lb Boxes</div>
-    <div class="vg">${PRODUCTS.map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-right:6px;">${p.code}</span>${p.name}</div><div class="vi-d">${p.desc} · <strong>$${(BOX_LB*p.priceLb).toFixed(2)}/box</strong></div><input class="qi" type="number" min="0" id="co-${p.code}" value="0"><div class="qu">× 3 lb box</div></div>`).join('')}</div>
+    <div class="vg">${PRODUCTS.filter(p=>p.unitLb===3).map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-right:6px;">${p.code}</span>${p.name}</div><div class="vi-d">${p.desc} · <strong>$${(p.unitLb*p.priceLb).toFixed(2)}/box</strong></div><input class="qi" type="number" min="0" id="co-${p.code}" value="0"><div class="qu">× ${p.unitLb} lb box</div></div>`).join('')}</div>
     <div style="margin:16px 0 10px;" class="sh">Retail Packs — ¼ lb</div>
-    <div class="vg">
-      <div class="vi"><div class="vi-n">Lion's Mane</div><div class="vi-d">$${STD_PRICE_LB}/lb · ¼ lb = $${PACK_LB*STD_PRICE_LB} each</div><input class="qi" type="number" min="0" id="co-lrp" value="0"><div class="qu">× ¼ lb pack</div></div>
-      <div class="vi"><div class="vi-n">Chef's Mix</div><div class="vi-d">$${STD_PRICE_LB}/lb · ¼ lb = $${PACK_LB*STD_PRICE_LB} each</div><input class="qi" type="number" min="0" id="co-crp" value="0"><div class="qu">× ¼ lb pack</div></div>
-    </div>
+    <div class="vg">${PRODUCTS.filter(p=>p.unitLb===PACK_LB).map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-right:6px;">${p.code}</span>${p.name}</div><div class="vi-d">${p.desc} · <strong>$${(p.unitLb*p.priceLb).toFixed(2)}/pack</strong></div><input class="qi" type="number" min="0" id="co-${p.code}" value="0"><div class="qu">× ¼ lb pack</div></div>`).join('')}</div>
     <div class="fgl" style="margin-bottom:18px;"><label>Notes</label><textarea class="fta" id="co-n" placeholder="Any notes for the farm..."></textarea></div>
     <div style="background:rgba(200,150,42,.06);border:1px solid rgba(200,150,42,.15);border-radius:3px;padding:14px;margin-bottom:18px;font-size:12px;color:var(--warm);line-height:1.6;"><strong style="color:var(--amber);">Need Black Pearl or something custom?</strong><br>Custom requests require a conversation first. Get in touch and we'll sort it out.</div>
     <div class="form-acts"><button class="btn b-s b-lg" onclick="subCOrd()">Submit Order</button></div>
