@@ -1489,6 +1489,13 @@ const SESSION_TIMEOUT=2*60*60*1000; // 2 hours inactivity
 document.getElementById('pw').addEventListener('keydown',e=>{ if(e.key==='Enter') login() });
 document.getElementById('fl-sn').addEventListener('change',function(){ document.getElementById('fl-sf').style.display=this.checked?'block':'none' });
 
+function gTab(name, btn){
+  document.querySelectorAll('.gpane').forEach(p=>p.classList.remove('a'));
+  const pane=document.getElementById('gp-'+name); if(pane) pane.classList.add('a');
+  document.querySelectorAll('.gmt').forEach(b=>b.classList.remove('a'));
+  if(btn) btn.classList.add('a');
+}
+
 async function login(){
   const email=document.getElementById('login-email').value.trim();
   const pw=document.getElementById('pw').value.trim();
