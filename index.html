@@ -370,20 +370,21 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
     <div class="gate-card">
       <div class="gate-logo">Totally Mushrooms</div>
       <div class="gate-sub">Nashville, TN · Farm Portal</div>
-      <div class="gmt-row">
+      <!-- Client-facing signup hidden — app is internal-only. Code kept dormant. -->
+      <div class="gmt-row" style="display:none;">
         <button class="gmt a" onclick="gTab('login',this)">Sign In</button>
         <button class="gmt sky" onclick="gTab('signup',this)">Request Access</button>
       </div>
 
       <!-- LOGIN -->
       <div class="gpane a" id="gp-login">
-        <div class="fl"><label>Email</label><input class="fi" type="email" id="login-email" placeholder="your@email.com (staff/admin) or leave blank"></div>
+        <div class="fl"><label>Email</label><input class="fi" type="email" id="login-email" placeholder="your@email.com"></div>
         <div class="fl"><label>Password</label><div style="position:relative;"><input class="fi" type="password" id="pw" placeholder="Enter your password" autocomplete="current-password" style="padding-right:42px;"><button type="button" onclick="togglePw('pw','pw-eye')" style="position:absolute;right:0;top:0;bottom:0;width:40px;background:transparent;border:none;cursor:pointer;color:var(--text3);display:flex;align-items:center;justify-content:center;padding:0;" id="pw-eye" aria-label="Show password">
           <svg id="pw-eye-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button></div></div>
         <button class="gbtn gbtn-m" onclick="login()">Enter</button>
         <div class="gate-err" id="lerr">Incorrect password. Try again.</div>
-        <div class="gate-hint">Staff · Admin · Client accounts accepted</div>
+        <div class="gate-hint">Staff &amp; Admin · Internal access only</div>
       </div>
 
       <!-- SIGNUP -->
@@ -501,7 +502,6 @@ const DB = {
   preservationBatches:[],
   labBatches:[], blockDisposals:[],
   facilities:[], containerOverrides:{},
-  adminPw:'totallyadmin2025', staffPw:'mushrooms2025', accountantPw:'tmbooks2025',
   emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false}
 };
 let packDaySelected = {}; // harvestId -> pull weight, persists across renders
@@ -539,6 +539,7 @@ const ALL_INTERNAL_TABS = [
   {id:'new-order',l:'+ Order'},{id:'email-parse',l:'Parse Email'},
   {id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},
   {id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},
+  {id:'trace',l:'🔍 Trace'},
   {id:'lab',l:'🧫 Lab'},
   {id:'analytics',l:'Analytics'},
   {id:'admin',l:'⚙ Admin',c:'at'},{id:'security',l:'🔒 Security',c:'at'},
@@ -546,9 +547,9 @@ const ALL_INTERNAL_TABS = [
   {id:'qb',l:'📒 QB',c:'at'}
 ];
 const DEFAULT_PERMS = {
-  admin: {today:true,week:true,'new-order':true,'email-parse':true,harvest:true,fruiting:true,inventory:true,preservation:true,lab:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
-  staff: {today:true,week:true,'new-order':true,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,lab:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
-  accountant: {today:true,week:true,'new-order':false,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,lab:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
+  admin: {today:true,week:true,'new-order':true,'email-parse':true,harvest:true,fruiting:true,inventory:true,preservation:true,trace:true,lab:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
+  staff: {today:true,week:true,'new-order':true,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,trace:true,lab:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
+  accountant: {today:true,week:true,'new-order':false,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,trace:true,lab:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
 };
 const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',lab:'Lab — Carthage',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
 
@@ -636,9 +637,6 @@ async function loadDB(){
     if(DB.emailjs.publicKey){ emailjs.init({publicKey:DB.emailjs.publicKey}); }
   } catch(e){ console.error('Firestore load error:',e); throw e; }
 }
-
-// ── SAVE APP CONFIG ──
-function saveConfig(){ fdb.collection('appConfig').doc('main').set({adminPw:DB.adminPw,staffPw:DB.staffPw,accountantPw:DB.accountantPw},{merge:true}); }
 
 
 
@@ -1489,6 +1487,23 @@ const SESSION_TIMEOUT=2*60*60*1000; // 2 hours inactivity
 document.getElementById('pw').addEventListener('keydown',e=>{ if(e.key==='Enter') login() });
 document.getElementById('fl-sn').addEventListener('change',function(){ document.getElementById('fl-sf').style.display=this.checked?'block':'none' });
 
+// ── CLIENT PASSWORD HASHING (PBKDF2-SHA256, client-side) ──
+// App-wide salt: NOT a secret. Its job is to defeat precomputed rainbow tables,
+// which a unique-per-app salt does even though it lives in public source.
+const PW_SALT = 'tm-hq-2026-9f3a7c11e8b240d6';
+async function derivePwHash(pw){
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name:'PBKDF2', salt: enc.encode(PW_SALT), iterations: 100000, hash:'SHA-256' }, key, 256);
+  return Array.from(new Uint8Array(bits)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+// Build the stored password fields for a NEW/updated password (empty pw => no password / temp-code flow).
+async function pwFields(pw){
+  if(!pw) return { pwHash: null, pw: firebase.firestore.FieldValue.delete() };
+  return { pwHash: await derivePwHash(pw), pw: firebase.firestore.FieldValue.delete() };
+}
+
 function gTab(name, btn){
   document.querySelectorAll('.gpane').forEach(p=>p.classList.remove('a'));
   const pane=document.getElementById('gp-'+name); if(pane) pane.classList.add('a');
@@ -1505,6 +1520,9 @@ async function login(){
     try{
       const cred=await auth.signInWithEmailAndPassword(email,pw);
       const uid=cred.user.uid;
+      // Load data now that we're authenticated (security lockdown — no pre-login reads).
+      await loadDB();
+      await autoGenerateStandingOrders();
       const userDoc=DB.users.find(u=>u.uid===uid);
       if(userDoc&&userDoc.active!==false){
         const _isNewDev=!isDeviceTrusted(uid);
@@ -1527,24 +1545,24 @@ async function login(){
     }
   }
 
-  // ── LEGACY PASSWORD LOGIN (no email) ──
-  if(pw===DB.adminPw){ S={role:'admin',clientId:null,uid:null,email:null,name:'Admin',permissions:DEFAULT_PERMS.admin,newDevice:false}; launch(); return }
-  if(pw===DB.staffPw){ S={role:'staff',clientId:null,uid:null,email:null,name:'Staff',permissions:DEFAULT_PERMS.staff,newDevice:false}; launch(); return }
-  if(pw===DB.accountantPw){ S={role:'accountant',clientId:null,uid:null,email:null,name:'Accountant',permissions:DEFAULT_PERMS.accountant,newDevice:false}; launch(); return }
-  const c=DB.clients.find(x=>x.pw===pw&&x.status==='approved');
+  // ── CLIENT LOGIN (hashed password; legacy plaintext accepted until migrated) ──
+  const cand=await derivePwHash(pw);
+  const c=DB.clients.find(x=>x.status==='approved' && (
+    (x.pwHash && x.pwHash===cand) || (!x.pwHash && x.pw && x.pw===pw)
+  ));
   if(c){ S={role:'client',clientId:c.id,uid:null,email:null,name:c.name,permissions:null,newDevice:false}; launch(); return }
   const fp=DB.clients.find(x=>x.firstLogin&&x.status==='approved'&&('tm-'+x.id)===pw.toLowerCase());
   if(fp){ S={role:'client_pending',clientId:fp.id,uid:null,email:null,name:fp.name,permissions:null,newDevice:false}; document.querySelectorAll('.gpane').forEach(p=>p.classList.remove('a')); document.getElementById('gp-first').classList.add('a'); return }
   showLoginErr('Incorrect credentials. Try again.');
 }
 
-function finFirstLogin(){
+async function finFirstLogin(){
   const p1=document.getElementById('fl-p1').value, p2=document.getElementById('fl-p2').value;
   const err=document.getElementById('fl-err');
   if(!p1||p1.length<6||p1!==p2){ err.style.display='block'; setTimeout(()=>err.style.display='none',3000); return }
   const c=DB.clients.find(x=>x.id===S.clientId);
-  if(c){ c.pw=p1; c.firstLogin=false; const en=document.getElementById('fl-en').checked, sn=document.getElementById('fl-sn').checked; c.notifPref=en&&sn?'both':en?'email':sn?'sms':'none'; c.notifEmail=document.getElementById('fl-ea').value.trim(); c.notifPhone=document.getElementById('fl-ph').value.trim();
-    FS.update('clients',S.clientId,{pw:c.pw,firstLogin:false,notifPref:c.notifPref,notifEmail:c.notifEmail,notifPhone:c.notifPhone}); }
+  if(c){ const pwH=await derivePwHash(p1); c.pwHash=pwH; delete c.pw; c.firstLogin=false; const en=document.getElementById('fl-en').checked, sn=document.getElementById('fl-sn').checked; c.notifPref=en&&sn?'both':en?'email':sn?'sms':'none'; c.notifEmail=document.getElementById('fl-ea').value.trim(); c.notifPhone=document.getElementById('fl-ph').value.trim();
+    FS.update('clients',S.clientId,{pwHash:pwH,pw:firebase.firestore.FieldValue.delete(),firstLogin:false,notifPref:c.notifPref,notifEmail:c.notifEmail,notifPhone:c.notifPhone}); }
   S.role='client'; launch()
 }
 
@@ -1565,23 +1583,25 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   const bar = document.getElementById('load-bar');
   const errEl = document.getElementById('load-err');
   bar.style.width='30%';
-  try {
-    await loadDB();
-    await autoGenerateStandingOrders();
-    bar.style.width='80%';
-  } catch(e){
-    console.error('Firestore load error:', e);
-    bar.style.width='100%';
-    bar.style.background='#c8a82a';
-    errEl.textContent='⚠ Database offline — ' + (e && e.message ? e.message : String(e));
-    errEl.style.display='block';
-    errEl.style.color='#c8a82a';
-  }
-  // Check for existing Firebase Auth session
+  // ── SECURITY LOCKDOWN ──
+  // Data is loaded ONLY after Firebase Auth confirms an authenticated user.
+  // Firestore rules require request.auth != null, so no data is readable pre-login.
   await new Promise(resolve=>{
     const unsub = auth.onAuthStateChanged(async (user)=>{
       unsub();
       if(user){
+        try {
+          await loadDB();
+          await autoGenerateStandingOrders();
+          bar.style.width='80%';
+        } catch(e){
+          console.error('Firestore load error:', e);
+          bar.style.width='100%';
+          bar.style.background='#c8a82a';
+          errEl.textContent='⚠ Database offline — ' + (e && e.message ? e.message : String(e));
+          errEl.style.display='block';
+          errEl.style.color='#c8a82a';
+        }
         const userDoc = DB.users.find(u=>u.uid===user.uid);
         if(userDoc && userDoc.active!==false){
           S={role:userDoc.role,clientId:null,uid:user.uid,email:user.email,
@@ -1604,6 +1624,9 @@ window.addEventListener('DOMContentLoaded', async ()=>{
           if(S.newDevice) setTimeout(()=>showNewDeviceBanner(user.uid),500);
           resolve();
           return;
+        } else {
+          // Authenticated but not a recognised staff account — sign out.
+          await auth.signOut();
         }
       }
       bar.style.width='100%';
@@ -1699,7 +1722,7 @@ function buildNav(){
 
   const GROUPS=[
     {label:'Daily',       ids:['today','week','new-order','email-parse']},
-    {label:'Operations',  ids:['harvest','fruiting','inventory','preservation']},
+    {label:'Operations',  ids:['harvest','fruiting','inventory','preservation','trace']},
     {label:'Production',  ids:['lab']},
     {label:'Business',    ids:['analytics','orders-all','reports','qb'], cls:'drw-acct'},
     {label:'System',      ids:['admin','security'], cls:'drw-sys'},
@@ -1736,7 +1759,7 @@ function sw(id){
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,inventory:rInventory,preservation:rPreservation,lab:rLab,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,inventory:rInventory,preservation:rPreservation,trace:rTrace,lab:rLab,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -2409,8 +2432,9 @@ function showFinalSlip(id){
           <div style="font-size:10px;letter-spacing:3px;color:#888;text-transform:uppercase;margin-top:2px;">Nashville, TN · Packing Slip</div>
         </div>
         <div style="text-align:right;">
-          <div style="font-family:monospace;font-size:11px;color:#888;">ORDER #${o.id}</div>
-          <div style="font-family:monospace;font-size:11px;color:#888;">${o.day}, Week of ${fDate(o.week)}</div>
+          ${o.orderRef?`<div style="font-family:monospace;font-size:14px;font-weight:700;color:#111;">PO / Ref: ${o.orderRef}</div>`:''}
+          <div style="font-family:monospace;font-size:10px;color:#aaa;">Order #${o.id}</div>
+          <div style="font-family:monospace;font-size:11px;color:#888;margin-top:2px;">${o.day}, Week of ${fDate(o.week)}</div>
           <div style="font-size:11px;color:#888;margin-top:4px;">Printed: ${new Date().toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric'})}</div>
         </div>
       </div>
@@ -2808,9 +2832,11 @@ function onLotInput(){
   const lot=document.getElementById('fr-lot')?.value||'';
   const info=detectLot(lot);
   const vendorEl=document.getElementById('fr-vendor');
+  const srcEl=document.getElementById('fr-source');
   const vEl=document.getElementById('fr-variety');
   const bwEl=document.getElementById('fr-bw');
-  if(vendorEl) vendorEl.textContent=info?info.vendor:'—';
+  if(vendorEl && info && info.vendor && info.vendor!=='Unknown') vendorEl.value=info.vendor;
+  if(srcEl && info && info.vendor!=='Unknown') srcEl.value = info.vendor==='In-house' ? 'internal' : 'supplier';
   if(info?.variety && vEl){ vEl.value=info.variety; onVarietyInput(); }
   if(info?.blockWeightLb && bwEl) bwEl.value=info.blockWeightLb;
   updateFruitingPreview();
@@ -2819,6 +2845,8 @@ function onLotInput(){
 function onVarietyInput(){
   updateFruitingPreview();
 }
+
+function onSourceChange(){ updateFruitingPreview(); }
 
 const LBSPERBLOCK = 1.5; // standard forecast: 1.5 lb per block
 
@@ -2899,11 +2927,15 @@ function rFruiting(el){
         <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:1px;">WS CODES AUTO-FILL · ALL DIGITS = IN-HOUSE</div>
       </div>
       <div class="fgl">
-        <label>Vendor / Source</label>
-        <div style="background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:9px 12px;font-size:13px;color:var(--text2);min-height:38px;display:flex;align-items:center;" id="fr-vendor">—</div>
+        <label>Source</label>
+        <select class="fs" id="fr-source" onchange="onSourceChange()">
+          <option value="supplier">External Supplier</option>
+          <option value="internal">Internal Production</option>
+        </select>
       </div>
     </div>
     <div class="fg2">
+      <div class="fgl"><label>Supplier / Production Company</label><input class="fi" id="fr-vendor" placeholder="Supplier or in-house production co." list="fr-vendorl"><datalist id="fr-vendorl"><option value="Wild Spore"><option value="In-house"></datalist></div>
       <div class="fgl"><label>Variety</label><select class="fs" id="fr-variety" onchange="onVarietyInput()"><option value="">Select variety…</option>${VARIETIES.map(v=>`<option value="${v}">${v}</option>`).join('')}</select></div>
       <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="1" id="fr-bc" placeholder="# of blocks" oninput="updateFruitingPreview()"></div>
       <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="fr-bw" placeholder="e.g. 5.5" oninput="updateFruitingPreview()"></div>
@@ -2976,7 +3008,7 @@ function rFruiting(el){
           <td class="mn">${fDate(f.date)}</td>
           <td>${f.containerID}</td>
           <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}</td>
-          <td style="font-size:11px;color:var(--text3);">${f.vendor}</td>
+          <td style="font-size:11px;color:var(--text3);">${(f.source||((f.vendor||'')==='In-house'?'internal':'supplier'))==='internal'?'<span style="font-family:\'Syne Mono\',monospace;font-size:8px;color:var(--fern);">[INT]</span> ':'<span style="font-family:\'Syne Mono\',monospace;font-size:8px;color:var(--blue);">[SUP]</span> '}${f.vendor}</td>
           <td style="font-weight:500;">${f.variety}</td>
           <td class="mn">${f.blockCount}</td>
           <td class="mn" style="color:var(--fern);">${((f.blockCount||0)*LBSPERBLOCK).toFixed(1)} lb</td>
@@ -3000,8 +3032,10 @@ async function subFruiting(){
   if(!variety){ alert('Variety is required.'); return }
   if(blockCount<1){ alert('Block count must be at least 1.'); return }
   if(!blockWeightLb){ alert('Block weight (lb) is required.'); return }
+  const source=document.getElementById('fr-source')?.value||'supplier';
   const info=detectLot(lotNumber);
-  const fData={date,containerID,lotNumber,vendor:info?.vendor||'Unknown',variety,blockCount,blockWeightLb,notes:document.getElementById('fr-notes')?.value.trim()||'',status:'fruiting'};
+  const vendor=(document.getElementById('fr-vendor')?.value.trim())||info?.vendor||(source==='internal'?'In-house':'Unknown');
+  const fData={date,containerID,lotNumber,source,vendor,variety,blockCount,blockWeightLb,notes:document.getElementById('fr-notes')?.value.trim()||'',status:'fruiting'};
   const fId=await FS.add('fruitings',fData);
   DB.fruitings.push({id:fId,...fData});
   toast('fr-t'); clrFruiting(); renderC();
@@ -3011,7 +3045,8 @@ function clrFruiting(){
   ['fr-lot','fr-cid','fr-bc','fr-bw','fr-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
   const vEl=document.getElementById('fr-variety'); if(vEl) vEl.value='';
   const dtEl=document.getElementById('fr-dt'); if(dtEl) dtEl.value=tday();
-  const vnd=document.getElementById('fr-vendor'); if(vnd) vnd.textContent='—';
+  const vnd=document.getElementById('fr-vendor'); if(vnd) vnd.value='';
+  const src=document.getElementById('fr-source'); if(src) src.value='supplier';
   const prev=document.getElementById('fr-preview'); if(prev) prev.style.display='none';
 }
 
@@ -5517,6 +5552,175 @@ function rQB(el){
   `;
 }
 
+// ── TRACEABILITY (Organic audit: block → chamber → harvest → order → customer) ──
+let _traceQ = '';
+let _traceDate = '';
+
+function runTrace(){
+  _traceQ = (document.getElementById('tr-q')?.value||'').trim();
+  _traceDate = document.getElementById('tr-date')?.value||'';
+  rTrace(document.getElementById('main-views'));
+}
+function clearTrace(){ _traceQ=''; _traceDate=''; rTrace(document.getElementById('main-views')); }
+function _traceOnHand(h){ return Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); }
+
+function _traceData(q, date){
+  const eq=(a)=> (a||'').toString().trim().toLowerCase() === q.toLowerCase();
+  const harvests = DB.harvests.filter(h=> eq(h.lotNumber) && (!date || h.date===date));
+  const fruitByNum = DB.fruitings.filter(f=> eq(f.lotNumber) && (!date || f.date===date));
+  const containers = new Set([
+    ...harvests.map(h=>h.container).filter(Boolean),
+    ...fruitByNum.map(f=>f.containerID).filter(Boolean)
+  ]);
+  const fruitByContainer = DB.fruitings.filter(f=> containers.has(f.containerID) && !fruitByNum.includes(f));
+  const lotSet = new Set(harvests.map(h=>(h.lotNumber||'').toLowerCase()));
+  lotSet.add(q.toLowerCase());
+  const orders = DB.orders.filter(o=> (o.usedLots||[]).some(l=>lotSet.has((l||'').toString().toLowerCase())) );
+  const preservation = (DB.preservationBatches||[]).filter(b=> (b.sources||[]).some(s=>lotSet.has((s.lotNumber||'').toLowerCase())) );
+  return {harvests, fruitByNum, fruitByContainer, containers:[...containers], orders, preservation};
+}
+
+function _traceCSV(rows){
+  const csv=rows.map(r=>r.map(c=>{ const s=String(c==null?'':c); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; }).join(',')).join('\r\n');
+  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='tm-trace-'+(_traceQ||'all')+'-'+tday()+'.csv'; a.click();
+}
+function dlTraceCSV(){
+  const d=_traceData(_traceQ,_traceDate);
+  const rows=[['Stage','Date','Lot / Block #','Variety','Chamber / Container','Vendor','Detail','Customer','PO / Ref','Invoice #','Weight / Amount','Status']];
+  d.fruitByNum.concat(d.fruitByContainer).forEach(f=>{
+    const linked = d.fruitByNum.includes(f)?'block #':'chamber';
+    const src = f.source || ((f.vendor||'')==='In-house'?'internal':'supplier');
+    const srcLabel = (src==='internal'?'Internal: ':'Supplier: ')+(f.vendor||'');
+    rows.push(['Received Block',f.date||'',f.lotNumber||'',f.variety||'',f.containerID||'',srcLabel,`${f.blockCount||0} blocks (linked by ${linked})`,'','','',(f.blockWeightLb?f.blockWeightLb+' lb':''),f.status||'']);
+  });
+  d.harvests.forEach(h=>{
+    rows.push(['Harvest Lot',h.date||'',h.lotNumber||'',h.variety||'',h.container||'','',`grade ${h.grade||'—'}`,'','','',`${(h.weight||0).toFixed(1)} lb (on hand ${_traceOnHand(h).toFixed(1)})`,'']);
+  });
+  d.preservation.forEach(b=>{
+    const src=(b.sources||[]).map(s=>`${s.lotNumber}:${s.weightIn}lb`).join('; ');
+    rows.push(['Preservation',b.date||'',src,[...new Set((b.sources||[]).map(s=>s.variety))].join('; '),b.facility||'',b.method||'',b.batchNumber||'','','',(b.totalWeightIn?b.totalWeightIn+' lb in':''),b.status||'']);
+  });
+  d.orders.forEach(o=>{
+    rows.push(['Order / Customer',o.week?fDate(o.week):'',(o.usedLots||[]).join('; '),'','','',`${o.day||''} delivery`,o.client||'',o.orderRef||'',o.qbInvoiceNum||'',`$${eRev(o).toFixed(2)}`,o.status||'']);
+  });
+  _traceCSV(rows);
+}
+
+function rTrace(el){
+  const q=_traceQ, date=_traceDate;
+  const thL='text-align:left;padding:7px 10px;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap;';
+  const td='padding:7px 10px;font-size:12px;border-bottom:1px solid var(--border);vertical-align:top;';
+  const mn="font-family:'Syne Mono',monospace;";
+
+  let results='';
+  if(q){
+    const d=_traceData(q,date);
+    const blocks=d.fruitByNum.concat(d.fruitByContainer);
+    const nothing = !blocks.length && !d.harvests.length && !d.orders.length && !d.preservation.length;
+
+    if(nothing){
+      results=`<div class="card" style="padding:24px;text-align:center;color:var(--text3);">No records found for lot / block <strong style="color:var(--text2);${mn}">${q}</strong>${date?` on ${fDate(date)}`:''}. Check the number, or clear the date filter.</div>`;
+    } else {
+      // Summary
+      const sumChips=`<div class="stats" style="margin-bottom:24px;">
+        <div class="sc g"><div class="sc-l">Received Blocks</div><div class="sc-v">${blocks.length}</div><div class="sc-n">fruiting block records</div></div>
+        <div class="sc"><div class="sc-l">Chambers</div><div class="sc-v">${d.containers.length}</div><div class="sc-n">${d.containers.join(', ')||'—'}</div></div>
+        <div class="sc"><div class="sc-l">Harvest Lots</div><div class="sc-v">${d.harvests.length}</div><div class="sc-n">graded & weighed</div></div>
+        <div class="sc m"><div class="sc-l">Customers / Orders</div><div class="sc-v">${d.orders.length}</div><div class="sc-n">end recipients</div></div>
+      </div>`;
+
+      // 1. Received blocks
+      const blockRows = blocks.length? blocks.map(f=>{
+        const linked = d.fruitByNum.includes(f)?'':`<span style="${mn}font-size:8px;color:var(--amber);"> · via chamber</span>`;
+        const src = f.source || ((f.vendor||'')==='In-house'?'internal':'supplier');
+        const srcBadge = src==='internal'?'<span class="bdg bc" style="font-size:8px;">INTERNAL</span>':'<span class="bdg bp" style="font-size:8px;">SUPPLIER</span>';
+        return `<tr>
+          <td style="${td}${mn}">${f.date?fDate(f.date):'—'}</td>
+          <td style="${td}${mn}font-weight:700;color:var(--gold);">${f.lotNumber||'—'}${linked}</td>
+          <td style="${td}">${f.variety||'—'}</td>
+          <td style="${td}${mn}">${f.containerID||'—'}</td>
+          <td style="${td}">${srcBadge} ${f.vendor||'—'}</td>
+          <td style="${td}${mn}">${f.blockCount||0}${f.blockWeightLb?` · ${f.blockWeightLb} lb`:''}</td>
+          <td style="${td}">${f.status||'—'}</td>
+        </tr>`;
+      }).join('') : `<tr><td colspan="7" style="${td}color:var(--text3);">No matching received blocks.</td></tr>`;
+      const blockSection=`<div class="sh" style="margin:18px 0 10px;"><span>① Received Fruiting Blocks</span></div>
+        <div class="tw" style="margin-bottom:8px;"><table style="width:100%;border-collapse:collapse;">
+          <thead><tr><th style="${thL}">Received</th><th style="${thL}">Block / Lot #</th><th style="${thL}">Variety</th><th style="${thL}">Chamber</th><th style="${thL}">Source</th><th style="${thL}">Blocks</th><th style="${thL}">Status</th></tr></thead>
+          <tbody>${blockRows}</tbody></table></div>`;
+
+      // 2. Harvest lots
+      const harvRows = d.harvests.length? d.harvests.map(h=>`<tr>
+          <td style="${td}${mn}">${h.date?fDate(h.date):'—'}</td>
+          <td style="${td}${mn}font-weight:700;color:var(--gold);">${h.lotNumber||'—'}</td>
+          <td style="${td}">${h.variety||'—'}</td>
+          <td style="${td}${mn}">${h.container||'—'}</td>
+          <td style="${td}"><span class="bdg ${h.grade==='A'?'bc':h.grade==='B'?'bad':'bp'}">${h.grade||'—'}</span></td>
+          <td style="${td}${mn}">${(h.weight||0).toFixed(1)} lb</td>
+          <td style="${td}${mn}">${_traceOnHand(h).toFixed(1)} lb</td>
+        </tr>`).join('') : `<tr><td colspan="7" style="${td}color:var(--text3);">No matching harvest lots.</td></tr>`;
+      const harvSection=`<div class="sh" style="margin:18px 0 10px;"><span>② Harvest Lots</span></div>
+        <div class="tw" style="margin-bottom:8px;"><table style="width:100%;border-collapse:collapse;">
+          <thead><tr><th style="${thL}">Harvested</th><th style="${thL}">Lot #</th><th style="${thL}">Variety</th><th style="${thL}">Chamber</th><th style="${thL}">Grade</th><th style="${thL}">Harvested</th><th style="${thL}">On Hand</th></tr></thead>
+          <tbody>${harvRows}</tbody></table></div>`;
+
+      // 3. Preservation (optional)
+      let presSection='';
+      if(d.preservation.length){
+        const presRows=d.preservation.map(b=>{
+          const src=(b.sources||[]).map(s=>`${s.lotNumber} (${s.weightIn}lb)`).join(', ');
+          return `<tr>
+            <td style="${td}${mn}">${b.date?fDate(b.date):'—'}</td>
+            <td style="${td}${mn}font-weight:700;">${b.batchNumber||'—'}</td>
+            <td style="${td}">${b.method||'—'}</td>
+            <td style="${td}${mn}">${src}</td>
+            <td style="${td}${mn}">${(b.totalWeightIn||0).toFixed(1)} lb in${b.weightOut?` · ${b.weightOut.toFixed(1)} out`:''}</td>
+            <td style="${td}">${b.status||'—'}</td>
+          </tr>`;
+        }).join('');
+        presSection=`<div class="sh" style="margin:18px 0 10px;"><span>③ Preservation Batches</span></div>
+          <div class="tw" style="margin-bottom:8px;"><table style="width:100%;border-collapse:collapse;">
+            <thead><tr><th style="${thL}">Date</th><th style="${thL}">Batch #</th><th style="${thL}">Method</th><th style="${thL}">From Lot(s)</th><th style="${thL}">Weight</th><th style="${thL}">Status</th></tr></thead>
+            <tbody>${presRows}</tbody></table></div>`;
+      }
+
+      // 4. Orders / customers
+      const ordRows = d.orders.length? d.orders.map(o=>`<tr>
+          <td style="${td}font-weight:600;">${o.client||'—'}</td>
+          <td style="${td}${mn}color:var(--blue);font-weight:700;">${o.orderRef||'—'}</td>
+          <td style="${td}${mn}">${o.qbInvoiceNum||'—'}</td>
+          <td style="${td}${mn}">${o.week?fDate(o.week):'—'} · ${o.day||''}</td>
+          <td style="${td}">${o.status||'—'}</td>
+          <td style="${td}${mn}color:var(--moss);">$${eRev(o).toFixed(2)}</td>
+        </tr>`).join('') : `<tr><td colspan="6" style="${td}color:var(--text3);">No orders have used these lots yet.</td></tr>`;
+      const ordSection=`<div class="sh" style="margin:18px 0 10px;"><span>④ Orders &amp; End Customers</span></div>
+        <div class="tw" style="margin-bottom:8px;"><table style="width:100%;border-collapse:collapse;">
+          <thead><tr><th style="${thL}">Customer</th><th style="${thL}">PO / Ref</th><th style="${thL}">Invoice #</th><th style="${thL}">Delivery</th><th style="${thL}">Status</th><th style="${thL}">Revenue</th></tr></thead>
+          <tbody>${ordRows}</tbody></table></div>`;
+
+      results = sumChips + blockSection + harvSection + presSection + ordSection +
+        `<div style="margin-top:18px;"><button class="btn b-m" onclick="dlTraceCSV()">⬇ Export trace (CSV)</button></div>`;
+    }
+  } else {
+    results=`<div class="card" style="padding:24px;color:var(--text3);font-size:13px;line-height:1.7;">
+      Enter a <strong style="color:var(--text2);">lot or block number</strong> to trace the full chain — from the received fruiting block and chamber, through the harvest lot, to the orders and end customers it shipped to. Add a date to narrow results if a number was reused across seasons.</div>`;
+  }
+
+  el.innerHTML=`
+    <div class="ph"><div class="ph-t">🔍 Traceability</div><div class="ph-s">Organic audit · block → chamber → harvest → order → customer</div></div>
+    <div class="card" style="padding:16px;margin-bottom:22px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+      <div class="fgl" style="flex:1;min-width:200px;"><label>Lot / Block Number</label><input class="fi" id="tr-q" value="${q.replace(/"/g,'&quot;')}" placeholder="e.g. block or harvest lot #" autofocus></div>
+      <div class="fgl" style="min-width:160px;"><label>Date <span style="color:var(--text3);font-size:9px;">(optional)</span></label><input class="fi" type="date" id="tr-date" value="${date}"></div>
+      <button class="btn b-m b-lg" onclick="runTrace()">Trace →</button>
+      ${q?`<button class="btn b-g" onclick="clearTrace()">Clear</button>`:''}
+    </div>
+    ${results}`;
+
+  const qi=document.getElementById('tr-q');
+  if(qi) qi.addEventListener('keydown',e=>{ if(e.key==='Enter') runTrace(); });
+}
+
 // ── LAB ──
 function nextLabBatchNum(){
   const yr = new Date().getFullYear();
@@ -6311,7 +6515,7 @@ function appSR(id){
 
 async function finSR(srId){
   const sr=DB.signupRequests.find(s=>s.id===srId); if(!sr) return;
-  const cData={name:sr.venue,type:document.getElementById('as-t').value,contact:sr.contact,email:sr.email,phone:sr.phone,day:document.getElementById('as-d').value,notes:document.getElementById('as-n').value.trim(),pw:null,notifPref:'email',notifEmail:sr.email,notifPhone:sr.phone,firstLogin:true,status:'approved',isWholesale:document.getElementById('as-t').value==='Wholesale'};
+  const cData={name:sr.venue,type:document.getElementById('as-t').value,contact:sr.contact,email:sr.email,phone:sr.phone,day:document.getElementById('as-d').value,notes:document.getElementById('as-n').value.trim(),pwHash:null,notifPref:'email',notifEmail:sr.email,notifPhone:sr.phone,firstLogin:true,status:'approved',isWholesale:document.getElementById('as-t').value==='Wholesale'};
   const cid = await FS.add('clients', cData);
   cData.id = cid;
   DB.clients.push(cData);
@@ -6375,7 +6579,7 @@ async function saveNewClient(){
       acctPhone:document.getElementById('ac-aph').value.trim(),
       day:document.getElementById('ac-d').value,
       notes:document.getElementById('ac-notes').value.trim(),
-      pw:pw||null,
+      pwHash: pw ? await derivePwHash(pw) : null,
       notifPref:'email',
       notifEmail:document.getElementById('ac-e').value.trim(),
       notifPhone:document.getElementById('ac-ph').value.trim(),
@@ -6432,7 +6636,7 @@ function openEdit(cid){
   document.getElementById('edit-modal').classList.add('open')
 }
 
-function saveEdit(cid){
+async function saveEdit(cid){
   const c=DB.clients.find(x=>x.id===cid); if(!c) return;
   c.name=document.getElementById('ec-n').value.trim()||c.name;
   c.contact=document.getElementById('ec-c').value.trim();
@@ -6446,15 +6650,34 @@ function saveEdit(cid){
   c.notes=document.getElementById('ec-notes').value.trim();
   c.isWholesale=c.type==='Wholesale';
   const npw=document.getElementById('ec-pw').value.trim();
-  if(npw){ c.pw=npw; c.firstLogin=true }
+  let _npwH=null;
+  if(npw){ _npwH=await derivePwHash(npw); c.pwHash=_npwH; delete c.pw; c.firstLogin=true }
   const upd={name:c.name,contact:c.contact,type:c.type,day:c.day,email:c.email,phone:c.phone,acctContact:c.acctContact,acctEmail:c.acctEmail,acctPhone:c.acctPhone,notes:c.notes,isWholesale:c.isWholesale};
-  if(npw){ upd.pw=npw; upd.firstLogin=true }
+  if(npw){ upd.pwHash=_npwH; upd.pw=firebase.firestore.FieldValue.delete(); upd.firstLogin=true }
   FS.update('clients',cid,upd);
   toast('ec-t','✓ Client updated');
   setTimeout(()=>{ closeModal(); rAdmin(document.getElementById('main-views')) },1200)
 }
 
 function rmClient(id){ if(!confirm('Remove this client? Their order history remains.')) return; DB.clients=DB.clients.filter(c=>c.id!==id); FS.del('clients',id); rAdmin(document.getElementById('main-views')) }
+
+// One-time migration: convert any plaintext client passwords to PBKDF2 hashes.
+async function migrateClientPasswords(){
+  const targets=DB.clients.filter(c=>c.pw&&!c.pwHash);
+  if(!targets.length){ alert('All client passwords are already hashed. Nothing to migrate.'); return }
+  if(!confirm(`Migrate ${targets.length} client password(s) to secure hashes?\n\nThis removes the plaintext passwords from the database. Clients keep their existing passwords — nothing changes for them.`)) return;
+  let done=0, failed=0;
+  for(const c of targets){
+    try{
+      const pwH=await derivePwHash(c.pw);
+      await FS.update('clients',c.id,{pwHash:pwH,pw:firebase.firestore.FieldValue.delete()});
+      c.pwHash=pwH; delete c.pw; done++;
+    }catch(e){ console.error('Password migration failed for client',c.id,e); failed++; }
+  }
+  logAudit('pw_migration',`Hashed ${done} client password(s)${failed?`, ${failed} failed`:''}`);
+  alert(`✓ Migrated ${done} of ${targets.length} client password(s).${failed?`\n${failed} failed — see console.`:''}`);
+  rSecurity(document.getElementById('main-views'));
+}
 
 // ── STAFF USER MANAGEMENT ──
 function openAddUser(){
@@ -6689,7 +6912,7 @@ function rCSet(el){
     <div class="toast" id="cs-t">✓ Settings saved</div></div></div>`;
 }
 
-function saveCSet(){
+async function saveCSet(){
   const c=DB.clients.find(x=>x.id===S.clientId); if(!c) return;
   c.contact=document.getElementById('cs-cn').value.trim();
   c.notifEmail=document.getElementById('cs-em').value.trim();
@@ -6697,9 +6920,9 @@ function saveCSet(){
   const en=document.getElementById('cs-ne').checked, sn=document.getElementById('cs-ns').checked;
   c.notifPref=en&&sn?'both':en?'email':sn?'sms':'none';
   const p1=document.getElementById('cs-p1').value, p2=document.getElementById('cs-p2').value;
-  if(p1){ if(p1.length<6){ alert('Password must be at least 6 characters.'); return } if(p1!==p2){ alert("Passwords don't match."); return } c.pw=p1 }
   const upd={contact:c.contact,notifEmail:c.notifEmail,notifPhone:c.notifPhone,notifPref:c.notifPref};
-  if(p1&&p1.length>=6&&p1===p2) upd.pw=p1;
+  if(p1){ if(p1.length<6){ alert('Password must be at least 6 characters.'); return } if(p1!==p2){ alert("Passwords don't match."); return }
+    const pwH=await derivePwHash(p1); c.pwHash=pwH; delete c.pw; upd.pwHash=pwH; upd.pw=firebase.firestore.FieldValue.delete(); }
   FS.update('clients',S.clientId,upd);
   toast('cs-t','✓ Settings saved')
 }
@@ -6758,6 +6981,7 @@ function rSecurity(el){
   const recentLogins=logs.filter(l=>l.timestamp>=last7days.toISOString());
   const uniqueIPs=new Set(recentLogins.map(l=>l.ip)).size;
   const failedCount=0; // We only log successful logins currently
+  const plaintextCount=DB.clients.filter(c=>c.pw&&!c.pwHash).length;
 
   const logRows=recentLogs.length===0
     ?'<tr><td colspan="6" class="empty">No login history yet</td></tr>'
@@ -6849,6 +7073,16 @@ function rSecurity(el){
       <div class="sc"><div class="sc-l">Logins (7 days)</div><div class="sc-v">${recentLogins.length}</div><div class="sc-n">successful sign-ins</div></div>
       <div class="sc"><div class="sc-l">Unique IPs (7 days)</div><div class="sc-v">${uniqueIPs}</div><div class="sc-n">distinct locations</div></div>
       <div class="sc m"><div class="sc-l">Activity Events</div><div class="sc-v">${auditEntries.length}</div><div class="sc-n">${sessions.length} sessions logged</div></div>
+    </div>
+
+    <div class="sh" style="margin-bottom:16px;"><span>Password Security</span></div>
+    <div class="card" style="margin-bottom:28px;padding:16px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div style="font-size:13px;color:var(--text2);line-height:1.6;">
+        ${plaintextCount>0
+          ? `<strong style="color:var(--rust);">${plaintextCount} client password${plaintextCount===1?'':'s'}</strong> still stored as plain text. Click migrate to replace ${plaintextCount===1?'it':'them'} with secure hashes — clients keep the same passwords.`
+          : `<span style="color:#3a6030;">✓ All client passwords are stored as secure hashes.</span> Admin/staff sign in via Firebase Auth (no shared passwords in the app).`}
+      </div>
+      ${plaintextCount>0?`<button class="btn b-m" onclick="migrateClientPasswords()">Migrate ${plaintextCount} →</button>`:''}
     </div>
 
     <div class="sh" style="margin-bottom:16px;">
@@ -7019,10 +7253,10 @@ function rReports(el){
 
   // Orders CSV — catalog-driven columns (one column per product code)
   window.dlOrdersCSV=function(){
-    const header=['ID','Client','Type','Week','Day','Status', ...ALL_PRODS.map(p=>p.code+' ('+p.name+')'), 'Est Revenue','Notes','Packed At','Invoiced At'];
+    const header=['ID','Order Ref / PO','Client','Type','Week','Day','Status', ...ALL_PRODS.map(p=>p.code+' ('+p.name+')'), 'Est Revenue','Notes','Packed At','Invoiced At'];
     const rows=[header];
     [...DB.orders].sort((a,b)=>(b.week||'').localeCompare(a.week||'')).forEach(o=>{
-      const row=[o.id,o.client,o.custom?(o.customType||'Custom'):'Standard',o.week,o.day,o.status, ...ALL_PRODS.map(p=>o[p.dataKey]||0), eRev(o).toFixed(2),o.notes||'',o.packedAt||'',o.invoicedAt||''];
+      const row=[o.id,o.orderRef||'',o.client,o.custom?(o.customType||'Custom'):'Standard',o.week,o.day,o.status, ...ALL_PRODS.map(p=>o[p.dataKey]||0), eRev(o).toFixed(2),o.notes||'',o.packedAt||'',o.invoicedAt||''];
       rows.push(row);
     });
     dlCSV('tm-orders-'+tday()+'.csv',rows);
@@ -7101,6 +7335,33 @@ function rReports(el){
     dlCSV('tm-weekly-revenue-'+tday()+'.csv',rows);
   };
 
+  // Accounting export — one row per line item, carries PO/Order Ref. For manual
+  // entry into Wave or any generic invoicing system. Billable orders only.
+  window.dlAccountingCSV=function(){
+    const header=['Date','Customer','PO / Order Ref','Invoice No','Item','Description','Qty','Unit Price','Amount','Order Total','Status'];
+    const rows=[header];
+    [...DB.orders]
+      .filter(o=>o.status==='packed'||o.status==='invoiced')
+      .sort((a,b)=>(b.week||'').localeCompare(a.week||'')||(a.client||'').localeCompare(b.client||''))
+      .forEach(o=>{
+        const date=o.week?fDate(o.week):'';
+        const ref=o.orderRef||'';
+        const inv=o.qbInvoiceNum||'';
+        const total=eRev(o).toFixed(2);
+        const items=buildOrderLineItems(o);
+        if(!items.length){
+          rows.push([date,o.client,ref,inv,'','',0,'0.00','0.00',total,o.status]);
+          return;
+        }
+        items.forEach((li,i)=>{
+          rows.push([date,o.client,ref,inv,li.name,li.desc||li.name,li.qty,
+            (li.price||0).toFixed(2),(li.amount||0).toFixed(2),
+            i===0?total:'',o.status]);
+        });
+      });
+    dlCSV('tm-accounting-'+tday()+'.csv',rows);
+  };
+
   const wkTableRows=wkRows.length===0
     ?'<tr><td colspan="4" class="empty">No invoiced or packed orders yet</td></tr>'
     :wkRows.map(w=>`<tr>
@@ -7157,6 +7418,11 @@ function rReports(el){
 
     <div class="sh" style="margin-top:28px;"><span>CSV Exports</span></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:32px;">
+      <button style="${btnStyle}" onclick="dlAccountingCSV()">
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:#7a3a9a;text-transform:uppercase;">Accounting · PO + Items</div>
+        <div style="font-size:13px;font-weight:600;color:var(--black);">Download ↓</div>
+        <div style="font-size:11px;color:var(--text3);">Line items w/ PO · packed + invoiced</div>
+      </button>
       <button style="${btnStyle}" onclick="dlRevenueCSV()">
         <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--moss);text-transform:uppercase;">Weekly Revenue</div>
         <div style="font-size:13px;font-weight:600;color:var(--black);">Download ↓</div>
