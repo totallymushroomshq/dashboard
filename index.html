@@ -633,6 +633,17 @@ async function loadDB(){
       const conDoc=await fdb.collection('appConfig').doc('containers').get();
       if(conDoc.exists){ DB.containerOverrides=conDoc.data()||{}; }
     }catch(e){ console.warn('Container overrides not found — using defaults'); }
+    // Load custom varieties (added on the fly) from appConfig and merge into VARIETIES
+    try{
+      const vDoc=await fdb.collection('appConfig').doc('varieties').get();
+      if(vDoc.exists){
+        customVarieties = (vDoc.data().custom||[]).filter(Boolean);
+        customVarieties.forEach(n=>{
+          if(!VARIETIES.some(v=>v.toLowerCase()===n.toLowerCase())) VARIETIES.push(n);
+          if(!VARIETY_TURNAROUND[n]) VARIETY_TURNAROUND[n]={min:7,max:14,yieldPct:0.18};
+        });
+      }
+    }catch(e){ console.warn('Custom varieties not found — using built-in list'); }
     // Init EmailJS if configured
     if(DB.emailjs.publicKey){ emailjs.init({publicKey:DB.emailjs.publicKey}); }
   } catch(e){ console.error('Firestore load error:',e); throw e; }
@@ -807,9 +818,9 @@ const PACK_LB       = 0.25; // lbs per retail pack
 // ── PRODUCT CATALOG ── source of truth for codes, names, prices.
 // Each product: code (wholesale SKU), name, desc, priceLb, unitLb, dataKey (field on order/sample), varieties (harvest variety match list).
 const PRODUCTS = [
-  {code:'MO8',  name:'Mixed Oyster Box', desc:'Mix of all our farm oyster mushrooms (Blue, White, Italian, Black Pearl, ToT)', priceLb:8.00,  unitLb:3, dataKey:'oyster',     varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Cumberland Oyster','Black Pearl']},
+  {code:'MO8',  name:'Mixed Oyster Box', desc:'Mix of all our farm oyster mushrooms (Blue, White, Italian, Black Pearl, ToT)', priceLb:8.00,  unitLb:3, dataKey:'oyster',     varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl']},
   {code:'CB09', name:'Shiitake',         desc:'Chonk Shiitake — dense meaty, exceptional texture and shelf life',             priceLb:10.00, unitLb:3, dataKey:'shiitake',   varieties:['Shiitake']},
-  {code:'CM5',  name:"Chef's Mix",       desc:"Culinary mix of all available — NO Lion's Mane, NO King Trumpet",              priceLb:9.00,  unitLb:3, dataKey:'chefs',      varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Cumberland Oyster','Black Pearl','Chestnut','Shiitake','Lynx Paw','Coral Tooth']},
+  {code:'CM5',  name:"Chef's Mix",       desc:"Culinary mix of all available — NO Lion's Mane, NO King Trumpet",              priceLb:9.00,  unitLb:3, dataKey:'chefs',      varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl','Chestnut','Shiitake','Lynx Paw','Coral Tooth']},
   {code:'CB07', name:'Black Pearl',      desc:'Black Pearl mushroom',                                                          priceLb:8.50,  unitLb:3, dataKey:'blackPearl', varieties:['Black Pearl']},
   {code:'CB08', name:"Lion's Mane",      desc:"Lion's Mane mushroom",                                                          priceLb:8.00,  unitLb:3, dataKey:'lions',      varieties:["Lion's Mane"]},
   {code:'CH01', name:'Chestnut #1',      desc:'TOP GRADE intact veil — youngest harvest',                                      priceLb:10.00, unitLb:3, dataKey:'chestnut1',  varieties:['Chestnut']},
@@ -818,7 +829,7 @@ const PRODUCTS = [
 ];
 const RETAIL_PACKS = [
   {code:'LRP', name:"Lion's Mane ¼lb Pack", desc:"Lion's Mane retail pack", priceLb:8.00, unitLb:0.25, dataKey:'lionsPack', varieties:["Lion's Mane"]},
-  {code:'CRP', name:"Chef's Mix ¼lb Pack",  desc:"Chef's Mix retail pack",  priceLb:9.00, unitLb:0.25, dataKey:'chefsPack', varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Cumberland Oyster','Black Pearl','Chestnut','Shiitake','Lynx Paw','Coral Tooth']},
+  {code:'CRP', name:"Chef's Mix ¼lb Pack",  desc:"Chef's Mix retail pack",  priceLb:9.00, unitLb:0.25, dataKey:'chefsPack', varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl','Chestnut','Shiitake','Lynx Paw','Coral Tooth']},
 ];
 const ALL_PRODS = [...PRODUCTS, ...RETAIL_PACKS];
 
@@ -2804,7 +2815,48 @@ function doParse(){
 function importP(){ if(!pBuf) return; sw('new-order'); setTimeout(()=>{ const p=pBuf; const sv=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||'' }; sv('no-c',p.client); sv('no-d',p.day); sv('no-oyster',p.oyster||0); sv('no-chefs',p.chefs||0); sv('no-lions',p.lions||0); sv('no-chestnut1',p.chestnut1||0); sv('no-n',p.notes) },150) }
 
 // ── HARVEST ──
-const VARIETIES = ['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Cumberland Oyster','Black Pearl','Chestnut','Shiitake',"Lion's Mane",'Gold Enoki','White Enoki','Lynx Paw','Coral Tooth'];
+// Built-in varieties. Custom ones added on the fly are merged in from appConfig/varieties at load.
+const BASE_VARIETIES = ['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl','Chestnut','Shiitake',"Lion's Mane",'Gold Enoki','White Enoki','Lynx Paw','Coral Tooth'];
+let VARIETIES = [...BASE_VARIETIES];
+let customVarieties = [];
+// Standard variety <option> list, including the "add new" row used by the logging dropdowns.
+function varietyOptHTML(selected){
+  return ['<option value="">Select variety…</option>']
+    .concat(VARIETIES.map(v=>`<option ${selected===v?'selected':''} value="${v}">${v}</option>`))
+    .concat(['<option value="__add__">➕ Add new variety…</option>']).join('');
+}
+// Add a new variety on the fly and persist it so it populates in future sessions.
+async function addVariety(name){
+  name=(name||'').trim(); if(!name) return;
+  if(VARIETIES.some(v=>v.toLowerCase()===name.toLowerCase())) return;
+  VARIETIES.push(name);
+  if(!customVarieties.includes(name)) customVarieties.push(name);
+  if(!VARIETY_TURNAROUND[name]) VARIETY_TURNAROUND[name]={min:7,max:14,yieldPct:0.18};
+  try{ if(!DB._isDemoMode) await fdb.collection('appConfig').doc('varieties').set({custom:customVarieties}); }catch(e){ console.warn('Could not save variety:',e); }
+  try{ logAudit('other','Added variety: '+name); }catch(e){}
+}
+// Shared <select> change handler: when "add new" is picked, prompt, persist, and select the new value in place.
+async function ensureVarietyOption(sel){
+  if(!sel||sel.value!=='__add__') return false;
+  const name=(prompt('Name of the new variety to add:')||'').trim();
+  if(!name){ sel.value=''; return true; }
+  if(!VARIETIES.some(v=>v.toLowerCase()===name.toLowerCase())) await addVariety(name);
+  if(![...sel.options].some(o=>o.value===name)){
+    const addOpt=[...sel.options].find(o=>o.value==='__add__');
+    sel.add(new Option(name,name,true,true), addOpt||null);
+  }
+  sel.value=name;
+  return true;
+}
+async function onSimpleVarietyAdd(sel){ await ensureVarietyOption(sel); }
+async function onFrVariety(sel){ await ensureVarietyOption(sel); onVarietyInput(); }
+async function onPlVariety(sel,i){
+  if(sel.value!=='__add__') return;
+  const name=(prompt('Name of the new variety to add:')||'').trim();
+  if(!name){ sel.value=''; return; }
+  if(!VARIETIES.some(v=>v.toLowerCase()===name.toLowerCase())) await addVariety(name);
+  plVarieties=readPlVarieties(); plVarieties[i].variety=name; paintPlVarieties();
+}
 
 // ── FACILITY & CONTAINER DATA (from Katherine's sheet) ──
 // Update container facilities here when containers move — just change the facility value.
@@ -2944,6 +2996,8 @@ function rFruiting(el){
   const today=new Date(); today.setHours(0,0,0,0);
   const active=DB.fruitings.filter(f=>f.status==='fruiting');
   const done=DB.fruitings.filter(f=>f.status==='harvested');
+  // Spawn lot suggestions pulled from lab cooks (for the Fruiting spawn-lot field)
+  const spawnLots=[...new Set((DB.labBatches||[]).flatMap(b=>batchVarietyLines(b).map(v=>v.spawnLot)).filter(Boolean))].sort();
 
   // Enrich active blocks with forecast data
   const withForecast=active.map(f=>{
@@ -3007,7 +3061,8 @@ function rFruiting(el){
     </div>
     <div class="fg2">
       <div class="fgl"><label>Supplier / Production Company</label><input class="fi" id="fr-vendor" placeholder="Supplier or in-house production co." list="fr-vendorl"><datalist id="fr-vendorl"><option value="Wild Spore"><option value="In-house"></datalist></div>
-      <div class="fgl"><label>Variety</label><select class="fs" id="fr-variety" onchange="onVarietyInput()"><option value="">Select variety…</option>${VARIETIES.map(v=>`<option value="${v}">${v}</option>`).join('')}</select></div>
+      <div class="fgl"><label>Variety</label><select class="fs" id="fr-variety" onchange="onFrVariety(this)">${varietyOptHTML('')}</select></div>
+      <div class="fgl"><label>Spawn Lot # <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">OPTIONAL</span></label><input class="fi" id="fr-spawnlot" placeholder="ties block to a lab cook" list="fr-spawnlotl"><datalist id="fr-spawnlotl">${spawnLots.map(s=>`<option value="${s}">`).join('')}</datalist></div>
       <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="1" id="fr-bc" placeholder="# of blocks" oninput="updateFruitingPreview()"></div>
       <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="fr-bw" placeholder="e.g. 5.5" oninput="updateFruitingPreview()"></div>
       <div class="fgl">
@@ -3038,7 +3093,7 @@ function rFruiting(el){
             <td class="mn">${fDate(f.date)}</td>
             <td class="mn" style="font-weight:700;color:${sc};">${f.daysIn}d</td>
             <td>${f.containerID}</td>
-            <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}</td>
+            <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}${f.spawnLot?`<br><span style="font-size:9px;color:var(--text3);">spawn: ${f.spawnLot}</span>`:''}</td>
             <td style="font-size:11px;color:var(--text3);">${f.vendor}</td>
             <td style="font-weight:500;">${f.variety}</td>
             <td class="mn">${f.blockCount}</td>
@@ -3078,7 +3133,7 @@ function rFruiting(el){
         <tbody>${sByKey('fruit-done',[...done],{date:f=>f.date,containerID:f=>f.containerID,lotNumber:f=>f.lotNumber,vendor:f=>f.vendor||'',variety:f=>f.variety,blockCount:f=>f.blockCount||0,projLbs:f=>(f.blockCount||0)*LBSPERBLOCK,harvestedAt:f=>f.harvestedAt||''}).map(f=>`<tr>
           <td class="mn">${fDate(f.date)}</td>
           <td>${f.containerID}</td>
-          <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}</td>
+          <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}${f.spawnLot?`<br><span style="font-size:9px;color:var(--text3);">spawn: ${f.spawnLot}</span>`:''}</td>
           <td style="font-size:11px;color:var(--text3);">${(f.source||((f.vendor||'')==='In-house'?'internal':'supplier'))==='internal'?'<span style="font-family:\'Syne Mono\',monospace;font-size:8px;color:var(--fern);">[INT]</span> ':'<span style="font-family:\'Syne Mono\',monospace;font-size:8px;color:var(--blue);">[SUP]</span> '}${f.vendor}</td>
           <td style="font-weight:500;">${f.variety}</td>
           <td class="mn">${f.blockCount}</td>
@@ -3106,14 +3161,15 @@ async function subFruiting(){
   const source=document.getElementById('fr-source')?.value||'supplier';
   const info=detectLot(lotNumber);
   const vendor=(document.getElementById('fr-vendor')?.value.trim())||info?.vendor||(source==='internal'?'In-house':'Unknown');
-  const fData={date,containerID,lotNumber,source,vendor,variety,blockCount,blockWeightLb,notes:document.getElementById('fr-notes')?.value.trim()||'',status:'fruiting'};
+  const spawnLot=document.getElementById('fr-spawnlot')?.value.trim()||'';
+  const fData={date,containerID,lotNumber,source,vendor,variety,spawnLot,blockCount,blockWeightLb,notes:document.getElementById('fr-notes')?.value.trim()||'',status:'fruiting'};
   const fId=await FS.add('fruitings',fData);
   DB.fruitings.push({id:fId,...fData});
   toast('fr-t'); clrFruiting(); renderC();
 }
 
 function clrFruiting(){
-  ['fr-lot','fr-cid','fr-bc','fr-bw','fr-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
+  ['fr-lot','fr-cid','fr-bc','fr-bw','fr-notes','fr-spawnlot'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
   const vEl=document.getElementById('fr-variety'); if(vEl) vEl.value='';
   const dtEl=document.getElementById('fr-dt'); if(dtEl) dtEl.value=tday();
   const vnd=document.getElementById('fr-vendor'); if(vnd) vnd.value='';
@@ -3207,9 +3263,8 @@ function rHarvest(el){
     <div class="fg2">
       <div class="fgl"><label>Lot Number</label><input class="fi" id="hl-lot" placeholder="e.g. LOT-001"></div>
       <div class="fgl"><label>Variety</label>
-        <select class="fs" id="hl-v">
-          <option value="">Select variety...</option>
-          ${VARIETIES.map(v=>`<option value="${v}">${v}</option>`).join('')}
+        <select class="fs" id="hl-v" onchange="onSimpleVarietyAdd(this)">
+          ${varietyOptHTML('')}
         </select>
       </div>
       <div class="fgl"><label>Grade</label>
@@ -3499,7 +3554,7 @@ const VARIETY_TURNAROUND={
   'Snow Oyster':       {min:5, max:10,yieldPct:0.20},
   'Italian Oyster':    {min:5, max:10,yieldPct:0.20},
   'Gold Oyster':       {min:5, max:10,yieldPct:0.20},
-  'Cumberland Oyster': {min:5, max:10,yieldPct:0.20},
+  'Trail of Tears Oyster (ToT)': {min:5, max:10,yieldPct:0.20},
   'Black Pearl':       {min:5, max:10,yieldPct:0.18},
   'Chestnut':          {min:10,max:18,yieldPct:0.15},
   "Lion's Mane":       {min:14,max:20,yieldPct:0.18},
@@ -5452,24 +5507,29 @@ function dlBlockProductionCSV(fromDate, toDate){
   if(!batches.length){ alert('No production logs in this date range.'); return; }
 
   const headers = [
-    'Batch #','Production Date','Strain / Variety','Substrate Batch','Lot Code','Order / Run #','Substrate Supplier / Origin',
-    'Substrate Lbs','Buckets','Gallons Water','Add Water Start','Add Water End','Mix Time','Blocks Produced',
+    'Batch #','Production Date','Cook Lot','Lot (with suffix)','Strain / Variety','Substrate Batch','Order / Run #','Substrate Supplier / Origin',
+    'Substrate Lbs','Buckets','Gallons Water','Add Water Start','Add Water End','Mix Time','Blocks',
     'Sterilization Date','Autoclave Temp (F)','Cook Hours','Cook Start','Cook End',
     'Spawn Date','Spawn Source','Spawn Qty / Rate','Spawn Lot #',
-    'Rack Location','Expected Colonization (days)','Created By','Timestamp'
+    'Rack Location','Expected Colonization (days)','Variety Notes','Created By','Timestamp'
   ];
   const rows = [headers];
   batches.forEach(b=>{
-    rows.push([
-      b.batchNum||'', b.productionDate||b.date||'', b.strain||b.variety||'',
-      b.substrateBatch||'', b.lotCode||'', b.order||'', b.substrateOrigin||'',
-      b.substrateLbs||0, b.buckets||0, b.gallonsWater||0,
-      b.waterStartTime||'', b.waterEndTime||'', b.mixTime||'', b.blockCount||0,
-      b.sterilizationDate||'', b.autoclaveTemp||'', b.cookTimeHours||'',
-      b.cookTimeStart||'', b.cookTimeEnd||'',
-      b.spawnDate||'', b.spawnSource||'', b.spawnQuantity||'', b.spawnLot||'',
-      b.rackLocation||'', b.expectedColDays||'', b.createdBy||'', b.timestamp||''
-    ]);
+    // One row per variety line (legacy single-variety records normalize to one line)
+    batchVarietyLines(b).forEach((v,vi)=>{
+      const suffix = (v.suffix||'').trim();
+      const fullLot = b.lotCode ? `${b.lotCode}${suffix?' '+suffix:''}` : (v.lot||'');
+      rows.push([
+        b.batchNum||'', b.productionDate||b.date||'', b.lotCode||'', fullLot, v.variety||'',
+        b.substrateBatch||'', b.order||'', b.substrateOrigin||'',
+        b.substrateLbs||0, b.buckets||0, b.gallonsWater||0,
+        b.waterStartTime||'', b.waterEndTime||'', b.mixTime||'', v.blockCount||0,
+        b.sterilizationDate||'', b.autoclaveTemp||'', b.cookTimeHours||'',
+        b.cookTimeStart||'', b.cookTimeEnd||'',
+        v.spawnDate||'', v.spawnSource||'', v.spawnQuantity||'', v.spawnLot||'',
+        v.rack||'', v.colDays||'', v.notes||'', b.createdBy||'', b.timestamp||''
+      ]);
+    });
   });
   const csv = rows.map(r=>r.map(c=>{ const s=String(c==null?'':c); return s.includes(',')||s.includes('"')||s.includes('\n')?'"'+s.replace(/"/g,'""')+'"':s; }).join(',')).join('\r\n');
   const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
@@ -5823,6 +5883,94 @@ function rTrace(el){
 }
 
 // ── LAB ──
+// ── MULTI-VARIETY COOK: per-variety inoculation lines ──
+// A single cook (substrate mix + sterilization) is split into multiple varieties at
+// inoculation. Each variety gets a suffix (A/B/C…) appended to the cook lot number,
+// e.g. cook lot 10209 → "10209 A" (Black Pearl), "10209 B" (ToT Oyster).
+const SPAWN_SOURCES = ['Grain Spawn','Agar Culture','Liquid Culture (LC)','Grain Spawn Stretch','Sawdust Spawn','Other'];
+let plVarieties = [];
+function plSuffix(i){ return String.fromCharCode(65+i); } // 0→A, 1→B …
+function blankPlVar(){ return {suffix:'',variety:'',blockCount:'',spawnDate:'',spawnSource:'',spawnQuantity:'',spawnLot:'',rack:'',colDays:'',notes:''}; }
+function attrEsc(s){ return String(s==null?'':s).replace(/"/g,'&quot;'); }
+
+// Read the current per-variety DOM inputs back into the plVarieties array
+function readPlVarieties(){
+  return plVarieties.map((_,i)=>({
+    suffix        : document.getElementById('plv-suffix-'+i)?.value || '',
+    variety       : document.getElementById('plv-variety-'+i)?.value || '',
+    blockCount    : document.getElementById('plv-blocks-'+i)?.value || '',
+    spawnDate     : document.getElementById('plv-spawndate-'+i)?.value || '',
+    spawnSource   : document.getElementById('plv-spawnsource-'+i)?.value || '',
+    spawnQuantity : document.getElementById('plv-spawnqty-'+i)?.value || '',
+    spawnLot      : document.getElementById('plv-spawnlot-'+i)?.value || '',
+    rack          : document.getElementById('plv-rack-'+i)?.value || '',
+    colDays       : document.getElementById('plv-coldays-'+i)?.value || '',
+    notes         : document.getElementById('plv-notes-'+i)?.value || ''
+  }));
+}
+
+// Build the HTML for the per-variety cards
+function renderPlVarietiesHTML(){
+  const cookLot = document.getElementById('pl-lot')?.value.trim() || '';
+  return plVarieties.map((row,i)=>{
+    const suffix = (row.suffix||'').trim();
+    const lotPreview = cookLot ? `${cookLot}${suffix?' '+suffix:''}` : (suffix?`— ${suffix}`:'—');
+    const srcOpts = ['<option value="">Select spawn type…</option>']
+      .concat(SPAWN_SOURCES.map(s=>`<option ${row.spawnSource===s?'selected':''} value="${s}">${s}</option>`)).join('');
+    return `<div class="plv-card" style="border:1px solid var(--border);border-radius:6px;padding:14px 16px;margin-bottom:12px;background:var(--paper);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <span style="font-family:'Syne Mono',monospace;font-weight:700;font-size:13px;color:var(--fern);">LOT <span style="color:var(--gold);" id="plv-lotlabel-${i}">${lotPreview}</span></span>
+        ${plVarieties.length>1?`<button class="btn b-r b-sm" type="button" onclick="removePlVariety(${i})">✕ Remove</button>`:''}
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Lot Suffix</label><input class="fi" id="plv-suffix-${i}" value="${attrEsc(row.suffix)}" placeholder="e.g. A" oninput="updatePlLotLabel(${i})" style="max-width:120px;"></div>
+        <div class="fgl"><label>Variety / Strain</label><select class="fs" id="plv-variety-${i}" onchange="onPlVariety(this,${i})">${varietyOptHTML(row.variety)}</select></div>
+        <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="0" id="plv-blocks-${i}" value="${attrEsc(row.blockCount)}" placeholder="e.g. 24"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Spawn Date</label><input class="fi" type="date" id="plv-spawndate-${i}" value="${attrEsc(row.spawnDate)}"></div>
+        <div class="fgl"><label>Spawn Source</label><select class="fs" id="plv-spawnsource-${i}">${srcOpts}</select></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Spawn Quantity / Rate</label><input class="fi" id="plv-spawnqty-${i}" value="${attrEsc(row.spawnQuantity)}" placeholder="e.g. 10% by weight, 2 qt jars"></div>
+        <div class="fgl"><label>Spawn Lot #</label><input class="fi" id="plv-spawnlot-${i}" value="${attrEsc(row.spawnLot)}" placeholder="e.g. GS-2026-007"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Rack Location</label><input class="fi" id="plv-rack-${i}" value="${attrEsc(row.rack)}" placeholder="e.g. Rack A, Shelf 2 — Carthage Room 1"></div>
+        <div class="fgl"><label>Expected Colonization (days)</label><input class="fi" type="number" id="plv-coldays-${i}" value="${attrEsc(row.colDays)}" placeholder="e.g. 14"></div>
+      </div>
+      <div class="fgl"><label>Notes (this variety)</label><textarea class="fta" id="plv-notes-${i}" placeholder="Inoculant health, contamination checks, block appearance…">${row.notes||''}</textarea></div>
+    </div>`;
+  }).join('');
+}
+
+function paintPlVarieties(){
+  const c = document.getElementById('pl-varieties');
+  if(c) c.innerHTML = renderPlVarietiesHTML();
+}
+function addPlVariety(){ plVarieties = readPlVarieties(); plVarieties.push(blankPlVar()); paintPlVarieties(); }
+function removePlVariety(i){ plVarieties = readPlVarieties(); plVarieties.splice(i,1); if(!plVarieties.length) plVarieties.push(blankPlVar()); paintPlVarieties(); }
+// Update a single card's "LOT …" preview from the cook lot + that card's manual suffix
+function updatePlLotLabel(i){
+  const cookLot=document.getElementById('pl-lot')?.value.trim()||'';
+  const suffix=(document.getElementById('plv-suffix-'+i)?.value||'').trim();
+  const el=document.getElementById('plv-lotlabel-'+i);
+  if(el) el.textContent = cookLot ? `${cookLot}${suffix?' '+suffix:''}` : (suffix?`— ${suffix}`:'—');
+}
+// When the cook lot number changes, refresh every card's lot preview (no full repaint → keeps focus)
+function onPlCookLotInput(){ plVarieties.forEach((_,i)=>updatePlLotLabel(i)); }
+
+// Normalize a batch into a uniform list of variety lines (handles legacy single-variety records)
+function batchVarietyLines(b){
+  if(b.varieties && b.varieties.length) return b.varieties;
+  return [{
+    suffix:'', variety:b.strain||b.variety||'', blockCount:b.blockCount||'',
+    spawnDate:b.spawnDate||'', spawnSource:b.spawnSource||'', spawnQuantity:b.spawnQuantity||'',
+    spawnLot:b.spawnLot||'', rack:b.rackLocation||'', colDays:b.expectedColDays||'',
+    notes:[b.labNotes,b.roomNotes].filter(Boolean).join(' · ')
+  }];
+}
+
 function nextLabBatchNum(){
   const yr = new Date().getFullYear();
   const existing = DB.labBatches
@@ -5834,7 +5982,9 @@ function nextLabBatchNum(){
 
 function labStatusBadge(b){
   // Determine how far through the 4-stage workflow this batch is
-  if(b.rackLocation||b.spawnDate) return {label:'Inoculated',col:'var(--fern)'};
+  const lines = batchVarietyLines(b);
+  const inoculated = lines.some(v=>v.rack||v.spawnDate) || b.rackLocation || b.spawnDate;
+  if(inoculated) return {label:'Inoculated',col:'var(--fern)'};
   if(b.sterilizationDate) return {label:'Sterilized',col:'var(--sage)'};
   if(b.productionDate) return {label:'Mixed',col:'var(--amber)'};
   return {label:'Draft',col:'var(--text3)'};
@@ -5842,6 +5992,8 @@ function labStatusBadge(b){
 
 function rLab(el){
   const allBatches = [...DB.labBatches].sort((a,b)=>(b.productionDate||b.date||'').localeCompare(a.productionDate||a.date||''));
+  // Fresh per-variety form buffer each time the tab renders
+  plVarieties = [blankPlVar()];
 
   // Section divider style
   const secHead = (title) => `<div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:3px;font-weight:700;color:var(--text2);text-transform:uppercase;border-bottom:2px solid var(--border);padding-bottom:6px;margin:20px 0 14px;">— ${title} —</div>`;
@@ -5856,7 +6008,7 @@ function rLab(el){
     <div class="card">
       <div class="card-t" style="font-size:15px;letter-spacing:1px;">New Production Log</div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.6;">
-        One record per batch — fill in each section as you complete that stage.
+        One record per cook. Substrate &amp; sterilization are shared; add a variety line per strain — each gets a lot suffix (A/B/C…) off the cook lot number.
       </div>
 
       <!-- Header fields -->
@@ -5865,25 +6017,16 @@ function rLab(el){
         <div class="fgl"><label>Substrate Batch</label><input class="fi" id="pl-sbatch" placeholder="e.g. SB-2026-01"></div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Lot Code</label><input class="fi" id="pl-lot" placeholder="e.g. LOT-2026-001"></div>
-        <div class="fgl"><label>Order / Run #</label><input class="fi" id="pl-order" placeholder="e.g. 1 of 3"></div>
-      </div>
-      <div class="fg2">
-        <div class="fgl"><label>Substrate Supplier / Origin</label><input class="fi" id="pl-suborigin" placeholder="e.g. Nashville Straw Co., in-house sawdust mix"></div>
-      </div>
-      <div class="fg2">
-        <div class="fgl"><label>Substrate Supplier / Origin</label><input class="fi" id="pl-suborigin" placeholder="e.g. Nashville Straw Co., in-house sawdust mix"></div>
-      </div>
-      <div class="fg2">
-        <div class="fgl"><label>Strain / Variety</label>
-          <select class="fs" id="pl-strain">
-            <option value="">Select strain...</option>
-            ${VARIETIES.map(v=>`<option value="${v}">${v}</option>`).join('')}
-          </select>
+        <div class="fgl"><label>Cook Lot Number</label><input class="fi" id="pl-lot" placeholder="e.g. 10209" oninput="onPlCookLotInput()">
+          <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:1px;">SHARED BY THE COOK · EACH VARIETY GETS A SUFFIX</div>
         </div>
         <div class="fgl"><label>Batch # <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">AUTO</span></label>
           <input class="fi" id="pl-batchnum" value="${nextLabBatchNum()}" placeholder="LAB-2026-001">
         </div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Order / Run #</label><input class="fi" id="pl-order" placeholder="e.g. 1 of 3"></div>
+        <div class="fgl"><label>Substrate Supplier / Origin</label><input class="fi" id="pl-suborigin" placeholder="e.g. Nashville Straw Co., in-house sawdust mix"></div>
       </div>
 
       ${secHead('Production')}
@@ -5893,7 +6036,6 @@ function rLab(el){
       </div>
       <div class="fg2">
         <div class="fgl"><label>Gallons of Water</label><input class="fi" type="number" step="0.1" id="pl-gallons" placeholder="e.g. 25"></div>
-        <div class="fgl"><label>Number of Blocks Produced</label><input class="fi" type="number" id="pl-blockcnt" placeholder="e.g. 40"></div>
       </div>
       <div class="fg2">
         <div class="fgl"><label>Add Water START Time</label><input class="fi" type="time" id="pl-wstart"></div>
@@ -5920,39 +6062,12 @@ function rLab(el){
         <textarea class="fta" id="pl-sternotes" placeholder="Pressure reached, any anomalies, cool-down observations..."></textarea>
       </div>
 
-      ${secHead('Laboratory')}
-      <div class="fg2">
-        <div class="fgl"><label>Spawn Date</label><input class="fi" type="date" id="pl-spawndate"></div>
-        <div class="fgl"><label>Spawn Source</label>
-          <select class="fs" id="pl-spawntype">
-            <option value="">Select spawn type...</option>
-            <option value="Grain Spawn">Grain Spawn</option>
-            <option value="Agar Culture">Agar Culture</option>
-            <option value="Liquid Culture (LC)">Liquid Culture (LC)</option>
-            <option value="Grain Stretch">Grain Spawn Stretch</option>
-            <option value="Sawdust Spawn">Sawdust Spawn</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
+      ${secHead('Varieties / Inoculation')}
+      <div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.6;">
+        Add a line for each variety in this cook. The lot suffix (A, B, C…) is assigned automatically in order.
       </div>
-      <div class="fg2">
-        <div class="fgl"><label>Spawn Quantity / Rate</label><input class="fi" id="pl-spawnqty" placeholder="e.g. 10% by weight, 2 qt jars"></div>
-        <div class="fgl"><label>Spawn Lot #</label><input class="fi" id="pl-spawnlot" placeholder="e.g. supplier lot, culture ref"></div>
-      </div>
-      <div class="fgl">
-        <label>Laboratory Notes</label>
-        <textarea class="fta" id="pl-labnotes" placeholder="Block appearance after cooling, contamination checks, inoculant health..."></textarea>
-      </div>
-
-      ${secHead('Inoculation Room')}
-      <div class="fg2">
-        <div class="fgl"><label>Rack Location</label><input class="fi" id="pl-rack" placeholder="e.g. Rack A, Shelf 2 — Carthage Inc. Room 1"></div>
-        <div class="fgl"><label>Expected Colonization (days)</label><input class="fi" type="number" id="pl-coldays" placeholder="e.g. 14"></div>
-      </div>
-      <div class="fgl">
-        <label>Inoculation Room Notes</label>
-        <textarea class="fta" id="pl-roomnotes" placeholder="Environmental conditions, any visible growth, transfer notes..."></textarea>
-      </div>
+      <div id="pl-varieties">${renderPlVarietiesHTML()}</div>
+      <button class="btn b-g" type="button" onclick="addPlVariety()" style="margin-bottom:6px;">+ Add Variety</button>
 
       <div class="form-acts">
         <button class="btn b-m b-lg" onclick="logProductionBatch()">Save Production Log</button>
@@ -5969,12 +6084,18 @@ function rLab(el){
       ? '<div class="empty" style="padding:24px;">No production logs yet.</div>'
       : allBatches.map(b=>{
           const st = labStatusBadge(b);
+          const vlines = batchVarietyLines(b);
+          const totalBlocks = vlines.reduce((s,v)=>s+(parseInt(v.blockCount)||0),0) || b.blockCount || 0;
+          const varSummary = vlines.map(v=>v.variety).filter(Boolean).join(' · ') || '—';
+          const cookLot = b.lotCode || '';
           return `<details style="border:1px solid var(--border);border-radius:6px;margin-bottom:8px;background:white;overflow:hidden;">
-            <summary style="padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;list-style:none;user-select:none;">
+            <summary style="padding:12px 16px;cursor:pointer;display:flex;align-items:center;gap:12px;list-style:none;user-select:none;flex-wrap:wrap;">
               <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--fern);font-size:12px;">${b.batchNum||b.id}</span>
-              <span style="font-weight:600;font-size:13px;">${b.strain||b.variety||'—'}</span>
+              ${cookLot?`<span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);font-size:12px;">LOT ${cookLot}</span>`:''}
+              <span style="font-weight:600;font-size:13px;">${varSummary}</span>
+              ${vlines.length>1?`<span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--gold);background:rgba(196,168,130,.12);border-radius:3px;padding:2px 6px;">${vlines.length} VARIETIES</span>`:''}
               <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${fDate(b.productionDate||b.date)}</span>
-              ${b.blockCount?`<span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text2);">${b.blockCount} blocks</span>`:''}
+              ${totalBlocks?`<span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text2);">${totalBlocks} blocks</span>`:''}
               <span style="margin-left:auto;font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;color:${st.col};background:${st.col}22;border:1px solid ${st.col}44;border-radius:3px;padding:2px 8px;">${st.label}</span>
             </summary>
             <div style="padding:0 16px 16px;border-top:1px solid var(--border);margin-top:0;">
@@ -5982,15 +6103,14 @@ function rLab(el){
                 <div style="flex:1;">
                   <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin-bottom:8px;">PRODUCTION</div>
                   ${b.substrateOrigin?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Substrate Source: </span>${b.substrateOrigin}</div>`:''}
-                  ${b.substrateOrigin?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Substrate Source: </span>${b.substrateOrigin}</div>`:''}
                   ${b.substrateBatch?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Substrate Batch: </span>${b.substrateBatch}</div>`:''}
-                  ${b.lotCode?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Lot Code: </span>${b.lotCode}</div>`:''}
+                  ${cookLot?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Cook Lot: </span>${cookLot}</div>`:''}
                   ${b.order?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Order: </span>${b.order}</div>`:''}
                   ${b.substrateLbs?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Substrate: </span>${b.substrateLbs} lbs${b.buckets?' / '+b.buckets+' buckets':''}</div>`:''}
                   ${b.gallonsWater?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Water: </span>${b.gallonsWater} gal</div>`:''}
                   ${b.waterStartTime?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Water: </span>${b.waterStartTime} → ${b.waterEndTime||'?'}</div>`:''}
                   ${b.mixTime?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Mix Time: </span>${b.mixTime}</div>`:''}
-                  ${b.blockCount?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Blocks Produced: </span><strong>${b.blockCount}</strong></div>`:''}
+                  ${totalBlocks?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Total Blocks: </span><strong>${totalBlocks}</strong></div>`:''}
                   ${b.prodNotes?`<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic;">${b.prodNotes}</div>`:''}
                 </div>
                 <div style="flex:1;">
@@ -6001,16 +6121,19 @@ function rLab(el){
                   ${b.cookTimeStart?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Cook: </span>${b.cookTimeStart} → ${b.cookTimeEnd||'?'}</div>`:''}
                   ${b.sterNotes?`<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic;">${b.sterNotes}</div>`:''}
                 </div>
-                <div style="flex:1;">
-                  <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin-bottom:8px;">LABORATORY / INOCULATION</div>
-                  ${b.spawnDate?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Spawn Date: </span>${fDate(b.spawnDate)}</div>`:'<div style="font-size:11px;color:var(--text3);font-style:italic;">Not yet logged</div>'}
-                  ${b.spawnSource?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Spawn Source: </span>${b.spawnSource}</div>`:''}
-                  ${b.spawnQuantity?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Qty / Rate: </span>${b.spawnQuantity}</div>`:''}
-                  ${b.spawnLot?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Spawn Lot: </span>${b.spawnLot}</div>`:''}
-                  ${b.rackLocation?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Rack: </span>${b.rackLocation}</div>`:''}
-                  ${b.expectedColDays?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Expected colonization: </span>${b.expectedColDays} days</div>`:''}
-                  ${b.labNotes?`<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic;">${b.labNotes}</div>`:''}
-                  ${b.roomNotes?`<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic;">${b.roomNotes}</div>`:''}
+                <div style="flex:1.4;">
+                  <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin-bottom:8px;">VARIETIES / INOCULATION</div>
+                  ${vlines.map((v,vi)=>{
+                    const suffix = (v.suffix||'').trim();
+                    const fullLot = cookLot ? `${cookLot}${suffix?' '+suffix:''}` : (v.lot || (suffix?`${b.batchNum||''} ${suffix}`:(b.batchNum||'—')));
+                    return `<div style="border-left:2px solid var(--gold);padding:2px 0 6px 10px;margin-bottom:8px;">
+                      <div style="font-size:12px;margin-bottom:3px;"><span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);">${fullLot}</span> · <strong>${v.variety||'—'}</strong>${v.blockCount?` · ${v.blockCount} blocks`:''}</div>
+                      ${v.spawnDate?`<div style="font-size:11px;color:var(--text2);">Spawn: ${fDate(v.spawnDate)}${v.spawnSource?' · '+v.spawnSource:''}</div>`:''}
+                      ${v.spawnLot?`<div style="font-size:11px;color:var(--text2);">Spawn Lot: <span style="font-family:'Syne Mono',monospace;font-weight:700;">${v.spawnLot}</span>${v.spawnQuantity?' · '+v.spawnQuantity:''}</div>`:(v.spawnQuantity?`<div style="font-size:11px;color:var(--text2);">${v.spawnQuantity}</div>`:'')}
+                      ${v.rack?`<div style="font-size:11px;color:var(--text2);">Rack: ${v.rack}${v.colDays?' · ~'+v.colDays+'d colonize':''}</div>`:(v.colDays?`<div style="font-size:11px;color:var(--text2);">~${v.colDays}d colonize</div>`:'')}
+                      ${v.notes?`<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:2px;">${v.notes}</div>`:''}
+                    </div>`;
+                  }).join('')}
                 </div>
               </div>
             </div>
@@ -6023,44 +6146,60 @@ function rLab(el){
 async function logProductionBatch(){
   const batchNum  = document.getElementById('pl-batchnum').value.trim();
   const productionDate = document.getElementById('pl-pdate').value;
-  const strain    = document.getElementById('pl-strain').value;
-  const blockCount= parseInt(document.getElementById('pl-blockcnt').value)||0;
-  if(!productionDate||!batchNum||!strain){ alert('Production date, batch # and strain are required.'); return; }
+  const lotCode   = document.getElementById('pl-lot').value.trim();
+  if(!productionDate||!batchNum){ alert('Production date and batch # are required.'); return; }
+
+  // Gather per-variety inoculation lines; keep only rows that name a variety.
+  const rawVars = readPlVarieties();
+  const varieties = rawVars
+    .filter(v=>v.variety)
+    .map((v)=>{
+      const suffix=(v.suffix||'').trim();
+      return {
+      suffix,
+      lot          : lotCode ? `${lotCode}${suffix?' '+suffix:''}` : '',
+      variety      : v.variety,
+      blockCount   : parseInt(v.blockCount)||0,
+      spawnDate    : v.spawnDate||'',
+      spawnSource  : v.spawnSource||'',
+      spawnQuantity: (v.spawnQuantity||'').trim(),
+      spawnLot     : (v.spawnLot||'').trim(),
+      rack         : (v.rack||'').trim(),
+      colDays      : parseInt(v.colDays)||0,
+      notes        : (v.notes||'').trim()
+      };
+    });
+  if(!varieties.length){ alert('Add at least one variety (with a strain selected).'); return; }
+
+  const totalBlocks = varieties.reduce((s,v)=>s+(v.blockCount||0),0);
 
   const data = {
     batchNum,
     productionDate,
     substrateBatch   : document.getElementById('pl-sbatch').value.trim(),
-    lotCode          : document.getElementById('pl-lot').value.trim(),
+    lotCode,
     order            : document.getElementById('pl-order').value.trim(),
     substrateOrigin  : document.getElementById('pl-suborigin')?.value.trim()||'',
-    strain,
-    // Production
+    // Per-variety inoculation lines (each gets a lot suffix off the cook lot)
+    varieties,
+    // strain kept as a readable summary for legacy displays / search
+    strain         : varieties.map(v=>v.variety).join(', '),
+    blockCount     : totalBlocks,
+    // Production (shared across the cook)
     substrateLbs   : parseFloat(document.getElementById('pl-sublbs').value)||0,
     buckets        : parseInt(document.getElementById('pl-buckets').value)||0,
     gallonsWater   : parseFloat(document.getElementById('pl-gallons').value)||0,
-    blockCount,
     waterStartTime : document.getElementById('pl-wstart').value,
     waterEndTime   : document.getElementById('pl-wend').value,
     mixTime        : document.getElementById('pl-mixtime').value,
     prodNotes      : document.getElementById('pl-prodnotes').value.trim(),
-    // Sterilization
+    // Sterilization (shared across the cook)
     sterilizationDate : document.getElementById('pl-sdate').value,
     autoclaveTemp  : parseInt(document.getElementById('pl-actemp').value)||0,
     cookTimeHours  : parseFloat(document.getElementById('pl-cooktime').value)||0,
     cookTimeStart  : document.getElementById('pl-cookstart').value,
     cookTimeEnd    : document.getElementById('pl-cookend').value,
     sterNotes      : document.getElementById('pl-sternotes').value.trim(),
-    // Laboratory
-    spawnDate      : document.getElementById('pl-spawndate').value,
-    spawnSource    : document.getElementById('pl-spawntype').value,
-    spawnQuantity  : document.getElementById('pl-spawnqty').value.trim(),
-    spawnLot       : document.getElementById('pl-spawnlot').value.trim(),
-    labNotes       : document.getElementById('pl-labnotes').value.trim(),
-    // Inoculation Room
-    rackLocation   : document.getElementById('pl-rack').value.trim(),
-    expectedColDays: parseInt(document.getElementById('pl-coldays').value)||0,
-    roomNotes      : document.getElementById('pl-roomnotes').value.trim(),
     // Meta
     createdBy: S.name||S.role,
     timestamp: new Date().toISOString()
@@ -6073,7 +6212,7 @@ async function logProductionBatch(){
     data.id='demo-lb-'+Date.now().toString(36);
   }
   DB.labBatches.push(data);
-  logAudit('lab_production_log',`${batchNum} — ${blockCount||0} blocks · ${strain}`);
+  logAudit('lab_production_log',`${batchNum} — ${totalBlocks} blocks · ${varieties.length} variety(ies): ${data.strain}`);
   toast('pl-t');
   setTimeout(()=>renderC(),900);
 }
@@ -6320,18 +6459,19 @@ function seedDemoData(){
   DB.labBatches=[
     {
       id:'demo-lb-1',batchNum:'LAB-2026-001',
-      productionDate:yd(14),substrateBatch:'SB-2026-01',lotCode:'TM-2026-003',
-      order:'1 of 2',strain:'Blue Oyster',
+      productionDate:yd(14),substrateBatch:'SB-2026-01',lotCode:'10209',
+      order:'1 of 2',
       substrateLbs:200,buckets:8,gallonsWater:26,blockCount:48,
       waterStartTime:'07:00',waterEndTime:'07:45',mixTime:'08:00',
-      prodNotes:'Good moisture, substrate packed tight. No clumping.',
+      prodNotes:'Good moisture, substrate packed tight. No clumping. Split across 2 varieties.',
       sterilizationDate:yd(14),autoclaveTemp:250,cookTimeHours:2.5,
       cookTimeStart:'09:00',cookTimeEnd:'11:30',
       sterNotes:'Pressure held steady. Blocks cooled overnight.',
-      spawnDate:yd(12),spawnSource:'Grain Spawn',spawnQuantity:'10% by weight — 20 lbs grain',
-      spawnLot:'GS-2026-007',labNotes:'All blocks inoculated under still air box. Clean workflow.',
-      rackLocation:'Rack A, Shelf 1-2 — Carthage Inc. Room 1',expectedColDays:16,
-      roomNotes:'Temp 72F, humidity 85%. First signs of mycelium at day 4.',
+      varieties:[
+        {suffix:'A',lot:'10209 A',variety:'Black Pearl',blockCount:24,spawnDate:yd(12),spawnSource:'Grain Spawn',spawnQuantity:'10% by weight — 10 lbs grain',spawnLot:'GS-2026-007',rack:'Rack A, Shelf 1 — Carthage Room 1',colDays:16,notes:'Inoculated under still air box. Clean workflow.'},
+        {suffix:'B',lot:'10209 B',variety:'Italian Oyster',blockCount:24,spawnDate:yd(12),spawnSource:'Grain Spawn',spawnQuantity:'10% by weight — 10 lbs grain',spawnLot:'GS-2026-008',rack:'Rack A, Shelf 2 — Carthage Room 1',colDays:16,notes:'Same cook, second variety. No contamination.'}
+      ],
+      strain:'Black Pearl, Italian Oyster',
       createdBy:'Allen M.',timestamp:iso(14)
     },
     {
