@@ -5510,7 +5510,7 @@ function dlBlockProductionCSV(fromDate, toDate){
     'Batch #','Production Date','Cook Lot','Lot (with suffix)','Strain / Variety','Substrate Batch','Order / Run #','Substrate Supplier / Origin',
     'Substrate Lbs','Buckets','Gallons Water','Add Water Start','Add Water End','Mix Time','Blocks',
     'Sterilization Date','Autoclave Temp (F)','Cook Hours','Cook Start','Cook End',
-    'Spawn Date','Spawn Source','Spawn Qty / Rate','Spawn Lot #',
+    'Spawn Date','Spawn Type','Spawn Supplier / Origin','Spawn Qty / Rate','Spawn Lot #',
     'Rack Location','Expected Colonization (days)','Variety Notes','Created By','Timestamp'
   ];
   const rows = [headers];
@@ -5526,7 +5526,7 @@ function dlBlockProductionCSV(fromDate, toDate){
         b.waterStartTime||'', b.waterEndTime||'', b.mixTime||'', v.blockCount||0,
         b.sterilizationDate||'', b.autoclaveTemp||'', b.cookTimeHours||'',
         b.cookTimeStart||'', b.cookTimeEnd||'',
-        v.spawnDate||'', v.spawnSource||'', v.spawnQuantity||'', v.spawnLot||'',
+        v.spawnDate||'', v.spawnSource||'', v.spawnSupplier||'', v.spawnQuantity||'', v.spawnLot||'',
         v.rack||'', v.colDays||'', v.notes||'', b.createdBy||'', b.timestamp||''
       ]);
     });
@@ -5890,7 +5890,7 @@ function rTrace(el){
 const SPAWN_SOURCES = ['Grain Spawn','Agar Culture','Liquid Culture (LC)','Grain Spawn Stretch','Sawdust Spawn','Other'];
 let plVarieties = [];
 function plSuffix(i){ return String.fromCharCode(65+i); } // 0→A, 1→B …
-function blankPlVar(){ return {suffix:'',variety:'',blockCount:'',spawnDate:'',spawnSource:'',spawnQuantity:'',spawnLot:'',rack:'',colDays:'',notes:''}; }
+function blankPlVar(){ return {suffix:'',variety:'',blockCount:'',spawnDate:'',spawnSource:'',spawnSupplier:'',spawnQuantity:'',spawnLot:'',rack:'',colDays:'',notes:''}; }
 function attrEsc(s){ return String(s==null?'':s).replace(/"/g,'&quot;'); }
 
 // Read the current per-variety DOM inputs back into the plVarieties array
@@ -5901,6 +5901,7 @@ function readPlVarieties(){
     blockCount    : document.getElementById('plv-blocks-'+i)?.value || '',
     spawnDate     : document.getElementById('plv-spawndate-'+i)?.value || '',
     spawnSource   : document.getElementById('plv-spawnsource-'+i)?.value || '',
+    spawnSupplier : document.getElementById('plv-spawnsupplier-'+i)?.value || '',
     spawnQuantity : document.getElementById('plv-spawnqty-'+i)?.value || '',
     spawnLot      : document.getElementById('plv-spawnlot-'+i)?.value || '',
     rack          : document.getElementById('plv-rack-'+i)?.value || '',
@@ -5929,11 +5930,14 @@ function renderPlVarietiesHTML(){
       </div>
       <div class="fg2">
         <div class="fgl"><label>Spawn Date</label><input class="fi" type="date" id="plv-spawndate-${i}" value="${attrEsc(row.spawnDate)}"></div>
-        <div class="fgl"><label>Spawn Source</label><select class="fs" id="plv-spawnsource-${i}">${srcOpts}</select></div>
+        <div class="fgl"><label>Spawn Type</label><select class="fs" id="plv-spawnsource-${i}">${srcOpts}</select></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Spawn Supplier / Origin</label><input class="fi" id="plv-spawnsupplier-${i}" value="${attrEsc(row.spawnSupplier)}" placeholder="e.g. North Spore, in-house culture" list="pl-supplier-list"></div>
+        <div class="fgl"><label>Spawn Lot #</label><input class="fi" id="plv-spawnlot-${i}" value="${attrEsc(row.spawnLot)}" placeholder="e.g. GS-2026-007"></div>
       </div>
       <div class="fg2">
         <div class="fgl"><label>Spawn Quantity / Rate</label><input class="fi" id="plv-spawnqty-${i}" value="${attrEsc(row.spawnQuantity)}" placeholder="e.g. 10% by weight, 2 qt jars"></div>
-        <div class="fgl"><label>Spawn Lot #</label><input class="fi" id="plv-spawnlot-${i}" value="${attrEsc(row.spawnLot)}" placeholder="e.g. GS-2026-007"></div>
       </div>
       <div class="fg2">
         <div class="fgl"><label>Rack Location</label><input class="fi" id="plv-rack-${i}" value="${attrEsc(row.rack)}" placeholder="e.g. Rack A, Shelf 2 — Carthage Room 1"></div>
@@ -5994,6 +5998,8 @@ function rLab(el){
   const allBatches = [...DB.labBatches].sort((a,b)=>(b.productionDate||b.date||'').localeCompare(a.productionDate||a.date||''));
   // Fresh per-variety form buffer each time the tab renders
   plVarieties = [blankPlVar()];
+  // Spawn supplier suggestions pulled from previous cooks
+  const spawnSuppliers=[...new Set(DB.labBatches.flatMap(b=>batchVarietyLines(b).map(v=>v.spawnSupplier)).filter(Boolean))].sort();
 
   // Section divider style
   const secHead = (title) => `<div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:3px;font-weight:700;color:var(--text2);text-transform:uppercase;border-bottom:2px solid var(--border);padding-bottom:6px;margin:20px 0 14px;">— ${title} —</div>`;
@@ -6066,6 +6072,7 @@ function rLab(el){
       <div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.6;">
         Add a line for each variety in this cook. The lot suffix (A, B, C…) is assigned automatically in order.
       </div>
+      <datalist id="pl-supplier-list">${spawnSuppliers.map(s=>`<option value="${attrEsc(s)}">`).join('')}</datalist>
       <div id="pl-varieties">${renderPlVarietiesHTML()}</div>
       <button class="btn b-g" type="button" onclick="addPlVariety()" style="margin-bottom:6px;">+ Add Variety</button>
 
@@ -6128,7 +6135,8 @@ function rLab(el){
                     const fullLot = cookLot ? `${cookLot}${suffix?' '+suffix:''}` : (v.lot || (suffix?`${b.batchNum||''} ${suffix}`:(b.batchNum||'—')));
                     return `<div style="border-left:2px solid var(--gold);padding:2px 0 6px 10px;margin-bottom:8px;">
                       <div style="font-size:12px;margin-bottom:3px;"><span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);">${fullLot}</span> · <strong>${v.variety||'—'}</strong>${v.blockCount?` · ${v.blockCount} blocks`:''}</div>
-                      ${v.spawnDate?`<div style="font-size:11px;color:var(--text2);">Spawn: ${fDate(v.spawnDate)}${v.spawnSource?' · '+v.spawnSource:''}</div>`:''}
+                      ${v.spawnDate?`<div style="font-size:11px;color:var(--text2);">Spawn: ${fDate(v.spawnDate)}${v.spawnSource?' · '+v.spawnSource:''}</div>`:(v.spawnSource?`<div style="font-size:11px;color:var(--text2);">Spawn Type: ${v.spawnSource}</div>`:'')}
+                      ${v.spawnSupplier?`<div style="font-size:11px;color:var(--text2);">Supplier: ${v.spawnSupplier}</div>`:''}
                       ${v.spawnLot?`<div style="font-size:11px;color:var(--text2);">Spawn Lot: <span style="font-family:'Syne Mono',monospace;font-weight:700;">${v.spawnLot}</span>${v.spawnQuantity?' · '+v.spawnQuantity:''}</div>`:(v.spawnQuantity?`<div style="font-size:11px;color:var(--text2);">${v.spawnQuantity}</div>`:'')}
                       ${v.rack?`<div style="font-size:11px;color:var(--text2);">Rack: ${v.rack}${v.colDays?' · ~'+v.colDays+'d colonize':''}</div>`:(v.colDays?`<div style="font-size:11px;color:var(--text2);">~${v.colDays}d colonize</div>`:'')}
                       ${v.notes?`<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:2px;">${v.notes}</div>`:''}
@@ -6162,6 +6170,7 @@ async function logProductionBatch(){
       blockCount   : parseInt(v.blockCount)||0,
       spawnDate    : v.spawnDate||'',
       spawnSource  : v.spawnSource||'',
+      spawnSupplier: (v.spawnSupplier||'').trim(),
       spawnQuantity: (v.spawnQuantity||'').trim(),
       spawnLot     : (v.spawnLot||'').trim(),
       rack         : (v.rack||'').trim(),
@@ -6468,8 +6477,8 @@ function seedDemoData(){
       cookTimeStart:'09:00',cookTimeEnd:'11:30',
       sterNotes:'Pressure held steady. Blocks cooled overnight.',
       varieties:[
-        {suffix:'A',lot:'10209 A',variety:'Black Pearl',blockCount:24,spawnDate:yd(12),spawnSource:'Grain Spawn',spawnQuantity:'10% by weight — 10 lbs grain',spawnLot:'GS-2026-007',rack:'Rack A, Shelf 1 — Carthage Room 1',colDays:16,notes:'Inoculated under still air box. Clean workflow.'},
-        {suffix:'B',lot:'10209 B',variety:'Italian Oyster',blockCount:24,spawnDate:yd(12),spawnSource:'Grain Spawn',spawnQuantity:'10% by weight — 10 lbs grain',spawnLot:'GS-2026-008',rack:'Rack A, Shelf 2 — Carthage Room 1',colDays:16,notes:'Same cook, second variety. No contamination.'}
+        {suffix:'A',lot:'10209 A',variety:'Black Pearl',blockCount:24,spawnDate:yd(12),spawnSource:'Grain Spawn',spawnSupplier:'North Spore',spawnQuantity:'10% by weight — 10 lbs grain',spawnLot:'GS-2026-007',rack:'Rack A, Shelf 1 — Carthage Room 1',colDays:16,notes:'Inoculated under still air box. Clean workflow.'},
+        {suffix:'B',lot:'10209 B',variety:'Italian Oyster',blockCount:24,spawnDate:yd(12),spawnSource:'Grain Spawn',spawnSupplier:'In-house culture',spawnQuantity:'10% by weight — 10 lbs grain',spawnLot:'GS-2026-008',rack:'Rack A, Shelf 2 — Carthage Room 1',colDays:16,notes:'Same cook, second variety. No contamination.'}
       ],
       strain:'Black Pearl, Italian Oyster',
       createdBy:'Allen M.',timestamp:iso(14)
