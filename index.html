@@ -1777,6 +1777,7 @@ function buildNav(){
 }
 
 function sw(id){
+  if(id!=='lab') editingLabId=null; // leaving the Lab tab cancels any in-progress edit
   cv=id;
   closeDrawer();
   document.querySelectorAll('.drw-item').forEach(t=>t.classList.toggle('active',t.dataset.view===id));
@@ -5889,6 +5890,7 @@ function rTrace(el){
 // e.g. cook lot 10209 → "10209 A" (Black Pearl), "10209 B" (ToT Oyster).
 const SPAWN_SOURCES = ['Grain Spawn','Agar Culture','Liquid Culture (LC)','Grain Spawn Stretch','Sawdust Spawn','Other'];
 let plVarieties = [];
+let editingLabId = null;  // when set, the Production Log form is editing an existing record (admin only)
 function plSuffix(i){ return String.fromCharCode(65+i); } // 0→A, 1→B …
 function blankPlVar(){ return {suffix:'',variety:'',blockCount:'',spawnDate:'',spawnSource:'',spawnSupplier:'',spawnQuantity:'',spawnLot:'',rack:'',colDays:'',notes:''}; }
 function attrEsc(s){ return String(s==null?'':s).replace(/"/g,'&quot;'); }
@@ -5998,6 +6000,18 @@ function rLab(el){
   const allBatches = [...DB.labBatches].sort((a,b)=>(b.productionDate||b.date||'').localeCompare(a.productionDate||a.date||''));
   // Fresh per-variety form buffer each time the tab renders
   plVarieties = [blankPlVar()];
+  // Edit mode: load the record being edited into the form buffer (admin only)
+  const editBatch = editingLabId ? DB.labBatches.find(b=>b.id===editingLabId) : null;
+  if(!editBatch) editingLabId = null;
+  if(editBatch){
+    plVarieties = batchVarietyLines(editBatch).map(v=>({
+      suffix:v.suffix||'', variety:v.variety||'', blockCount:v.blockCount||'',
+      spawnDate:v.spawnDate||'', spawnSource:v.spawnSource||'', spawnSupplier:v.spawnSupplier||'',
+      spawnQuantity:v.spawnQuantity||'', spawnLot:v.spawnLot||'', rack:v.rack||'', colDays:v.colDays||'', notes:v.notes||''
+    }));
+    if(!plVarieties.length) plVarieties=[blankPlVar()];
+  }
+  const E = editBatch || {};
   // Spawn supplier suggestions pulled from previous cooks
   const spawnSuppliers=[...new Set(DB.labBatches.flatMap(b=>batchVarietyLines(b).map(v=>v.spawnSupplier)).filter(Boolean))].sort();
 
@@ -6011,61 +6025,61 @@ function rLab(el){
     </div>
 
     <!-- ══ PRODUCTION LOG FORM ══ -->
-    <div class="card">
-      <div class="card-t" style="font-size:15px;letter-spacing:1px;">New Production Log</div>
+    <div class="card"${editBatch?' style="border:2px solid var(--gold);"':''}>
+      <div class="card-t" style="font-size:15px;letter-spacing:1px;">${editBatch?`✎ Edit Production Log — ${attrEsc(editBatch.batchNum||editBatch.id)}`:'New Production Log'}</div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.6;">
-        One record per cook. Substrate &amp; sterilization are shared; add a variety line per strain — each gets a lot suffix (A/B/C…) off the cook lot number.
+        ${editBatch?'Editing an existing record. Changes are saved over the original and logged to the audit trail.':'One record per cook. Substrate &amp; sterilization are shared; add a variety line per strain — each gets a lot suffix off the cook lot number.'}
       </div>
 
       <!-- Header fields -->
       <div class="fg2" style="margin-top:14px;">
-        <div class="fgl"><label>Production Date</label><input class="fi" type="date" id="pl-pdate" value="${tday()}"></div>
-        <div class="fgl"><label>Substrate Batch</label><input class="fi" id="pl-sbatch" placeholder="e.g. SB-2026-01"></div>
+        <div class="fgl"><label>Production Date</label><input class="fi" type="date" id="pl-pdate" value="${editBatch?(E.productionDate||E.date||''):tday()}"></div>
+        <div class="fgl"><label>Substrate Batch</label><input class="fi" id="pl-sbatch" value="${attrEsc(E.substrateBatch||'')}" placeholder="e.g. SB-2026-01"></div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Cook Lot Number</label><input class="fi" id="pl-lot" placeholder="e.g. 10209" oninput="onPlCookLotInput()">
+        <div class="fgl"><label>Cook Lot Number</label><input class="fi" id="pl-lot" value="${attrEsc(E.lotCode||'')}" placeholder="e.g. 10209" oninput="onPlCookLotInput()">
           <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:1px;">SHARED BY THE COOK · EACH VARIETY GETS A SUFFIX</div>
         </div>
-        <div class="fgl"><label>Batch # <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">AUTO</span></label>
-          <input class="fi" id="pl-batchnum" value="${nextLabBatchNum()}" placeholder="LAB-2026-001">
+        <div class="fgl"><label>Batch # <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${editBatch?'':'AUTO'}</span></label>
+          <input class="fi" id="pl-batchnum" value="${editBatch?attrEsc(E.batchNum||''):nextLabBatchNum()}" placeholder="LAB-2026-001">
         </div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Order / Run #</label><input class="fi" id="pl-order" placeholder="e.g. 1 of 3"></div>
-        <div class="fgl"><label>Substrate Supplier / Origin</label><input class="fi" id="pl-suborigin" placeholder="e.g. Nashville Straw Co., in-house sawdust mix"></div>
+        <div class="fgl"><label>Order / Run #</label><input class="fi" id="pl-order" value="${attrEsc(E.order||'')}" placeholder="e.g. 1 of 3"></div>
+        <div class="fgl"><label>Substrate Supplier / Origin</label><input class="fi" id="pl-suborigin" value="${attrEsc(E.substrateOrigin||'')}" placeholder="e.g. Nashville Straw Co., in-house sawdust mix"></div>
       </div>
 
       ${secHead('Production')}
       <div class="fg2">
-        <div class="fgl"><label>Pounds of Substrate (lbs)</label><input class="fi" type="number" step="0.1" id="pl-sublbs" placeholder="e.g. 200"></div>
-        <div class="fgl"><label># of Buckets</label><input class="fi" type="number" id="pl-buckets" placeholder="e.g. 8"></div>
+        <div class="fgl"><label>Pounds of Substrate (lbs)</label><input class="fi" type="number" step="0.1" id="pl-sublbs" value="${E.substrateLbs||''}" placeholder="e.g. 200"></div>
+        <div class="fgl"><label># of Buckets</label><input class="fi" type="number" id="pl-buckets" value="${E.buckets||''}" placeholder="e.g. 8"></div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Gallons of Water</label><input class="fi" type="number" step="0.1" id="pl-gallons" placeholder="e.g. 25"></div>
+        <div class="fgl"><label>Gallons of Water</label><input class="fi" type="number" step="0.1" id="pl-gallons" value="${E.gallonsWater||''}" placeholder="e.g. 25"></div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Add Water START Time</label><input class="fi" type="time" id="pl-wstart"></div>
-        <div class="fgl"><label>Add Water END Time</label><input class="fi" type="time" id="pl-wend"></div>
-        <div class="fgl"><label>Mix Time</label><input class="fi" type="time" id="pl-mixtime" placeholder="HH:MM"></div>
+        <div class="fgl"><label>Add Water START Time</label><input class="fi" type="time" id="pl-wstart" value="${attrEsc(E.waterStartTime||'')}"></div>
+        <div class="fgl"><label>Add Water END Time</label><input class="fi" type="time" id="pl-wend" value="${attrEsc(E.waterEndTime||'')}"></div>
+        <div class="fgl"><label>Mix Time</label><input class="fi" type="time" id="pl-mixtime" value="${attrEsc(E.mixTime||'')}" placeholder="HH:MM"></div>
       </div>
       <div class="fgl">
         <label>Production Notes</label>
-        <textarea class="fta" id="pl-prodnotes" placeholder="Substrate moisture, texture, any issues during mixing or bagging..."></textarea>
+        <textarea class="fta" id="pl-prodnotes" placeholder="Substrate moisture, texture, any issues during mixing or bagging...">${E.prodNotes||''}</textarea>
       </div>
 
       ${secHead('Sterilization')}
       <div class="fg2">
-        <div class="fgl"><label>Sterilization Date</label><input class="fi" type="date" id="pl-sdate"></div>
-        <div class="fgl"><label>Autoclave Temperature (°F)</label><input class="fi" type="number" id="pl-actemp" placeholder="e.g. 250"></div>
+        <div class="fgl"><label>Sterilization Date</label><input class="fi" type="date" id="pl-sdate" value="${attrEsc(E.sterilizationDate||'')}"></div>
+        <div class="fgl"><label>Autoclave Temperature (°F)</label><input class="fi" type="number" id="pl-actemp" value="${E.autoclaveTemp||''}" placeholder="e.g. 250"></div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Cook Time (hours)</label><input class="fi" type="number" step="0.5" id="pl-cooktime" placeholder="e.g. 2.5"></div>
-        <div class="fgl"><label>Cook Time START</label><input class="fi" type="time" id="pl-cookstart"></div>
-        <div class="fgl"><label>Cook Time END</label><input class="fi" type="time" id="pl-cookend"></div>
+        <div class="fgl"><label>Cook Time (hours)</label><input class="fi" type="number" step="0.5" id="pl-cooktime" value="${E.cookTimeHours||''}" placeholder="e.g. 2.5"></div>
+        <div class="fgl"><label>Cook Time START</label><input class="fi" type="time" id="pl-cookstart" value="${attrEsc(E.cookTimeStart||'')}"></div>
+        <div class="fgl"><label>Cook Time END</label><input class="fi" type="time" id="pl-cookend" value="${attrEsc(E.cookTimeEnd||'')}"></div>
       </div>
       <div class="fgl">
         <label>Sterilization Notes</label>
-        <textarea class="fta" id="pl-sternotes" placeholder="Pressure reached, any anomalies, cool-down observations..."></textarea>
+        <textarea class="fta" id="pl-sternotes" placeholder="Pressure reached, any anomalies, cool-down observations...">${E.sterNotes||''}</textarea>
       </div>
 
       ${secHead('Varieties / Inoculation')}
@@ -6077,7 +6091,8 @@ function rLab(el){
       <button class="btn b-g" type="button" onclick="addPlVariety()" style="margin-bottom:6px;">+ Add Variety</button>
 
       <div class="form-acts">
-        <button class="btn b-m b-lg" onclick="logProductionBatch()">Save Production Log</button>
+        <button class="btn b-m b-lg" onclick="logProductionBatch()">${editBatch?'Update Production Log':'Save Production Log'}</button>
+        ${editBatch?'<button class="btn b-g b-lg" onclick="cancelLabEdit()">Cancel Edit</button>':''}
       </div>
       <div class="toast" id="pl-t">✓ Production log saved</div>
     </div>
@@ -6143,6 +6158,12 @@ function rLab(el){
                     </div>`;
                   }).join('')}
                 </div>
+              </div>
+              <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">
+                  ${b.lastEditedAt?`✎ Last edited by ${b.lastEditedBy||'—'} on ${fDate(b.lastEditedAt)}`:(b.createdBy?`Logged by ${b.createdBy}`:'')}
+                </div>
+                ${S.role==='admin'?`<button class="btn b-g b-sm" onclick="openEditLabBatch('${b.id}')">✎ Edit this log</button>`:''}
               </div>
             </div>
           </details>`;
@@ -6214,6 +6235,29 @@ async function logProductionBatch(){
     timestamp: new Date().toISOString()
   };
 
+  // ── EDIT MODE: update the existing record in place, preserving its origin meta ──
+  if(editingLabId){
+    if(S.role!=='admin'){ alert('Only admins can edit production logs.'); return; }
+    const idx = DB.labBatches.findIndex(b=>b.id===editingLabId);
+    const orig = idx>=0 ? DB.labBatches[idx] : null;
+    data.id = editingLabId;
+    // keep the original author/created timestamp; stamp who edited and when
+    data.createdBy = (orig && orig.createdBy) || data.createdBy;
+    data.timestamp = (orig && orig.timestamp) || data.timestamp;
+    if(orig && orig.date) data.date = orig.date; // preserve legacy date field if present
+    data.lastEditedBy = S.name||S.role;
+    data.lastEditedAt = new Date().toISOString();
+    try{
+      if(!DB._isDemoMode){ const {id, ...payload} = data; await FS.update('labBatches', editingLabId, payload); }
+    }catch(e){ console.error('lab edit save:',e); alert('Save failed: '+(e.message||e)); return; }
+    if(idx>=0) DB.labBatches[idx]=data; else DB.labBatches.push(data);
+    logAudit('lab_edited',`Edited lab log ${data.batchNum} (lot ${data.lotCode||'—'}) — ${totalBlocks} blocks · ${varieties.length} variety(ies): ${data.strain}`);
+    editingLabId = null;
+    toast('pl-t','✓ Production log updated');
+    setTimeout(()=>renderC(),900);
+    return;
+  }
+
   if(!DB._isDemoMode){
     const id = await FS.add('labBatches', data);
     data.id=id;
@@ -6224,6 +6268,18 @@ async function logProductionBatch(){
   logAudit('lab_production_log',`${batchNum} — ${totalBlocks} blocks · ${varieties.length} variety(ies): ${data.strain}`);
   toast('pl-t');
   setTimeout(()=>renderC(),900);
+}
+
+function openEditLabBatch(id){
+  if(S.role!=='admin'){ alert('Only admins can edit production logs.'); return; }
+  const b = DB.labBatches.find(x=>x.id===id); if(!b){ alert('Record not found.'); return; }
+  editingLabId = id;
+  renderC();
+  setTimeout(()=>{ document.getElementById('pl-pdate')?.scrollIntoView({behavior:'smooth',block:'center'}); }, 80);
+}
+function cancelLabEdit(){
+  editingLabId = null;
+  renderC();
 }
 
 // ── ADMIN ──
