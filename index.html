@@ -3237,6 +3237,17 @@ function onContainerSelect(code){
 function rHarvest(el){
   const s=sByKey('harvest',[...DB.harvests].sort((a,b)=>b.date.localeCompare(a.date)),{date:h=>h.date,container:h=>h.container,facility:h=>h.facility||'',lotNumber:h=>h.lotNumber||'',variety:h=>h.variety,grade:h=>h.grade||'',weight:h=>h.weight||0,usedWeight:h=>h.usedWeight||0});
   const activeContainers=getActiveContainers();
+  // Cook-lot options for pre-fruiting block loss (internal production from the Lab)
+  const cookLotOpts=(DB.labBatches||[]).flatMap(b=>batchVarietyLines(b).map(v=>{
+    const suffix=(v.suffix||'').trim();
+    const lot=b.lotCode?`${b.lotCode}${suffix?' '+suffix:''}`:(v.lot||b.batchNum||'');
+    return {labBatchId:b.id, lot, variety:v.variety||'', made:parseInt(v.blockCount)||0};
+  })).filter(o=>o.lot).sort((a,b)=>b.lot.localeCompare(a.lot));
+  // Supplier / production-company suggestions, pulled from fruiting records + prior disposals
+  const blockSuppliers=[...new Set([
+    ...(DB.fruitings||[]).map(f=>f.vendor),
+    ...(DB.blockDisposals||[]).map(d=>d.supplier)
+  ].filter(Boolean))].sort();
   el.innerHTML=`
     <div class="ph"><div class="ph-t">Harvest Log</div><div class="ph-s">Record each lot from the grow room</div></div>
     ${canEdit()?'<div class="card"><div class="card-t">Log a Harvest</div>':'<div style="display:none"><div>'}
@@ -3300,20 +3311,36 @@ function rHarvest(el){
     </table></div>
     ${buildContainerSessionPanel('Harvesting')}
 
-    <!-- ── SPENT BLOCK REMOVAL ── -->
+    <!-- ── SPOILED / SPENT BLOCK REMOVAL ── -->
     ${canEdit()?`
     <div class="sh" style="margin-top:28px;">
-      <span>Log Spent / Removed Blocks</span>
-      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">BLOCKS PULLED FROM CONTAINERS</span>
+      <span>Log Spoiled / Spent Blocks</span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">PRE-FRUITING SPOILAGE &amp; SPENT BLOCKS</span>
     </div>
     <div class="card">
       <div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.6;">
-        Record blocks removed from a container because they are spent, dead, or contaminated.
-        This keeps fruiting block counts accurate in analytics.
+        Record blocks tossed — either <strong>before fruiting</strong> (spoiled/contaminated on the rack, tied to its cook lot) or
+        <strong>after fruiting</strong> (spent once flushes are done). Keeps block counts and yield analytics accurate.
       </div>
+      <datalist id="sb-supplier-list">${blockSuppliers.map(s=>`<option value="${attrEsc(s)}">`).join('')}</datalist>
       <div class="fg2">
         <div class="fgl"><label>Date</label><input class="fi" type="date" id="sb-date" value="${tday()}"></div>
-        <div class="fgl"><label>Container</label>
+        <div class="fgl"><label>Stage</label>
+          <select class="fs" id="sb-stage" onchange="onSbStageChange()">
+            <option value="pre-fruiting">Pre-fruiting — spoiled before fruiting</option>
+            <option value="spent" selected>Spent — after fruiting / flushes done</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg2">
+        <div class="fgl" id="sb-lot-wrap" style="display:none;"><label>Cook Lot (internal production)</label>
+          <select class="fs" id="sb-lot" onchange="onSbLotChange()">
+            <option value="">Select cook lot…</option>
+            ${cookLotOpts.map(o=>`<option value="${attrEsc(o.lot)}" data-batchid="${attrEsc(o.labBatchId)}" data-variety="${attrEsc(o.variety)}" data-made="${o.made}">${attrEsc(o.lot)}${o.variety?' · '+attrEsc(o.variety):''}${o.made?' ('+o.made+' made)':''}</option>`).join('')}
+            <option value="__ext__">— External / no cook lot —</option>
+          </select>
+        </div>
+        <div class="fgl" id="sb-c-wrap"><label>Container</label>
           <select class="fs" id="sb-c">
             <option value="">Select container...</option>
             ${getActiveContainers().map(c=>`<option value="${c.code}">${c.code} · ${c.facility}</option>`).join('')}
@@ -3326,11 +3353,22 @@ function rHarvest(el){
         <div class="fgl"><label>Reason</label>
           <select class="fs" id="sb-reason">
             <option value="spent">Spent — all flushes complete</option>
-            <option value="dead">Dead — no more growth</option>
             <option value="contaminated">Contaminated — mold / bacteria</option>
+            <option value="spoiled">Spoiled — failed to colonize / soured</option>
+            <option value="failed-to-fruit">Failed to fruit — colonized but never pinned</option>
+            <option value="dead">Dead — no more growth</option>
             <option value="other">Other</option>
           </select>
         </div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Block Source</label>
+          <select class="fs" id="sb-source">
+            <option value="internal">Internal Production</option>
+            <option value="supplier">External Supplier</option>
+          </select>
+        </div>
+        <div class="fgl"><label>Supplier / Production Company</label><input class="fi" id="sb-supplier" placeholder="e.g. Wild Spore, In-house" list="sb-supplier-list"></div>
       </div>
       <div class="fgl" style="margin-top:4px;">
         <label>Notes</label>
@@ -3343,19 +3381,64 @@ function rHarvest(el){
     </div>`:''
     }
 
-    <!-- ── SPENT BLOCK HISTORY ── -->
+    <!-- ── BLOCK LOSS / WASTE SUMMARY ── -->
     ${(()=>{
-      const disp=sByKey('blk-disp',[...DB.blockDisposals].sort((a,b)=>b.date.localeCompare(a.date)),{date:d=>d.date,container:d=>d.container,blockCount:d=>d.blockCount||0,reason:d=>d.reason||'',loggedBy:d=>d.loggedBy||''});
+      const disps=DB.blockDisposals||[];
+      if(!disps.length && !(DB.labBatches||[]).length) return '';
+      const isPre=d=>(d.stage||'spent')==='pre-fruiting';
+      const totalMade=(DB.labBatches||[]).reduce((s,b)=>s+batchVarietyLines(b).reduce((t,v)=>t+(parseInt(v.blockCount)||0),0),0);
+      const preLost=disps.filter(isPre).reduce((s,d)=>s+(d.blockCount||0),0);
+      const spent=disps.filter(d=>!isPre(d)).reduce((s,d)=>s+(d.blockCount||0),0);
+      const preRate=totalMade?(preLost/totalMade*100):0;
+      // Breakdown by supplier / source
+      const bySup={};
+      disps.forEach(d=>{
+        const key=(d.supplier||'').trim()||(d.source==='internal'?'In-house':d.source==='supplier'?'External supplier':'Unspecified');
+        if(!bySup[key]) bySup[key]={pre:0,spent:0};
+        if(isPre(d)) bySup[key].pre+=(d.blockCount||0); else bySup[key].spent+=(d.blockCount||0);
+      });
+      const supRows=Object.entries(bySup).sort((a,b)=>(b[1].pre+b[1].spent)-(a[1].pre+a[1].spent));
+      const tile=(lbl,val,col,sub)=>`<div style="flex:1;min-width:120px;background:white;border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;">
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1.5px;color:var(--text3);text-transform:uppercase;">${lbl}</div>
+        <div style="font-size:22px;font-weight:700;color:${col};margin-top:4px;">${val}</div>
+        ${sub?`<div style="font-size:10px;color:var(--text3);margin-top:2px;">${sub}</div>`:''}
+      </div>`;
+      return `<div class="sh" style="margin-top:28px;"><span>Block Loss / Waste Summary</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">ALL-TIME</span></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">
+        ${tile('Blocks Made','📦 '+totalMade,'var(--text)','from lab production logs')}
+        ${tile('Lost Pre-Fruiting','🦠 '+preLost,'#9a2a2a','spoiled before fruiting')}
+        ${tile('Spent (Post-Fruiting)','♻️ '+spent,'var(--rust)','tossed after flushes')}
+        ${tile('Pre-Fruiting Loss Rate',preRate.toFixed(1)+'%','#9a2a2a','of blocks made')}
+      </div>
+      ${supRows.length?`<div class="tw"><table>
+        <thead><tr><th>Source / Supplier</th><th>Pre-Fruiting Lost</th><th>Spent</th><th>Total</th></tr></thead>
+        <tbody>${supRows.map(([sup,v])=>`<tr>
+          <td>${sup}</td>
+          <td class="mn" style="color:#9a2a2a;">${v.pre||'—'}</td>
+          <td class="mn" style="color:var(--rust);">${v.spent||'—'}</td>
+          <td class="mn" style="font-weight:700;">${v.pre+v.spent}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`:''}`;
+    })()}
+
+    <!-- ── BLOCK REMOVAL HISTORY ── -->
+    ${(()=>{
+      const disp=sByKey('blk-disp',[...DB.blockDisposals].sort((a,b)=>b.date.localeCompare(a.date)),{date:d=>d.date,stage:d=>d.stage||'spent',container:d=>d.container||d.cookLot||'',blockCount:d=>d.blockCount||0,reason:d=>d.reason||'',supplier:d=>d.supplier||'',loggedBy:d=>d.loggedBy||''});
       if(!disp.length) return '';
-      const reasonCol={spent:'var(--text3)',dead:'var(--rust)',contaminated:'#9a2a2a',other:'var(--text2)'};
+      const reasonCol={spent:'var(--text3)',dead:'var(--rust)',contaminated:'#9a2a2a',spoiled:'#9a2a2a','failed-to-fruit':'var(--rust)',other:'var(--text2)'};
+      const stageTag=d=>(d.stage||'spent')==='pre-fruiting'
+        ?'<span style="font-family:\'Syne Mono\',monospace;font-size:8px;font-weight:700;color:#9a2a2a;background:rgba(154,42,42,.1);border-radius:3px;padding:2px 6px;">PRE-FRUIT</span>'
+        :'<span style="font-family:\'Syne Mono\',monospace;font-size:8px;font-weight:700;color:var(--rust);background:rgba(160,82,45,.1);border-radius:3px;padding:2px 6px;">SPENT</span>';
       return `<div class="sh" style="margin-top:20px;"><span>Block Removal History</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${disp.length} ENTRIES</span></div>
       <div class="tw"><table>
-        <thead><tr>${thS('blk-disp','date','Date')}${thS('blk-disp','container','Container')}${thS('blk-disp','blockCount','Blocks')}${thS('blk-disp','reason','Reason')}${thS('blk-disp','loggedBy','Logged By')}<th>Notes</th></tr></thead>
+        <thead><tr>${thS('blk-disp','date','Date')}${thS('blk-disp','stage','Stage')}${thS('blk-disp','container','Container / Lot')}${thS('blk-disp','blockCount','Blocks')}${thS('blk-disp','reason','Reason')}${thS('blk-disp','supplier','Source / Supplier')}${thS('blk-disp','loggedBy','Logged By')}<th>Notes</th></tr></thead>
         <tbody>${disp.map(d=>`<tr>
           <td class="mn">${fDate(d.date)}</td>
-          <td>${d.container}</td>
+          <td>${stageTag(d)}</td>
+          <td>${d.cookLot?`<span class="mn" style="color:var(--gold);">${d.cookLot}</span>${d.variety?' · '+d.variety:''}`:(d.container||'—')}</td>
           <td class="mn" style="font-weight:700;color:var(--rust);">${d.blockCount}</td>
           <td class="mn" style="color:${reasonCol[d.reason]||'var(--text2)'};">${d.reason}</td>
+          <td style="font-size:11px;color:var(--text3);">${d.supplier||(d.source==='internal'?'In-house':d.source==='supplier'?'External':'—')}</td>
           <td class="mn" style="font-size:11px;color:var(--text3);">${d.loggedBy||'—'}</td>
           <td style="font-size:11px;color:var(--text3);">${d.notes||'—'}</td>
         </tr>`).join('')}</tbody>
@@ -3392,15 +3475,44 @@ async function logHarv(){
   rHarvest(document.getElementById('main-views'));
 }
 
+function onSbStageChange(){
+  const stage=document.getElementById('sb-stage')?.value;
+  const lotWrap=document.getElementById('sb-lot-wrap');
+  const cWrap=document.getElementById('sb-c-wrap');
+  if(lotWrap) lotWrap.style.display = stage==='pre-fruiting'?'':'none';
+  if(cWrap) cWrap.style.display = stage==='pre-fruiting'?'none':'';
+  // Pre-fruiting losses default to internal production
+  if(stage==='pre-fruiting'){ const srcEl=document.getElementById('sb-source'); if(srcEl) srcEl.value='internal'; }
+}
+function onSbLotChange(){
+  const sel=document.getElementById('sb-lot'); if(!sel) return;
+  if(sel.value==='__ext__'){ const srcEl=document.getElementById('sb-source'); if(srcEl) srcEl.value='supplier'; return; }
+  const opt=sel.options[sel.selectedIndex];
+  const srcEl=document.getElementById('sb-source'); if(srcEl) srcEl.value='internal';
+  const supEl=document.getElementById('sb-supplier'); if(supEl && !supEl.value.trim()) supEl.value='In-house';
+}
 async function logSpentBlocks(){
   const date=document.getElementById('sb-date').value;
-  const containerRaw=document.getElementById('sb-c').value;
-  const container=containerRaw==='__other__'?'Other':containerRaw;
+  const stage=document.getElementById('sb-stage')?.value||'spent';
   const blockCount=parseInt(document.getElementById('sb-cnt').value)||0;
   const reason=document.getElementById('sb-reason').value;
+  const source=document.getElementById('sb-source')?.value||'';
+  const supplier=(document.getElementById('sb-supplier')?.value||'').trim();
   const notes=document.getElementById('sb-notes').value.trim();
-  if(!date||!container||!blockCount){ alert('Date, container and block count are required.'); return; }
-  const data={date,container,blockCount,reason,notes,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+  let container='', cookLot='', labBatchId='', variety='';
+  if(stage==='pre-fruiting'){
+    const sel=document.getElementById('sb-lot');
+    const raw=sel?.value||'';
+    if(raw==='__ext__'){ cookLot=''; }
+    else { cookLot=raw; const opt=sel&&sel.selectedIndex>=0?sel.options[sel.selectedIndex]:null; if(opt&&opt.dataset){ labBatchId=opt.dataset.batchid||''; variety=opt.dataset.variety||''; } }
+    if(!raw){ alert('Select the cook lot these blocks came from (or "External / no cook lot").'); return; }
+  } else {
+    const containerRaw=document.getElementById('sb-c').value;
+    container=containerRaw==='__other__'?'Other':containerRaw;
+    if(!container){ alert('Select the container the blocks came from.'); return; }
+  }
+  if(!date||!blockCount){ alert('Date and block count are required.'); return; }
+  const data={date,stage,container,cookLot,labBatchId,variety,source,supplier,blockCount,reason,notes,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
   if(!DB._isDemoMode){
     const id=await FS.add('blockDisposals',data);
     data.id=id;
@@ -3408,7 +3520,8 @@ async function logSpentBlocks(){
     data.id='demo-bd-'+Date.now().toString(36);
   }
   DB.blockDisposals.push(data);
-  logAudit('blocks_removed',`${blockCount} blocks removed from ${container} — ${reason}`);
+  const where=stage==='pre-fruiting'?(cookLot?('lot '+cookLot):'external'):container;
+  logAudit('blocks_removed',`${blockCount} ${stage==='pre-fruiting'?'pre-fruiting':'spent'} blocks — ${where} — ${reason}${supplier?(' · '+supplier):''}`);
   toast('sb-t');
   setTimeout(()=>renderC(),900);
 }
@@ -6148,8 +6261,11 @@ function rLab(el){
                   ${vlines.map((v,vi)=>{
                     const suffix = (v.suffix||'').trim();
                     const fullLot = cookLot ? `${cookLot}${suffix?' '+suffix:''}` : (v.lot || (suffix?`${b.batchNum||''} ${suffix}`:(b.batchNum||'—')));
+                    const made = parseInt(v.blockCount)||0;
+                    const lost = (DB.blockDisposals||[]).filter(d=>(d.stage||'')==='pre-fruiting' && (d.labBatchId===b.id||d.cookLot===fullLot) && (!d.variety||!v.variety||d.variety===v.variety)).reduce((s,d)=>s+(d.blockCount||0),0);
                     return `<div style="border-left:2px solid var(--gold);padding:2px 0 6px 10px;margin-bottom:8px;">
-                      <div style="font-size:12px;margin-bottom:3px;"><span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);">${fullLot}</span> · <strong>${v.variety||'—'}</strong>${v.blockCount?` · ${v.blockCount} blocks`:''}</div>
+                      <div style="font-size:12px;margin-bottom:3px;"><span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);">${fullLot}</span> · <strong>${v.variety||'—'}</strong>${made?` · ${made} blocks`:''}</div>
+                      ${lost?`<div style="font-size:11px;color:#9a2a2a;font-weight:600;">⚠ ${lost} lost pre-fruiting → ${Math.max(0,made-lost)} to fruiting</div>`:''}
                       ${v.spawnDate?`<div style="font-size:11px;color:var(--text2);">Spawn: ${fDate(v.spawnDate)}${v.spawnSource?' · '+v.spawnSource:''}</div>`:(v.spawnSource?`<div style="font-size:11px;color:var(--text2);">Spawn Type: ${v.spawnSource}</div>`:'')}
                       ${v.spawnSupplier?`<div style="font-size:11px;color:var(--text2);">Supplier: ${v.spawnSupplier}</div>`:''}
                       ${v.spawnLot?`<div style="font-size:11px;color:var(--text2);">Spawn Lot: <span style="font-family:'Syne Mono',monospace;font-weight:700;">${v.spawnLot}</span>${v.spawnQuantity?' · '+v.spawnQuantity:''}</div>`:(v.spawnQuantity?`<div style="font-size:11px;color:var(--text2);">${v.spawnQuantity}</div>`:'')}
@@ -6589,11 +6705,13 @@ function seedDemoData(){
 
   // -- Block Disposals --
   DB.blockDisposals=[
-    {id:'demo-bd-1',date:yd(5),container:'GH-01-02',blockCount:4,reason:'spent',notes:'Third flush complete — substrate exhausted',loggedBy:'Jake M.',timestamp:iso(5)},
-    {id:'demo-bd-2',date:yd(2),container:'CA-02-02',blockCount:3,reason:'contaminated',notes:'Green mold on 3 blocks early cycle — isolated',loggedBy:'Sarah K.',timestamp:iso(2)},
-    {id:'demo-bd-3',date:yd(1),container:'MO-05-02',blockCount:2,reason:'spent',notes:'Second flush very light — pulled early',loggedBy:'Allen M.',timestamp:iso(1)},
-    {id:'demo-bd-4',date:yd(4),container:'GH-07-01',blockCount:2,reason:'contaminated',notes:'Wet rot on 2 blocks — contamination isolated',loggedBy:'Jake M.',timestamp:iso(4)},
-    {id:'demo-bd-5',date:yd(3),container:'CA-07-01',blockCount:2,reason:'spent',notes:'First flush very sparse — variety still being dialed in',loggedBy:'Allen M.',timestamp:iso(3)},
+    {id:'demo-bd-1',date:yd(5),stage:'spent',container:'GH-01-02',blockCount:4,reason:'spent',source:'internal',supplier:'In-house',notes:'Third flush complete — substrate exhausted',loggedBy:'Jake M.',timestamp:iso(5)},
+    {id:'demo-bd-2',date:yd(2),stage:'spent',container:'CA-02-02',blockCount:3,reason:'contaminated',source:'supplier',supplier:'Wild Spore',notes:'Green mold on 3 blocks early cycle — isolated',loggedBy:'Sarah K.',timestamp:iso(2)},
+    {id:'demo-bd-3',date:yd(1),stage:'spent',container:'MO-05-02',blockCount:2,reason:'spent',source:'internal',supplier:'In-house',notes:'Second flush very light — pulled early',loggedBy:'Allen M.',timestamp:iso(1)},
+    {id:'demo-bd-4',date:yd(4),stage:'spent',container:'GH-07-01',blockCount:2,reason:'contaminated',source:'supplier',supplier:'Wild Spore',notes:'Wet rot on 2 blocks — contamination isolated',loggedBy:'Jake M.',timestamp:iso(4)},
+    {id:'demo-bd-5',date:yd(3),stage:'spent',container:'CA-07-01',blockCount:2,reason:'spent',source:'internal',supplier:'In-house',notes:'First flush very sparse — variety still being dialed in',loggedBy:'Allen M.',timestamp:iso(3)},
+    {id:'demo-bd-6',date:yd(10),stage:'pre-fruiting',cookLot:'10209 A',labBatchId:'demo-lb-1',variety:'Black Pearl',blockCount:3,reason:'contaminated',source:'internal',supplier:'In-house',notes:'Trich on 3 blocks on the rack — pulled before fruiting',loggedBy:'Allen M.',timestamp:iso(10)},
+    {id:'demo-bd-7',date:yd(9),stage:'pre-fruiting',cookLot:'10209 B',labBatchId:'demo-lb-1',variety:'Italian Oyster',blockCount:2,reason:'spoiled',source:'internal',supplier:'In-house',notes:'Two bags failed to colonize — soured',loggedBy:'Sarah K.',timestamp:iso(9)},
   ];
 
   // -- Product Movements --
