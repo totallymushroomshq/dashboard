@@ -5623,7 +5623,7 @@ function dlBlockProductionCSV(fromDate, toDate){
   const headers = [
     'Batch #','Production Date','Cook Lot','Lot (with suffix)','Strain / Variety','Substrate Batch','Order / Run #','Substrate Supplier / Origin',
     'Substrate Lbs','Buckets','Gallons Water','Add Water Start','Add Water End','Mix Time','Blocks',
-    'Sterilization Date','Autoclave Temp (F)','Cook Hours','Cook Start','Cook End',
+    'Sterilization Date','Autoclave Temp (F)','Cook Hours','Cook Start','Cook End','Sterilization Crew','Inoculation Crew',
     'Spawn Date','Spawn Type','Spawn Supplier / Origin','Spawn Qty / Rate','Spawn Lot #',
     'Rack Location','Expected Colonization (days)','Variety Notes','Created By','Timestamp'
   ];
@@ -5639,7 +5639,7 @@ function dlBlockProductionCSV(fromDate, toDate){
         b.substrateLbs||0, b.buckets||0, b.gallonsWater||0,
         b.waterStartTime||'', b.waterEndTime||'', b.mixTime||'', v.blockCount||0,
         b.sterilizationDate||'', b.autoclaveTemp||'', b.cookTimeHours||'',
-        b.cookTimeStart||'', b.cookTimeEnd||'',
+        b.cookTimeStart||'', b.cookTimeEnd||'', b.sterCrew||'', b.inocCrew||'',
         v.spawnDate||'', v.spawnSource||'', v.spawnSupplier||'', v.spawnQuantity||'', v.spawnLot||'',
         v.rack||'', v.colDays||'', v.notes||'', b.createdBy||'', b.timestamp||''
       ]);
@@ -6127,6 +6127,8 @@ function rLab(el){
   const E = editBatch || {};
   // Spawn supplier suggestions pulled from previous cooks
   const spawnSuppliers=[...new Set(DB.labBatches.flatMap(b=>batchVarietyLines(b).map(v=>v.spawnSupplier)).filter(Boolean))].sort();
+  // Crew name suggestions — individual names pulled from previous cooks' sterilization/inoculation crews
+  const labCrew=[...new Set((DB.labBatches||[]).flatMap(b=>[b.sterCrew,b.inocCrew]).filter(Boolean).flatMap(s=>String(s).split(',').map(x=>x.trim())).filter(Boolean))].sort();
 
   // Section divider style
   const secHead = (title) => `<div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:3px;font-weight:700;color:var(--text2);text-transform:uppercase;border-bottom:2px solid var(--border);padding-bottom:6px;margin:20px 0 14px;">— ${title} —</div>`;
@@ -6195,6 +6197,16 @@ function rLab(el){
         <textarea class="fta" id="pl-sternotes" placeholder="Pressure reached, any anomalies, cool-down observations...">${E.sterNotes||''}</textarea>
       </div>
 
+      ${secHead('Crew / Labor Allocation')}
+      <div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.6;">
+        Who worked each phase of this cook. Type names separated by commas — past names autocomplete.
+      </div>
+      <datalist id="lab-crew-list">${labCrew.map(n=>`<option value="${attrEsc(n)}">`).join('')}</datalist>
+      <div class="fg2">
+        <div class="fgl"><label>Sterilization Crew</label><input class="fi" id="pl-stercrew" value="${attrEsc(E.sterCrew||'')}" placeholder="e.g. Jake M., Sarah K." list="lab-crew-list"></div>
+        <div class="fgl"><label>Inoculation Crew</label><input class="fi" id="pl-inoccrew" value="${attrEsc(E.inocCrew||'')}" placeholder="e.g. Allen M., Maria L." list="lab-crew-list"></div>
+      </div>
+
       ${secHead('Varieties / Inoculation')}
       <div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.6;">
         Add a line for each variety in this cook. The lot suffix (A, B, C…) is assigned automatically in order.
@@ -6254,10 +6266,12 @@ function rLab(el){
                   ${b.autoclaveTemp?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Temp: </span>${b.autoclaveTemp}°F</div>`:''}
                   ${b.cookTimeHours?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Cook Time: </span>${b.cookTimeHours} hr</div>`:''}
                   ${b.cookTimeStart?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Cook: </span>${b.cookTimeStart} → ${b.cookTimeEnd||'?'}</div>`:''}
+                  ${b.sterCrew?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">👥 Crew: </span>${b.sterCrew}</div>`:''}
                   ${b.sterNotes?`<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic;">${b.sterNotes}</div>`:''}
                 </div>
                 <div style="flex:1.4;">
                   <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin-bottom:8px;">VARIETIES / INOCULATION</div>
+                  ${b.inocCrew?`<div style="font-size:12px;margin-bottom:8px;"><span style="color:var(--text3);">👥 Inoculation Crew: </span>${b.inocCrew}</div>`:''}
                   ${vlines.map((v,vi)=>{
                     const suffix = (v.suffix||'').trim();
                     const fullLot = cookLot ? `${cookLot}${suffix?' '+suffix:''}` : (v.lot || (suffix?`${b.batchNum||''} ${suffix}`:(b.batchNum||'—')));
@@ -6346,6 +6360,9 @@ async function logProductionBatch(){
     cookTimeStart  : document.getElementById('pl-cookstart').value,
     cookTimeEnd    : document.getElementById('pl-cookend').value,
     sterNotes      : document.getElementById('pl-sternotes').value.trim(),
+    // Crew / labor allocation (who worked each phase of this cook)
+    sterCrew       : (document.getElementById('pl-stercrew')?.value||'').trim(),
+    inocCrew       : (document.getElementById('pl-inoccrew')?.value||'').trim(),
     // Meta
     createdBy: S.name||S.role,
     timestamp: new Date().toISOString()
@@ -6648,6 +6665,7 @@ function seedDemoData(){
       sterilizationDate:yd(14),autoclaveTemp:250,cookTimeHours:2.5,
       cookTimeStart:'09:00',cookTimeEnd:'11:30',
       sterNotes:'Pressure held steady. Blocks cooled overnight.',
+      sterCrew:'Jake M., Sarah K.',inocCrew:'Allen M., Maria L.',
       varieties:[
         {suffix:'A',lot:'10209 A',variety:'Black Pearl',blockCount:24,spawnDate:yd(12),spawnSource:'Grain Spawn',spawnSupplier:'North Spore',spawnQuantity:'10% by weight — 10 lbs grain',spawnLot:'GS-2026-007',rack:'Rack A, Shelf 1 — Carthage Room 1',colDays:16,notes:'Inoculated under still air box. Clean workflow.'},
         {suffix:'B',lot:'10209 B',variety:'Italian Oyster',blockCount:24,spawnDate:yd(12),spawnSource:'Grain Spawn',spawnSupplier:'In-house culture',spawnQuantity:'10% by weight — 10 lbs grain',spawnLot:'GS-2026-008',rack:'Rack A, Shelf 2 — Carthage Room 1',colDays:16,notes:'Same cook, second variety. No contamination.'}
