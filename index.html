@@ -497,7 +497,8 @@ window.onunhandledrejection = function(e){
 'use strict';
 const DB = {
   orders:[], clients:[], harvests:[], samples:[],
-  fruitings:[], preservation:[], notifLog:[], signupRequests:[], packSessions:[],
+  fruitings:[], preservation:[], notifLog:[], signupRequests:[], packSessions:[], receivings:[],
+  cultures:[], spawnRuns:[], cordyceps:[], revisions:[],
   users:[], loginHistory:[], transfers:[], productMovements:[], auditLog:[], containerSessions:[],
   preservationBatches:[],
   labBatches:[], blockDisposals:[],
@@ -537,19 +538,21 @@ const DELIVERY_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Satur
 const ALL_INTERNAL_TABS = [
   {id:'today',l:'Day'},{id:'week',l:'Week'},
   {id:'new-order',l:'+ Order'},{id:'email-parse',l:'Parse Email'},
+  {id:'receiving',l:'📥 Receiving'},
   {id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},
   {id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},
   {id:'trace',l:'🔍 Trace'},
   {id:'lab',l:'🧫 Lab'},
+  {id:'cordyceps',l:'🐛 Cordyceps'},
   {id:'analytics',l:'Analytics'},
   {id:'admin',l:'⚙ Admin',c:'at'},{id:'security',l:'🔒 Security',c:'at'},
   {id:'orders-all',l:'Orders',c:'ct'},{id:'reports',l:'📊 Reports',c:'at'},
   {id:'qb',l:'📒 QB',c:'at'}
 ];
 const DEFAULT_PERMS = {
-  admin: {today:true,week:true,'new-order':true,'email-parse':true,harvest:true,fruiting:true,inventory:true,preservation:true,trace:true,lab:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
-  staff: {today:true,week:true,'new-order':true,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,trace:true,lab:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
-  accountant: {today:true,week:true,'new-order':false,'email-parse':false,harvest:true,fruiting:true,inventory:true,preservation:true,trace:true,lab:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
+  admin: {today:true,week:true,'new-order':true,'email-parse':true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
+  staff: {today:true,week:true,'new-order':true,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
+  accountant: {today:true,week:true,'new-order':false,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
 };
 const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',lab:'Lab — Carthage',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
 
@@ -579,26 +582,50 @@ function getSecondaryAuth(){
   return _secondaryApp.auth();
 }
 
+// ── REVISION HISTORY (#13 — record any/all changes, by whom) ──
+// Collections too noisy or self-referential to log.
+const REV_SKIP = new Set(['revisions','auditLog','notifLog','loginHistory','containerSessions','signupRequests','packSessions','appConfig']);
+function _revSanitize(data){
+  const out={}; if(!data) return out;
+  for(const k in data){ const v=data[k];
+    if(v && typeof v==='object' && (v._methodName || /FieldValue/.test((v.constructor&&v.constructor.name)||''))) out[k]='(removed)';
+    else if(v && typeof v==='object') { try{ out[k]=JSON.parse(JSON.stringify(v)); }catch(e){ out[k]='(object)'; } }
+    else out[k]=v;
+  }
+  return out;
+}
+function recordRevision(col, id, action, payload){
+  try{
+    if(REV_SKIP.has(col) || !fdb) return;
+    const entry={ ts:new Date().toISOString(), by:(S&&S.name)||(S&&S.role)||'system', uid:(S&&S.uid)||null,
+      collection:col, docId:id!=null?String(id):null, action, fields:payload?Object.keys(payload):[], changes:_revSanitize(payload) };
+    fdb.collection('revisions').add(entry);   // direct write — does NOT recurse through FS
+    if(DB&&Array.isArray(DB.revisions)) DB.revisions.unshift({id:'_local',...entry});
+  }catch(e){ /* logging must never break a write */ }
+}
+
 // ── FIRESTORE HELPER ──
 const FS = {
   async getAll(col){ const s=await fdb.collection(col).get(); return s.docs.map(d=>({id:d.id,...d.data()})); },
-  async add(col,data){ const ref=await fdb.collection(col).add(data); return ref.id; },
-  async set(col,id,data){ await fdb.collection(col).doc(String(id)).set(data); },
-  async update(col,id,data){ await fdb.collection(col).doc(String(id)).update(data); },
-  async del(col,id){ await fdb.collection(col).doc(String(id)).delete(); }
+  async add(col,data){ const ref=await fdb.collection(col).add(data); recordRevision(col, ref.id, 'create', data); return ref.id; },
+  async set(col,id,data){ await fdb.collection(col).doc(String(id)).set(data); recordRevision(col, id, 'set', data); },
+  async update(col,id,data){ await fdb.collection(col).doc(String(id)).update(data); recordRevision(col, id, 'update', data); },
+  async del(col,id){ await fdb.collection(col).doc(String(id)).delete(); recordRevision(col, id, 'delete', null); }
 };
 
 // ── LOAD ALL DATA FROM FIRESTORE ──
 async function loadDB(){
   try {
-    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog,containerSessions,preservationBatches,labBatches,blockDisposals] = await Promise.all([
+    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog,containerSessions,preservationBatches,labBatches,blockDisposals,receivings,cultures,spawnRuns,cordyceps,revisions] = await Promise.all([
       FS.getAll('orders'), FS.getAll('clients'), FS.getAll('harvests'),
       FS.getAll('samples'), FS.getAll('fruitings'), FS.getAll('preservation'),
       FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('packSessions'),
       FS.getAll('users'), FS.getAll('loginHistory'), FS.getAll('transfers'), FS.getAll('productMovements'),
       FS.getAll('auditLog'), FS.getAll('containerSessions'), FS.getAll('preservationBatches'),
-      FS.getAll('labBatches'), FS.getAll('blockDisposals')
+      FS.getAll('labBatches'), FS.getAll('blockDisposals'), FS.getAll('receivings'),
+      FS.getAll('cultures'), FS.getAll('spawnRuns'), FS.getAll('cordyceps'), FS.getAll('revisions')
     ]);
+    DB.receivings=receivings; DB.cultures=cultures; DB.spawnRuns=spawnRuns; DB.cordyceps=cordyceps; DB.revisions=revisions;
     DB.orders=orders; DB.clients=clients; DB.harvests=harvests;
     DB.samples=samples; DB.fruitings=fruitings; DB.preservation=preservation;
     // ── ONE-TIME MIGRATION: drop o.chestnut (legacy ungraded field) since chestnut is now CH01/CH02 only.
@@ -826,18 +853,61 @@ const PRODUCTS = [
   {code:'CH01', name:'Chestnut #1',      desc:'TOP GRADE intact veil — youngest harvest',                                      priceLb:10.00, unitLb:3, dataKey:'chestnut1',  varieties:['Chestnut']},
   {code:'CH02', name:'Chestnut #2',      desc:'HIGH GRADE open veil — younger harvest',                                        priceLb:9.00,  unitLb:3, dataKey:'chestnut2',  varieties:['Chestnut']},
   {code:'WD01', name:'Wild Mix',         desc:'Wild, Local, Bioregional specialty (Lynx Paw, Coral Tooth, Golden Needle, White Winter, ToT Oyster)', priceLb:9.50, unitLb:3, dataKey:'wildMix', varieties:['Lynx Paw','Coral Tooth','Gold Enoki','White Enoki','Blue Oyster','Snow Oyster','Italian Oyster','Black Pearl']},
+  {code:'MO6',  name:'Oyster Mix 10# Tote', desc:'Oyster Mix 10 lb tote (Blue, White, Italian, Black Pearl, ToT)', priceLb:8.00,  unitLb:10, dataKey:'oyster10',  restrict:'Opryland', varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Cumberland Oyster','Black Pearl']},
+  {code:'SHT10',name:'Shiitake 10# Tote',  desc:'Shiitake 10 lb tote',                                           priceLb:10.00, unitLb:10, dataKey:'shiitake10', restrict:'Opryland', varieties:['Shiitake']},
 ];
 const RETAIL_PACKS = [
   {code:'LRP', name:"Lion's Mane ¼lb Pack", desc:"Lion's Mane retail pack", priceLb:8.00, unitLb:0.25, dataKey:'lionsPack', varieties:["Lion's Mane"]},
   {code:'CRP', name:"Chef's Mix ¼lb Pack",  desc:"Chef's Mix retail pack",  priceLb:9.00, unitLb:0.25, dataKey:'chefsPack', varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl','Chestnut','Shiitake','Lynx Paw','Coral Tooth']},
 ];
 const ALL_PRODS = [...PRODUCTS, ...RETAIL_PACKS];
+// #14 — "Organic" in front of every mushroom name / pack type. Idempotent so it
+// never double-prefixes; mutates the shared product objects so it shows everywhere.
+ALL_PRODS.forEach(p=>{ if(!/^organic\b/i.test(p.name)) p.name = 'Organic ' + p.name; });
 
 // ── COMPANY / FROM (packing slip header) ──
 const COMPANY = {
   legal: 'TM HFP LLC',
   careOf: ['c/o Totally Mushrooms','Cheekee Greens Farms LLC','5022 Old Hydes Ferry Pike','Nashville TN 37218']
 };
+// ── PER-CLIENT PRICING (price lists) ──
+// Each client is assigned a price list; orders price from that column. Named
+// customers use their own column, everyone else defaults to Base. Prices are
+// per UNIT (per box / tote / pack). null = not offered to that list (falls back to Base).
+const PRICE_LISTS = ['Base','Bottom','PFG/SYSCO','Freshpoint','Fungus Ranch','Radical Shoots'];
+// Keyed by product code. Column order matches PRICE_LISTS.
+const PRICE_BOOK = {
+  //          Base   Bottom  PFG/SYSCO Freshpt  FungusRanch RadicalShoots
+  MO6:   {Base:80,   Bottom:80,   'PFG/SYSCO':null, Freshpoint:80,   'Fungus Ranch':null, 'Radical Shoots':null},
+  MO8:   {Base:24,   Bottom:24,   'PFG/SYSCO':24,   Freshpoint:24,   'Fungus Ranch':24,   'Radical Shoots':null},
+  SHT10: {Base:100,  Bottom:100,  'PFG/SYSCO':null, Freshpoint:100,  'Fungus Ranch':null, 'Radical Shoots':null},
+  CB09:  {Base:30,   Bottom:27,   'PFG/SYSCO':30,   Freshpoint:30,   'Fungus Ranch':24,   'Radical Shoots':null},
+  CM5:   {Base:27,   Bottom:25.5, 'PFG/SYSCO':27,   Freshpoint:27,   'Fungus Ranch':24,   'Radical Shoots':27},
+  CB07:  {Base:25.5, Bottom:25.5, 'PFG/SYSCO':25.5, Freshpoint:25.5, 'Fungus Ranch':24,   'Radical Shoots':null},
+  CB08:  {Base:24,   Bottom:24,   'PFG/SYSCO':24,   Freshpoint:24,   'Fungus Ranch':24,   'Radical Shoots':null},
+  CH01:  {Base:30,   Bottom:30,   'PFG/SYSCO':30,   Freshpoint:30,   'Fungus Ranch':24,   'Radical Shoots':null},
+  CH02:  {Base:27,   Bottom:27,   'PFG/SYSCO':27,   Freshpoint:27,   'Fungus Ranch':24,   'Radical Shoots':null},
+  WD01:  {Base:28.5, Bottom:28.5, 'PFG/SYSCO':28.5, Freshpoint:28.5, 'Fungus Ranch':24,   'Radical Shoots':null},
+  LRP:   {Base:null, Bottom:null, 'PFG/SYSCO':null, Freshpoint:null, 'Fungus Ranch':null, 'Radical Shoots':5},
+  CRP:   {Base:null, Bottom:null, 'PFG/SYSCO':null, Freshpoint:null, 'Fungus Ranch':null, 'Radical Shoots':4}
+};
+// The price list a given order should use (from its client; default Base).
+function orderPriceList(o){
+  const c = o && o.clientId ? DB.clients.find(x=>x.id===o.clientId) : null;
+  return (c && c.priceList) || 'Base';
+}
+// Per-unit price for a product code under a price list, with sensible fallbacks.
+function unitPrice(code, list){
+  const p = ALL_PRODS.find(x=>x.code===code);
+  const legacy = p ? p.unitLb*p.priceLb : 0;
+  const row = PRICE_BOOK[code];
+  if(!row) return legacy;
+  let v = row[list];
+  if(v==null) v = row['Base'];   // list doesn't carry this item → Base
+  if(v==null) v = legacy;        // still nothing → legacy per-lb
+  return v;
+}
+
 // First S.O. number the app issues (QuickBooks was last at 323).
 const SO_BASE = 324;
 function nextSONum(){
@@ -856,7 +926,7 @@ function oSum(o){ const items=orderItems(o); const p=items.map(x=>x.qty+'× '+x.
 // oSumCodes: compact summary using codes (preferred for tables / wholesale views)
 function oSumCodes(o){ const items=orderItems(o); const p=items.map(x=>x.qty+'× '+x.prod.code); if(o.custom) p.push('★ '+(o.customType||'custom')); return p.join(' · ')||'Custom/Wholesale'; }
 // eRev: per-product price * unitLb * qty. Wholesale/custom override price still wins.
-function eRev(o){ if(o.custom&&o.price) return o.price; return ALL_PRODS.reduce((s,p)=>s+(o[p.dataKey]||0)*p.unitLb*p.priceLb, 0); }
+function eRev(o){ if(o.custom&&o.price) return o.price; const list=orderPriceList(o); return ALL_PRODS.reduce((s,p)=>{ const q=o[p.dataKey]||0; return q? s+q*unitPrice(p.code,list) : s; }, 0); }
 function wkOrds(){ return DB.orders.filter(o=>o.week===wkStart()&&!o.isStanding) }
 function toast(id,msg){ const el=document.getElementById(id); if(!el) return; if(msg) el.textContent=msg; el.style.display='block'; setTimeout(()=>el.style.display='none',3000) }
 function notify(cid,msg,type){
@@ -1747,8 +1817,8 @@ function buildNav(){
 
   const GROUPS=[
     {label:'Daily',       ids:['today','week','new-order','email-parse']},
-    {label:'Operations',  ids:['harvest','fruiting','inventory','preservation','trace']},
-    {label:'Production',  ids:['lab']},
+    {label:'Operations',  ids:['receiving','harvest','fruiting','inventory','preservation','trace']},
+    {label:'Production',  ids:['lab','cordyceps']},
     {label:'Business',    ids:['analytics','orders-all','reports','qb'], cls:'drw-acct'},
     {label:'System',      ids:['admin','security'], cls:'drw-sys'},
   ];
@@ -1785,7 +1855,7 @@ function sw(id){
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,inventory:rInventory,preservation:rPreservation,trace:rTrace,lab:rLab,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,trace:rTrace,lab:rLab,cordyceps:rCordyceps,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -2262,7 +2332,7 @@ function subOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!o) return; const 
 function openEditOrder(id){
   const o=DB.orders.find(x=>x.id===id); if(!o) return;
   document.getElementById('em-title').textContent='Edit Order — '+(o.client||'')+(o.orderRef?` · ${o.orderRef}`:'');
-  const qtyRows = ALL_PRODS.map(p=>{
+  const qtyRows = ALL_PRODS.filter(p=>!p.restrict || (o.client||'').toLowerCase().includes(p.restrict.toLowerCase())).map(p=>{
     const isPack=p.unitLb<1;
     return `<div class="fgl" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
       <label style="margin:0;font-size:13px;"><strong style="font-family:'Syne Mono',monospace;color:var(--gold);">${p.code}</strong> ${p.name} <span style="color:var(--text3);font-size:10px;">${isPack?'¼lb pack':'3lb box'}</span></label>
@@ -2581,6 +2651,18 @@ function closeSlip(){
 document.getElementById('slip-modal').addEventListener('click',function(e){ if(e.target===this) closeSlip() });
 
 // ── NEW ORDER / REQUEST ──
+// #3 — show client-restricted items (e.g. 10# totes → Opryland only) only when the
+// typed client matches the restriction; zero them out otherwise so they never land on
+// another client's order.
+function onOrderClientChange(){
+  const name=(document.getElementById('no-c')?.value||'').toLowerCase();
+  document.querySelectorAll('#main-views .vi[data-restrict]').forEach(elm=>{
+    const show = name.includes((elm.getAttribute('data-restrict')||'').toLowerCase());
+    elm.style.display = show ? '' : 'none';
+    if(!show){ const inp=elm.querySelector('input.qi'); if(inp) inp.value='0'; }
+  });
+}
+
 function rNewOrd(el){
   const isA=S.role==='admin', allNames=[...new Set([...DB.clients.map(c=>c.name)])];
   el.innerHTML=`
@@ -2599,7 +2681,7 @@ function rNewOrd(el){
         </div>
         <div class="fgl">
           <label id="no-client-lbl">Client</label>
-          <input class="fi" id="no-c" placeholder="Client or venue name" list="no-cl">
+          <input class="fi" id="no-c" placeholder="Client or venue name" list="no-cl" oninput="onOrderClientChange()">
           <datalist id="no-cl">${allNames.map(n=>`<option value="${n}">`).join('')}</datalist>
         </div>
         <div class="fgl" id="no-day-row">
@@ -2631,7 +2713,7 @@ function rNewOrd(el){
       <!-- ── BOXES: Standard + Sample + Wholesale all use this ── -->
       <div id="rt-boxes">
         <div class="sh" style="margin-top:22px;margin-bottom:8px;">Wholesale Codes — 3 lb Boxes <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;">priced per lb · 3 lb box</span></div>
-        <div class="vg">${PRODUCTS.map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);margin-right:8px;">${p.code}</span>${p.name}</div><div class="vi-d">${p.desc} · <strong>$${p.priceLb.toFixed(2)}/lb = $${(p.unitLb*p.priceLb).toFixed(2)}/box</strong></div><input class="qi" type="number" min="0" id="no-${p.dataKey}" value="0"><div class="qu">× ${p.unitLb} lb box</div></div>`).join('')}</div>
+        <div class="vg">${PRODUCTS.map(p=>`<div class="vi"${p.restrict?` data-restrict="${p.restrict}" style="display:none;"`:''}><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);margin-right:8px;">${p.code}</span>${p.name}${p.restrict?` <span style="font-family:'Syne Mono',monospace;font-size:8px;color:var(--amber);">${p.restrict} only</span>`:''}</div><div class="vi-d">${p.desc} · <strong>$${p.priceLb.toFixed(2)}/lb = $${(p.unitLb*p.priceLb).toFixed(2)}/${p.unitLb>=10?'tote':'box'}</strong></div><input class="qi" type="number" min="0" id="no-${p.dataKey}" value="0"><div class="qu">× ${p.unitLb} lb ${p.unitLb>=10?'tote':'box'}</div></div>`).join('')}</div>
         <div class="sh" style="margin-top:18px;margin-bottom:8px;">Retail Packs — ¼ lb</div>
         <div class="vg">${RETAIL_PACKS.map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);margin-right:8px;">${p.code}</span>${p.name}</div><div class="vi-d">${p.desc} · <strong>$${p.priceLb.toFixed(2)}/lb = $${(p.unitLb*p.priceLb).toFixed(2)}/pack</strong></div><input class="qi" type="number" min="0" id="no-${p.dataKey}" value="0"><div class="qu">× ¼ lb pack</div></div>`).join('')}</div>
         <!-- Wholesale price override — shown only for wholesale type -->
@@ -2971,6 +3053,22 @@ function onVarietyInput(){
 }
 
 function onSourceChange(){ updateFruitingPreview(); }
+function onFrContainer(){ const sel=document.getElementById('fr-cid')?.value; const other=document.getElementById('fr-cid-other'); if(other){ other.style.display=sel==='__other__'?'block':'none'; if(sel==='__other__') other.focus(); } updateFruitingPreview(); }
+
+// Placing from a received batch: prefill lot/variety/source/vendor/weight from the pool.
+function onBatchSelect(){
+  const id=document.getElementById('fr-batch')?.value;
+  if(!id){ const bc=document.getElementById('fr-bc'); if(bc) bc.removeAttribute('max'); return; }
+  const r=DB.receivings.find(x=>x.id===id); if(!r) return;
+  const set=(elId,val)=>{ const e=document.getElementById(elId); if(e!=null && val!=null && val!=='') e.value=val; };
+  set('fr-lot', r.lotNumber);
+  set('fr-vendor', r.vendor||'');
+  set('fr-bw', r.blockWeightLb||'');
+  const src=document.getElementById('fr-source'); if(src) src.value = (r.source==='internal')?'internal':'supplier';
+  const v=document.getElementById('fr-variety'); if(v){ v.value=r.variety; if(typeof onFrVariety==='function') onFrVariety(v); }
+  const bc=document.getElementById('fr-bc'); if(bc){ bc.max=receivingOnHand(r); if(!bc.value) bc.value=receivingOnHand(r); }
+  updateFruitingPreview();
+}
 
 const LBSPERBLOCK = 1.5; // standard forecast: 1.5 lb per block
 
@@ -2993,12 +3091,98 @@ function updateFruitingPreview(){
   }
 }
 
+// ── RECEIVING (blocks into Hydes Ferry — internal production or vendors) ──
+function receivingOnHand(r){ return Math.max(0,(r.blockCount||0)-(r.placedCount||0)); }
+function onHandReceivings(){ return DB.receivings.filter(r=>receivingOnHand(r)>0).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
+function onRecSourceChange(){ const src=document.getElementById('rc-source')?.value; const vEl=document.getElementById('rc-vendor'); if(vEl && !vEl.value && src==='internal') vEl.value='In-house Production'; }
+
+async function logReceiving(){
+  const date=document.getElementById('rc-date')?.value||tday();
+  const source=document.getElementById('rc-source')?.value||'vendor';
+  const vendor=document.getElementById('rc-vendor')?.value.trim()||(source==='internal'?'In-house Production':'');
+  const variety=document.getElementById('rc-variety')?.value||'';
+  const lotNumber=document.getElementById('rc-lot')?.value.trim()||'';
+  const blockCount=parseInt(document.getElementById('rc-bc')?.value)||0;
+  const blockWeightLb=parseFloat(document.getElementById('rc-bw')?.value)||0;
+  const receivedBy=document.getElementById('rc-by')?.value.trim()||(S.name||'');
+  const poNum=document.getElementById('rc-po')?.value.trim()||'';
+  const cost=parseFloat(document.getElementById('rc-cost')?.value)||null;
+  const notes=document.getElementById('rc-notes')?.value.trim()||'';
+  if(!variety){ alert('Variety is required.'); return }
+  if(!lotNumber){ alert('Lot / block number is required.'); return }
+  if(blockCount<1){ alert('Block count must be at least 1.'); return }
+  const rData={date,facility:'Hydes Ferry',source,vendor,variety,lotNumber,blockCount,blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,status:'on-hand'};
+  const rId=await FS.add('receivings',rData);
+  DB.receivings.push({id:rId,...rData});
+  logAudit('blocks_received',`Received ${blockCount} ${variety} blocks — Lot ${lotNumber} from ${vendor||source} @ Hydes Ferry`);
+  toast('rc-t'); clrReceiving(); renderC();
+}
+function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); const v=document.getElementById('rc-variety'); if(v) v.value=''; }
+
+function rReceiving(el){
+  const onHand=onHandReceivings();
+  const history=[...DB.receivings].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const totalOnHand=onHand.reduce((s,r)=>s+receivingOnHand(r),0);
+  const srcBadge=(r)=> (r.source==='internal') ? '<span class="bdg bc" style="font-size:8px;">INTERNAL</span>' : '<span class="bdg bp" style="font-size:8px;">VENDOR</span>';
+  const onHandRows = onHand.length? onHand.map(r=>`<tr>
+    <td class="mn">${fDate(r.date)}</td><td>${srcBadge(r)} ${r.vendor||'—'}</td><td style="font-weight:500;">${r.variety}</td>
+    <td class="mn" style="color:var(--gold);font-weight:700;">${r.lotNumber}</td><td class="mn">${r.blockCount}</td>
+    <td class="mn">${r.placedCount||0}</td><td class="mn" style="color:var(--fern);font-weight:700;">${receivingOnHand(r)}</td>
+  </tr>`).join('') : `<tr><td colspan="7" class="empty">No blocks awaiting placement — log a receiving below.</td></tr>`;
+  const histRows = history.length? history.map(r=>`<tr>
+    <td class="mn">${fDate(r.date)}</td><td>${srcBadge(r)} ${r.vendor||'—'}</td><td style="font-weight:500;">${r.variety}</td>
+    <td class="mn" style="color:var(--gold);">${r.lotNumber}</td><td class="mn">${r.blockCount}</td><td class="mn">${r.placedCount||0}</td>
+    <td class="mn">${receivingOnHand(r)}</td><td class="mn" style="font-size:10px;color:var(--text3);">${r.poNum||''}${r.cost?` · $${r.cost}`:''}</td>
+    <td style="font-size:11px;color:var(--text3);">${r.receivedBy||''}</td>
+  </tr>`).join('') : `<tr><td colspan="9" class="empty">No receivings logged yet.</td></tr>`;
+  el.innerHTML=`
+    <div class="ph"><div class="ph-t">📥 Receiving</div><div class="ph-s">Blocks into Hydes Ferry · internal production or vendors → placed into fruiting</div></div>
+    <div class="stats" style="margin-bottom:24px;">
+      <div class="sc g"><div class="sc-l">Blocks Awaiting Placement</div><div class="sc-v">${totalOnHand}</div><div class="sc-n">${onHand.length} batch${onHand.length===1?'':'es'} on hand</div></div>
+      <div class="sc"><div class="sc-l">Receivings Logged</div><div class="sc-v">${history.length}</div><div class="sc-n">all-time intake records</div></div>
+    </div>
+    ${canEdit()?`<div class="card"><div class="card-t">Log Received Blocks</div>
+      <div class="fg2">
+        <div class="fgl"><label>Date Received</label><input class="fi" type="date" id="rc-date" value="${tday()}"></div>
+        <div class="fgl"><label>Source</label><select class="fs" id="rc-source" onchange="onRecSourceChange()"><option value="vendor">Outside Vendor</option><option value="internal">Internal Production</option></select></div>
+        <div class="fgl"><label>Producer / Vendor</label><input class="fi" id="rc-vendor" placeholder="Vendor or in-house production co." list="rc-vendl"><datalist id="rc-vendl"><option value="In-house Production"><option value="Wild Spore"></datalist></div>
+        <div class="fgl"><label>Variety</label><select class="fs" id="rc-variety"><option value="">Select variety…</option>${VARIETIES.map(v=>`<option value="${v}">${v}</option>`).join('')}</select></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Lot / Block #</label><input class="fi" id="rc-lot" placeholder="e.g. 10184 or WSY00Y"></div>
+        <div class="fgl"><label># of Blocks</label><input class="fi" type="number" min="1" id="rc-bc" placeholder="# blocks received"></div>
+        <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="rc-bw" placeholder="e.g. 5.5"></div>
+        <div class="fgl"><label>Received By</label><input class="fi" id="rc-by" value="${(S.name||'').replace(/"/g,'&quot;')}"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>PO # <span style="color:var(--text3);font-size:9px;">(vendor, optional)</span></label><input class="fi" id="rc-po" placeholder="Purchase order #"></div>
+        <div class="fgl"><label>Cost $ <span style="color:var(--text3);font-size:9px;">(vendor, optional)</span></label><input class="fi" type="number" min="0" step="0.01" id="rc-cost" placeholder="Total cost"></div>
+      </div>
+      <div class="fgl" style="margin-top:6px;margin-bottom:14px;"><label>Notes</label><textarea class="fta" id="rc-notes" placeholder="Condition on arrival, substrate, observations…"></textarea></div>
+      <div class="form-acts">
+        <button class="btn b-m b-lg" onclick="logReceiving()">Log Received Blocks</button>
+        <button class="btn b-g" onclick="clrReceiving()">Clear</button>
+      </div>
+      <div class="toast" id="rc-t">✓ Blocks received</div>
+    </div>`:''}
+    <div class="sh" style="margin-top:24px;"><span>On Hand · Awaiting Placement</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:${totalOnHand>0?'var(--fern)':'var(--text3)'};">${totalOnHand} BLOCKS</span></div>
+    <div class="tw" style="margin-bottom:24px;"><table>
+      <thead><tr><th>Received</th><th>Source</th><th>Variety</th><th>Lot #</th><th>Received</th><th>Placed</th><th>Remaining</th></tr></thead>
+      <tbody>${onHandRows}</tbody>
+    </table></div>
+    <div class="sh"><span>Receiving History</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Date</th><th>Source</th><th>Variety</th><th>Lot #</th><th>Received</th><th>Placed</th><th>Remaining</th><th>PO / Cost</th><th>By</th></tr></thead>
+      <tbody>${histRows}</tbody>
+    </table></div>`;
+}
+
 function rFruiting(el){
   const today=new Date(); today.setHours(0,0,0,0);
   const active=DB.fruitings.filter(f=>f.status==='fruiting');
   const done=DB.fruitings.filter(f=>f.status==='harvested');
+  const onHand=onHandReceivings();
   // Spawn lot suggestions pulled from lab cooks (for the Fruiting spawn-lot field)
-  const spawnLots=[...new Set((DB.labBatches||[]).flatMap(b=>batchVarietyLines(b).map(v=>v.spawnLot)).filter(Boolean))].sort();
 
   // Enrich active blocks with forecast data
   const withForecast=active.map(f=>{
@@ -3029,7 +3213,9 @@ function rFruiting(el){
     weekForecast[wk].count++;
   });
 
-  const containers=[...new Set([...DB.harvests.map(h=>h.container),...DB.fruitings.map(f=>f.containerID)])].filter(Boolean);
+  // #6 — tie fruiting chambers to the canonical container-log database (CONTAINERS).
+  const activeCons=getActiveContainers();
+  const legacyCons=[...new Set([...DB.harvests.map(h=>h.container),...DB.fruitings.map(f=>f.containerID)])].filter(Boolean).filter(c=>!activeCons.some(a=>a.code===c));
   const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
 
   el.innerHTML=`
@@ -3044,9 +3230,24 @@ function rFruiting(el){
 
     <!-- ── LOG FORM ── -->
     ${canEdit()?`<div class="card"><div class="card-t">Log Fruiting Block</div>`:'<div style="display:none"><div>'}
+    <div class="fgl" style="margin-bottom:12px;">
+      <label>Place from Received Batch <span style="color:var(--text3);font-size:9px;">draws down the on-hand pool · leave blank for manual entry</span></label>
+      <select class="fs" id="fr-batch" onchange="onBatchSelect()">
+        <option value="">— Manual entry (no received batch) —</option>
+        ${onHand.map(r=>`<option value="${r.id}">${r.variety} · Lot ${r.lotNumber} · ${receivingOnHand(r)} on hand · ${r.vendor||(r.source==='internal'?'Internal':'Vendor')}</option>`).join('')}
+      </select>
+    </div>
     <div class="fg2">
       <div class="fgl"><label>Date Fruited</label><input class="fi" type="date" id="fr-dt" value="${tday()}" oninput="updateFruitingPreview()"></div>
-      <div class="fgl"><label>Container ID</label><input class="fi" id="fr-cid" placeholder="Container 1, Shelf A…" list="fr-cidl"><datalist id="fr-cidl">${containers.map(c=>`<option value="${c}">`).join('')}</datalist></div>
+      <div class="fgl"><label>Container ID <span style="color:var(--text3);font-size:9px;">from container log</span></label>
+        <select class="fs" id="fr-cid" onchange="onFrContainer()">
+          <option value="">Select container…</option>
+          ${activeCons.map(c=>`<option value="${c.code}">${c.code} · ${c.farm} (${c.facility})</option>`).join('')}
+          ${legacyCons.length?`<optgroup label="Legacy / other">${legacyCons.map(c=>`<option value="${c}">${c}</option>`).join('')}</optgroup>`:''}
+          <option value="__other__">+ Other (type new)…</option>
+        </select>
+        <input class="fi" id="fr-cid-other" placeholder="New container ID" style="display:none;margin-top:8px;">
+      </div>
       <div class="fgl">
         <label>Lot Number</label>
         <input class="fi" id="fr-lot" placeholder="e.g. WSY00Y or 10162" oninput="onLotInput()">
@@ -3063,7 +3264,6 @@ function rFruiting(el){
     <div class="fg2">
       <div class="fgl"><label>Supplier / Production Company</label><input class="fi" id="fr-vendor" placeholder="Supplier or in-house production co." list="fr-vendorl"><datalist id="fr-vendorl"><option value="Wild Spore"><option value="In-house"></datalist></div>
       <div class="fgl"><label>Variety</label><select class="fs" id="fr-variety" onchange="onFrVariety(this)">${varietyOptHTML('')}</select></div>
-      <div class="fgl"><label>Spawn Lot # <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">OPTIONAL</span></label><input class="fi" id="fr-spawnlot" placeholder="ties block to a lab cook" list="fr-spawnlotl"><datalist id="fr-spawnlotl">${spawnLots.map(s=>`<option value="${s}">`).join('')}</datalist></div>
       <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="1" id="fr-bc" placeholder="# of blocks" oninput="updateFruitingPreview()"></div>
       <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="fr-bw" placeholder="e.g. 5.5" oninput="updateFruitingPreview()"></div>
       <div class="fgl">
@@ -3094,7 +3294,7 @@ function rFruiting(el){
             <td class="mn">${fDate(f.date)}</td>
             <td class="mn" style="font-weight:700;color:${sc};">${f.daysIn}d</td>
             <td>${f.containerID}</td>
-            <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}${f.spawnLot?`<br><span style="font-size:9px;color:var(--text3);">spawn: ${f.spawnLot}</span>`:''}</td>
+            <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}</td>
             <td style="font-size:11px;color:var(--text3);">${f.vendor}</td>
             <td style="font-weight:500;">${f.variety}</td>
             <td class="mn">${f.blockCount}</td>
@@ -3134,7 +3334,7 @@ function rFruiting(el){
         <tbody>${sByKey('fruit-done',[...done],{date:f=>f.date,containerID:f=>f.containerID,lotNumber:f=>f.lotNumber,vendor:f=>f.vendor||'',variety:f=>f.variety,blockCount:f=>f.blockCount||0,projLbs:f=>(f.blockCount||0)*LBSPERBLOCK,harvestedAt:f=>f.harvestedAt||''}).map(f=>`<tr>
           <td class="mn">${fDate(f.date)}</td>
           <td>${f.containerID}</td>
-          <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}${f.spawnLot?`<br><span style="font-size:9px;color:var(--text3);">spawn: ${f.spawnLot}</span>`:''}</td>
+          <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}</td>
           <td style="font-size:11px;color:var(--text3);">${(f.source||((f.vendor||'')==='In-house'?'internal':'supplier'))==='internal'?'<span style="font-family:\'Syne Mono\',monospace;font-size:8px;color:var(--fern);">[INT]</span> ':'<span style="font-family:\'Syne Mono\',monospace;font-size:8px;color:var(--blue);">[SUP]</span> '}${f.vendor}</td>
           <td style="font-weight:500;">${f.variety}</td>
           <td class="mn">${f.blockCount}</td>
@@ -3149,7 +3349,8 @@ function rFruiting(el){
 
 async function subFruiting(){
   const date=document.getElementById('fr-dt')?.value||tday();
-  const containerID=document.getElementById('fr-cid')?.value.trim()||'';
+  let containerID=document.getElementById('fr-cid')?.value||'';
+  if(containerID==='__other__') containerID=(document.getElementById('fr-cid-other')?.value||'').trim();
   const lotNumber=document.getElementById('fr-lot')?.value.trim()||'';
   const variety=document.getElementById('fr-variety')?.value||'';
   const blockCount=parseInt(document.getElementById('fr-bc')?.value)||0;
@@ -3162,15 +3363,31 @@ async function subFruiting(){
   const source=document.getElementById('fr-source')?.value||'supplier';
   const info=detectLot(lotNumber);
   const vendor=(document.getElementById('fr-vendor')?.value.trim())||info?.vendor||(source==='internal'?'In-house':'Unknown');
-  const spawnLot=document.getElementById('fr-spawnlot')?.value.trim()||'';
-  const fData={date,containerID,lotNumber,source,vendor,variety,spawnLot,blockCount,blockWeightLb,notes:document.getElementById('fr-notes')?.value.trim()||'',status:'fruiting'};
+  // Pool link: if placing from a received batch, validate against remaining on-hand.
+  const receivingId=document.getElementById('fr-batch')?.value||'';
+  let rec=null;
+  if(receivingId){
+    rec=DB.receivings.find(x=>x.id===receivingId);
+    if(rec && blockCount>receivingOnHand(rec)){ alert(`Only ${receivingOnHand(rec)} block(s) remain in that received batch.`); return; }
+  }
+  const fData={date,containerID,lotNumber,source,vendor,variety,blockCount,blockWeightLb,notes:document.getElementById('fr-notes')?.value.trim()||'',status:'fruiting'};
+  if(receivingId) fData.receivingId=receivingId;
   const fId=await FS.add('fruitings',fData);
   DB.fruitings.push({id:fId,...fData});
+  // Draw down the received pool
+  if(rec){
+    rec.placedCount=(rec.placedCount||0)+blockCount;
+    const upd={placedCount:rec.placedCount};
+    if(receivingOnHand(rec)<=0){ rec.status='placed'; upd.status='placed'; }
+    try{ await FS.update('receivings',rec.id,upd); }catch(e){ console.warn('receiving placedCount update:',e); }
+  }
   toast('fr-t'); clrFruiting(); renderC();
 }
 
 function clrFruiting(){
-  ['fr-lot','fr-cid','fr-bc','fr-bw','fr-notes','fr-spawnlot'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
+  ['fr-lot','fr-cid','fr-cid-other','fr-bc','fr-bw','fr-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
+  const _co=document.getElementById('fr-cid-other'); if(_co) _co.style.display='none';
+  const bEl=document.getElementById('fr-batch'); if(bEl) bEl.value='';
   const vEl=document.getElementById('fr-variety'); if(vEl) vEl.value='';
   const dtEl=document.getElementById('fr-dt'); if(dtEl) dtEl.value=tday();
   const vnd=document.getElementById('fr-vendor'); if(vnd) vnd.value='';
@@ -3210,6 +3427,25 @@ async function toggleContainer(code, active){
   }catch(e){ console.warn('Could not save container config:',e); }
 }
 
+// #5 — lot ↔ variety memory: find the variety previously recorded for a lot number,
+// checking harvests, then fruitings, then receivings (most recent first).
+function lotToVariety(lot){
+  const L=(lot||'').trim().toLowerCase(); if(!L) return '';
+  const find=(arr)=>[...(arr||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).find(x=>(x.lotNumber||'').toLowerCase()===L);
+  const h=find(DB.harvests); if(h&&h.variety) return h.variety;
+  const f=find(DB.fruitings); if(f&&f.variety) return f.variety;
+  const r=find(DB.receivings); if(r&&r.variety) return r.variety;
+  return '';
+}
+function onHarvestLot(){
+  const lot=(document.getElementById('hl-lot')?.value||'').trim();
+  const v=lotToVariety(lot);
+  const vEl=document.getElementById('hl-v'); const hint=document.getElementById('hl-lot-hint');
+  if(v && vEl){ vEl.value=v; if(typeof onSimpleVarietyAdd==='function') onSimpleVarietyAdd(vEl);
+    if(hint){ hint.textContent='✓ Variety remembered for lot '+lot+' → '+v; hint.style.display='block'; } }
+  else if(hint){ hint.style.display='none'; }
+}
+
 function onContainerSelect(code){
   const c=CONTAINERS.find(x=>x.code===code);
   const facEl=document.getElementById('hl-fac');
@@ -3237,6 +3473,8 @@ function onContainerSelect(code){
 function rHarvest(el){
   const s=sByKey('harvest',[...DB.harvests].sort((a,b)=>b.date.localeCompare(a.date)),{date:h=>h.date,container:h=>h.container,facility:h=>h.facility||'',lotNumber:h=>h.lotNumber||'',variety:h=>h.variety,grade:h=>h.grade||'',weight:h=>h.weight||0,usedWeight:h=>h.usedWeight||0});
   const activeContainers=getActiveContainers();
+  // #5 — known lot numbers (harvests + fruitings + receivings) for the lot↔variety memory datalist
+  const knownLots=[...new Set([...DB.harvests.map(h=>h.lotNumber),...DB.fruitings.map(f=>f.lotNumber),...(DB.receivings||[]).map(r=>r.lotNumber)].filter(Boolean))].sort();
   // Cook-lot options for pre-fruiting block loss (internal production from the Lab)
   const cookLotOpts=(DB.labBatches||[]).flatMap(b=>batchVarietyLines(b).map(v=>{
     const suffix=(v.suffix||'').trim();
@@ -3273,7 +3511,11 @@ function rHarvest(el){
     </div>
     <div id="hl-farm-info" style="display:none;background:rgba(184,130,10,.05);border:1px solid rgba(184,130,10,.2);border-radius:3px;padding:12px 16px;margin-bottom:18px;"></div>
     <div class="fg2">
-      <div class="fgl"><label>Lot Number</label><input class="fi" id="hl-lot" placeholder="e.g. LOT-001"></div>
+      <div class="fgl"><label>Lot Number</label>
+        <input class="fi" id="hl-lot" placeholder="e.g. LOT-001" list="hl-lotl" oninput="onHarvestLot()">
+        <datalist id="hl-lotl">${knownLots.map(l=>`<option value="${l}">`).join('')}</datalist>
+        <div id="hl-lot-hint" style="display:none;font-family:'Syne Mono',monospace;font-size:9px;color:var(--fern);margin-top:4px;letter-spacing:.5px;"></div>
+      </div>
       <div class="fgl"><label>Variety</label>
         <select class="fs" id="hl-v" onchange="onSimpleVarietyAdd(this)">
           ${varietyOptHTML('')}
@@ -5440,10 +5682,11 @@ function buildOrderLineItems(o){
   if(o.custom && o.price){
     return [{name:'Custom / Wholesale Order', qty:1, price:o.price, amount:o.price, acct:'Mushroom Sales'}];
   }
-  // Catalog-driven: each product becomes a line item using its code, name, and per-unit price
+  // Catalog-driven: each product becomes a line item priced from the client's price list
+  const list=orderPriceList(o);
   return ALL_PRODS.filter(p=>(o[p.dataKey]||0)>0).map(p=>{
     const qty=o[p.dataKey]||0;
-    const price=p.unitLb*p.priceLb;
+    const price=unitPrice(p.code, list);
     return {name:p.code, desc:p.name, qty, price, amount:qty*price, acct:'Mushroom Sales'};
   });
 }
@@ -5848,7 +6091,19 @@ function _traceData(q, date, container){
     return (o.usedLots||[]).some(l=>lotSet.has(norm(l)));
   });
   const preservation = (DB.preservationBatches||[]).filter(b=> (b.sources||[]).some(s=>lotSet.has(norm(s.lotNumber))) );
-  return {harvests, fruitByNum, fruitByContainer, containers, orders, preservation};
+  // #9 — upstream in-house production lineage: block batch ← spawn ← culture.
+  const receivings = (DB.receivings||[]).filter(r=> lotSet.has(norm(r.lotNumber)) );
+  const labBatches = (DB.labBatches||[]).filter(b=>{
+    if(b.lotCode && (norm(b.lotCode)===nq || nq.startsWith(norm(b.lotCode)) || lotSet.has(norm(b.lotCode)))) return true;
+    return batchVarietyLines(b).some(v=>{ const lot=(v.lot||((b.lotCode||'')+(v.suffix?' '+v.suffix:''))).trim(); return lot && (norm(lot)===nq || lotSet.has(norm(lot))); });
+  });
+  const spawnRunIds=new Set(), spawnLotSet=new Set();
+  labBatches.forEach(b=>batchVarietyLines(b).forEach(v=>{ if(v.spawnRunId) spawnRunIds.add(v.spawnRunId); if(v.spawnLot) spawnLotSet.add(norm(v.spawnLot)); }));
+  const spawnRuns=(DB.spawnRuns||[]).filter(s=> spawnRunIds.has(s.id) || spawnLotSet.has(norm(s.spawnLot)) );
+  const cultureIds=new Set(spawnRuns.map(s=>s.sourceCultureId).filter(Boolean));
+  const cultureLotSet=new Set(spawnRuns.map(s=>norm(s.sourceCultureLot)).filter(Boolean));
+  const cultures=(DB.cultures||[]).filter(c=> cultureIds.has(c.id) || cultureLotSet.has(norm(c.cultureLot)) );
+  return {harvests, fruitByNum, fruitByContainer, containers, orders, preservation, receivings, labBatches, spawnRuns, cultures};
 }
 
 function _traceCSV(rows){
@@ -5859,6 +6114,10 @@ function _traceCSV(rows){
 function dlTraceCSV(){
   const d=_traceData(_traceQ,_traceDate,_traceContainer);
   const rows=[['Stage','Date','Lot / Block #','Variety','Chamber / Container','Vendor','Detail','Customer','PO / Ref','Invoice #','Weight / Amount','Status']];
+  (d.cultures||[]).forEach(c=>rows.push(['Source Culture',c.date||'',c.cultureLot||'',c.strain||'','',c.vendor||c.parentLot||'',`${cultureFormLabel(c.form)} · G${c.generation||1}`,'','','','',c.status||'']));
+  (d.spawnRuns||[]).forEach(s=>rows.push(['Spawn',s.date||'',s.spawnLot||'',s.strain||'','',s.sourceCultureLot||'',`${s.grain||''} · ${s.bagCount||0} bags`,'','','',(s.bagCount||0)+' bags',s.status||'']));
+  (d.labBatches||[]).forEach(b=>{const vl=batchVarietyLines(b);const tb=vl.reduce((s,v)=>s+(parseInt(v.blockCount)||0),0)||b.blockCount||0;rows.push(['Block Production',b.productionDate||b.date||'',b.lotCode||b.batchNum||'',vl.map(v=>v.variety).filter(Boolean).join('; '),'','in-house',`batch ${b.batchNum||''}`,'','','',tb+' blocks','']);});
+  (d.receivings||[]).forEach(r=>rows.push(['Received',r.date||'',r.lotNumber||'',r.variety||'','',r.vendor||'',`${r.source==='internal'?'Internal':'Vendor'} · ${r.blockCount||0} blocks`,'','','',(r.blockCount||0)+' blocks',r.status||'']));
   d.fruitByNum.concat(d.fruitByContainer).forEach(f=>{
     const linked = d.fruitByNum.includes(f)?'block #':'chamber';
     const src = f.source || ((f.vendor||'')==='In-house'?'internal':'supplier');
@@ -5888,7 +6147,7 @@ function rTrace(el){
   if(q){
     const d=_traceData(q,date,container);
     const blocks=d.fruitByNum.concat(d.fruitByContainer);
-    const nothing = !blocks.length && !d.harvests.length && !d.orders.length && !d.preservation.length;
+    const nothing = !blocks.length && !d.harvests.length && !d.orders.length && !d.preservation.length && !d.labBatches.length && !d.spawnRuns.length && !d.cultures.length && !d.receivings.length;
 
     if(nothing){
       results=`<div class="card" style="padding:24px;text-align:center;color:var(--text3);">No records found for lot / block <strong style="color:var(--text2);${mn}">${q}</strong>${date?` on ${fDate(date)}`:''}${container?` in container ${container}`:''}. Check the number, or clear the date / container filters.</div>`;
@@ -5970,7 +6229,23 @@ function rTrace(el){
           <thead><tr><th style="${thL}">Customer</th><th style="${thL}">PO / Ref</th><th style="${thL}">Invoice #</th><th style="${thL}">Delivery</th><th style="${thL}">Status</th><th style="${thL}">Revenue</th></tr></thead>
           <tbody>${ordRows}</tbody></table></div>`;
 
-      results = sumChips + blockSection + harvSection + presSection + ordSection +
+      // #9 — upstream in-house production lineage (culture → spawn → block → received)
+      const prod=[];
+      if(d.cultures&&d.cultures.length) prod.push(`<div class="sh" style="margin:14px 0 8px;"><span>Ⓐ Source Cultures</span></div>
+        <div class="tw" style="margin-bottom:8px;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${thL}">Culture Lot</th><th style="${thL}">Strain</th><th style="${thL}">Form</th><th style="${thL}">Gen</th><th style="${thL}">From</th></tr></thead>
+          <tbody>${d.cultures.map(c=>`<tr><td style="${td}${mn}font-weight:700;color:var(--gold);">${c.cultureLot}</td><td style="${td}">${c.strain}</td><td style="${td}">${cultureFormLabel(c.form)}</td><td style="${td}${mn}">G${c.generation||1}</td><td style="${td}${mn}">${c.parentLot||c.vendor||''}</td></tr>`).join('')}</tbody></table></div>`);
+      if(d.spawnRuns&&d.spawnRuns.length) prod.push(`<div class="sh" style="margin:14px 0 8px;"><span>Ⓑ Spawn</span></div>
+        <div class="tw" style="margin-bottom:8px;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${thL}">Spawn Lot</th><th style="${thL}">Strain</th><th style="${thL}">Grain</th><th style="${thL}">From Culture</th><th style="${thL}">Bags</th></tr></thead>
+          <tbody>${d.spawnRuns.map(s=>`<tr><td style="${td}${mn}font-weight:700;color:var(--gold);">${s.spawnLot}</td><td style="${td}">${s.strain}</td><td style="${td}">${s.grain||'—'}</td><td style="${td}${mn}">${s.sourceCultureLot||'—'}</td><td style="${td}${mn}">${s.bagCount||0}</td></tr>`).join('')}</tbody></table></div>`);
+      if(d.labBatches&&d.labBatches.length) prod.push(`<div class="sh" style="margin:14px 0 8px;"><span>Ⓒ Block Production (in-house)</span></div>
+        <div class="tw" style="margin-bottom:8px;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${thL}">Batch</th><th style="${thL}">Cook Lot</th><th style="${thL}">Date</th><th style="${thL}">Varieties</th><th style="${thL}">Blocks</th></tr></thead>
+          <tbody>${d.labBatches.map(b=>{const vl=batchVarietyLines(b);const tb=vl.reduce((s,v)=>s+(parseInt(v.blockCount)||0),0)||b.blockCount||0;return `<tr><td style="${td}${mn}color:var(--fern);font-weight:700;">${b.batchNum||'—'}</td><td style="${td}${mn}">${b.lotCode||'—'}</td><td style="${td}${mn}">${fDate(b.productionDate||b.date)}</td><td style="${td}">${vl.map(v=>v.variety).filter(Boolean).join(', ')}</td><td style="${td}${mn}">${tb}</td></tr>`;}).join('')}</tbody></table></div>`);
+      if(d.receivings&&d.receivings.length) prod.push(`<div class="sh" style="margin:14px 0 8px;"><span>Ⓓ Received at Hydes Ferry</span></div>
+        <div class="tw" style="margin-bottom:8px;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${thL}">Received</th><th style="${thL}">Source</th><th style="${thL}">Vendor / Producer</th><th style="${thL}">Lot</th><th style="${thL}">Blocks</th></tr></thead>
+          <tbody>${d.receivings.map(r=>`<tr><td style="${td}${mn}">${fDate(r.date)}</td><td style="${td}">${r.source==='internal'?'Internal':'Vendor'}</td><td style="${td}">${r.vendor||'—'}</td><td style="${td}${mn}">${r.lotNumber}</td><td style="${td}${mn}">${r.blockCount||0}</td></tr>`).join('')}</tbody></table></div>`);
+      const prodSection = prod.length ? `<div class="sh" style="margin:6px 0 2px;"><span style="color:var(--moss);">⬆ Upstream Production Lineage</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">CULTURE → SPAWN → BLOCK → RECEIVED</span></div>`+prod.join('') : '';
+
+      results = sumChips + prodSection + blockSection + harvSection + presSection + ordSection +
         `<div style="margin-top:18px;"><button class="btn b-m" onclick="dlTraceCSV()">⬇ Export trace (CSV)</button></div>`;
     }
   } else {
@@ -6005,7 +6280,7 @@ const SPAWN_SOURCES = ['Grain Spawn','Agar Culture','Liquid Culture (LC)','Grain
 let plVarieties = [];
 let editingLabId = null;  // when set, the Production Log form is editing an existing record (admin only)
 function plSuffix(i){ return String.fromCharCode(65+i); } // 0→A, 1→B …
-function blankPlVar(){ return {suffix:'',variety:'',blockCount:'',spawnDate:'',spawnSource:'',spawnSupplier:'',spawnQuantity:'',spawnLot:'',rack:'',colDays:'',notes:''}; }
+function blankPlVar(){ return {suffix:'',variety:'',blockCount:'',spawnRunId:'',bagsUsed:'',spawnDate:'',spawnSource:'',spawnSupplier:'',spawnQuantity:'',spawnLot:'',rack:'',colDays:'',notes:''}; }
 function attrEsc(s){ return String(s==null?'':s).replace(/"/g,'&quot;'); }
 
 // Read the current per-variety DOM inputs back into the plVarieties array
@@ -6014,6 +6289,8 @@ function readPlVarieties(){
     suffix        : document.getElementById('plv-suffix-'+i)?.value || '',
     variety       : document.getElementById('plv-variety-'+i)?.value || '',
     blockCount    : document.getElementById('plv-blocks-'+i)?.value || '',
+    spawnRunId    : document.getElementById('plv-spawnrun-'+i)?.value || '',
+    bagsUsed      : document.getElementById('plv-bagsused-'+i)?.value || '',
     spawnDate     : document.getElementById('plv-spawndate-'+i)?.value || '',
     spawnSource   : document.getElementById('plv-spawnsource-'+i)?.value || '',
     spawnSupplier : document.getElementById('plv-spawnsupplier-'+i)?.value || '',
@@ -6033,6 +6310,11 @@ function renderPlVarietiesHTML(){
     const lotPreview = cookLot ? `${cookLot}${suffix?' '+suffix:''}` : (suffix?`— ${suffix}`:'—');
     const srcOpts = ['<option value="">Select spawn type…</option>']
       .concat(SPAWN_SOURCES.map(s=>`<option ${row.spawnSource===s?'selected':''} value="${s}">${s}</option>`)).join('');
+    const _oh = onHandSpawn();
+    let spawnPool = ['<option value="">— manual / no pool —</option>']
+      .concat(_oh.map(s=>`<option value="${s.id}" ${row.spawnRunId===s.id?'selected':''}>${s.spawnLot} · ${s.strain}${s.grain?' · '+s.grain:''} · ${spawnOnHand(s)} bags</option>`));
+    if(row.spawnRunId && !_oh.some(s=>s.id===row.spawnRunId)){ const s=(DB.spawnRuns||[]).find(x=>x.id===row.spawnRunId); if(s) spawnPool.push(`<option value="${s.id}" selected>${s.spawnLot} · ${s.strain} (selected)</option>`); }
+    const spawnPoolHTML = spawnPool.join('');
     return `<div class="plv-card" style="border:1px solid var(--border);border-radius:6px;padding:14px 16px;margin-bottom:12px;background:var(--paper);">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
         <span style="font-family:'Syne Mono',monospace;font-weight:700;font-size:13px;color:var(--fern);">LOT <span style="color:var(--gold);" id="plv-lotlabel-${i}">${lotPreview}</span></span>
@@ -6042,6 +6324,10 @@ function renderPlVarietiesHTML(){
         <div class="fgl"><label>Lot Suffix</label><input class="fi" id="plv-suffix-${i}" value="${attrEsc(row.suffix)}" placeholder="e.g. A" oninput="updatePlLotLabel(${i})" style="max-width:120px;"></div>
         <div class="fgl"><label>Variety / Strain</label><select class="fs" id="plv-variety-${i}" onchange="onPlVariety(this,${i})">${varietyOptHTML(row.variety)}</select></div>
         <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="0" id="plv-blocks-${i}" value="${attrEsc(row.blockCount)}" placeholder="e.g. 24"></div>
+      </div>
+      <div class="fg2" style="background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.18);border-radius:5px;padding:10px 12px;margin-bottom:10px;">
+        <div class="fgl"><label>Spawn (from pool) <span style="color:var(--text3);font-size:9px;">draws down spawn inventory</span></label><select class="fs" id="plv-spawnrun-${i}" onchange="onPlSpawnSelect(${i})">${spawnPoolHTML}</select></div>
+        <div class="fgl"><label>Bags Used</label><input class="fi" type="number" min="0" step="1" id="plv-bagsused-${i}" value="${attrEsc(row.bagsUsed)}" placeholder="# bags" style="max-width:120px;"></div>
       </div>
       <div class="fg2">
         <div class="fgl"><label>Spawn Date</label><input class="fi" type="date" id="plv-spawndate-${i}" value="${attrEsc(row.spawnDate)}"></div>
@@ -6066,6 +6352,18 @@ function renderPlVarietiesHTML(){
 function paintPlVarieties(){
   const c = document.getElementById('pl-varieties');
   if(c) c.innerHTML = renderPlVarietiesHTML();
+}
+
+// Picking spawn from the pool auto-fills the lot/supplier and (if empty) variety.
+function onPlSpawnSelect(i){
+  const id=document.getElementById('plv-spawnrun-'+i)?.value;
+  const s=(DB.spawnRuns||[]).find(x=>x.id===id); if(!s) return;
+  const setv=(el,v)=>{const e=document.getElementById(el); if(e) e.value=v;};
+  setv('plv-spawnlot-'+i, s.spawnLot);
+  setv('plv-spawnsupplier-'+i, `${s.strain}${s.grain?(' · '+s.grain):''} (spawn ${s.spawnLot})`);
+  const src=document.getElementById('plv-spawnsource-'+i);
+  if(src){ const opt=[...src.options].find(o=>/grain/i.test(o.value)); if(opt) src.value=opt.value; }
+  const v=document.getElementById('plv-variety-'+i); if(v && !v.value){ v.value=s.strain; }
 }
 function addPlVariety(){ plVarieties = readPlVarieties(); plVarieties.push(blankPlVar()); paintPlVarieties(); }
 function removePlVariety(i){ plVarieties = readPlVarieties(); plVarieties.splice(i,1); if(!plVarieties.length) plVarieties.push(blankPlVar()); paintPlVarieties(); }
@@ -6109,8 +6407,182 @@ function labStatusBadge(b){
   return {label:'Draft',col:'var(--text3)'};
 }
 
+// ── LAB PIPELINE: Cultures → Spawn → Substrate (blocks) ──
+const GRAIN_TYPES = ['Rye','Millet','Sorghum','Milo','Wheat','Oats','Popcorn'];
+const CULTURE_FORMS = [['agar','Agar Plate'],['lc','Liquid Culture (LC)'],['slant','Agar Slant'],['spore-clone','Spore / Clone Source']];
+const CULTURE_SOURCES = [['spore','Spore print / syringe'],['clone','Tissue clone'],['vendor','Vendor / purchased'],['transfer','Transfer from culture']];
+const CULTURE_STATUSES = [['viable','Viable'],['in-use','In use'],['contaminated','Contaminated'],['retired','Retired']];
+let _labSub = 'substrate';   // 'cultures' | 'spawn' | 'substrate'
+let _cultureQ = '';
+let _substrateQ = '';
+function onSubstrateSearch(v){ _substrateQ=v; clearTimeout(window._subST); window._subST=setTimeout(()=>rLab(document.getElementById('main-views')),250); }
+
+function setLabSub(s){ _labSub=s; rLab(document.getElementById('main-views')); }
 function rLab(el){
+  const tabs=[['substrate','🧱 Substrate (Blocks)'],['spawn','🌾 Spawn'],['cultures','🧬 Cultures']];
+  el.innerHTML=`
+    <div class="ph"><div class="ph-t">🧫 Lab — Carthage</div><div class="ph-s">Cultures → Spawn → Substrate (blocks) · production pipeline</div></div>
+    <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">${tabs.map(([k,lbl])=>`<button class="btn ${_labSub===k?'b-m':'b-g'} b-sm" onclick="setLabSub('${k}')">${lbl}</button>`).join('')}</div>
+    <div id="lab-sub"></div>`;
+  const sub=document.getElementById('lab-sub');
+  if(_labSub==='cultures') rLabCultures(sub);
+  else if(_labSub==='spawn') rLabSpawn(sub);
+  else rLabSubstrate(sub);
+}
+
+// ── CULTURES (full library + genealogy) ──
+function nextCultureLot(){ const yr=new Date().getFullYear(); const ex=(DB.cultures||[]).filter(c=>c.cultureLot&&c.cultureLot.startsWith('CUL-'+yr+'-')).map(c=>parseInt(c.cultureLot.slice(-3))||0); return 'CUL-'+yr+'-'+String((ex.length?Math.max(...ex):0)+1).padStart(3,'0'); }
+function cultureFormLabel(f){ return (CULTURE_FORMS.find(x=>x[0]===f)||[,f])[1]; }
+function cultureStatusBadge(s){ const m={viable:['Viable','var(--fern)'],'in-use':['In use','var(--amber)'],contaminated:['Contam','var(--rust)'],retired:['Retired','var(--text3)']}; const [l,c]=m[s]||['—','var(--text3)']; return `<span style="font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;color:${c};background:${c}22;border:1px solid ${c}44;border-radius:3px;padding:2px 7px;">${l}</span>`; }
+function onCultureSourceChange(){ const s=document.getElementById('cl-source')?.value; const pw=document.getElementById('cl-parent-wrap'); const vw=document.getElementById('cl-vendor-wrap'); if(pw) pw.style.display=s==='transfer'?'':'none'; if(vw) vw.style.display=s==='vendor'?'':'none'; }
+function onCultureParent(){ const id=document.getElementById('cl-parent')?.value; const p=(DB.cultures||[]).find(c=>c.id===id); if(!p) return; const g=document.getElementById('cl-gen'); if(g) g.value=(parseInt(p.generation)||1)+1; const st=document.getElementById('cl-strain'); if(st&&!st.value) st.value=p.strain||''; }
+function onCultureSearch(v){ _cultureQ=v; clearTimeout(window._clST); window._clST=setTimeout(()=>rLab(document.getElementById('main-views')),250); }
+async function logCulture(){
+  const val=id=>(document.getElementById(id)?.value||'').trim();
+  const strain=val('cl-strain'); if(!strain){ alert('Strain / species is required.'); return; }
+  const source=val('cl-source'); const parentId=val('cl-parent');
+  let parentLot=''; if(source==='transfer'&&parentId){ const p=DB.cultures.find(c=>c.id===parentId); if(p) parentLot=p.cultureLot; }
+  const cultureLot=nextCultureLot();
+  const data={date:val('cl-date')||tday(),strain,form:val('cl-form'),source,parentId:(source==='transfer'?parentId:null)||null,parentLot,vendor:(source==='vendor'?val('cl-vendor'):''),generation:parseInt(val('cl-gen'))||1,cultureLot,status:val('cl-status')||'viable',loggedBy:S.name||'',notes:val('cl-notes')};
+  const id=await FS.add('cultures',data); DB.cultures.push({id,...data});
+  logAudit('culture_logged',`Culture ${cultureLot} — ${strain} (${cultureFormLabel(data.form)}) G${data.generation}`);
+  toast('cl-t'); setTimeout(()=>rLab(document.getElementById('main-views')),600);
+}
+function clrCulture(){ ['cl-strain','cl-vendor','cl-notes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';}); const g=document.getElementById('cl-gen'); if(g) g.value='1'; }
+
+function rLabCultures(el){
+  const q=(_cultureQ||'').toLowerCase();
+  const list=[...(DB.cultures||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+    .filter(c=>!q || [c.cultureLot,c.strain,c.form,c.status,c.vendor,c.parentLot].some(x=>(x||'').toString().toLowerCase().includes(q)));
+  const parentOpts=(DB.cultures||[]).filter(c=>c.status!=='contaminated'&&c.status!=='retired').sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+    .map(c=>`<option value="${c.id}">${c.cultureLot} · ${c.strain} (G${c.generation||1})</option>`).join('');
+  const rows=list.length? list.map(c=>`<tr>
+    <td class="mn" style="color:var(--gold);font-weight:700;">${c.cultureLot}</td>
+    <td style="font-weight:500;">${c.strain}</td>
+    <td>${cultureFormLabel(c.form)}</td>
+    <td class="mn">G${c.generation||1}</td>
+    <td class="mn" style="font-size:10px;color:var(--text3);">${c.parentLot||c.vendor||((CULTURE_SOURCES.find(s=>s[0]===c.source)||[,''])[1])}</td>
+    <td>${cultureStatusBadge(c.status)}</td>
+    <td class="mn">${fDate(c.date)}</td>
+    <td style="font-size:11px;color:var(--text3);">${c.loggedBy||''}</td>
+  </tr>`).join('') : `<tr><td colspan="8" class="empty">No cultures logged${q?' match your search':' yet'}.</td></tr>`;
+  el.innerHTML=`
+    ${canEdit()?`<div class="card"><div class="card-t">Log Culture</div>
+      <div class="fg2">
+        <div class="fgl"><label>Date</label><input class="fi" type="date" id="cl-date" value="${tday()}"></div>
+        <div class="fgl"><label>Strain / Species</label><input class="fi" id="cl-strain" list="cl-strainl" placeholder="e.g. Blue Oyster"><datalist id="cl-strainl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+        <div class="fgl"><label>Form</label><select class="fs" id="cl-form">${CULTURE_FORMS.map(f=>`<option value="${f[0]}">${f[1]}</option>`).join('')}</select></div>
+        <div class="fgl"><label>Source</label><select class="fs" id="cl-source" onchange="onCultureSourceChange()">${CULTURE_SOURCES.map(s=>`<option value="${s[0]}">${s[1]}</option>`).join('')}</select></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl" id="cl-parent-wrap" style="display:none;"><label>Parent Culture <span style="color:var(--text3);font-size:9px;">genealogy</span></label><select class="fs" id="cl-parent" onchange="onCultureParent()"><option value="">— select parent —</option>${parentOpts}</select></div>
+        <div class="fgl" id="cl-vendor-wrap" style="display:none;"><label>Vendor</label><input class="fi" id="cl-vendor" placeholder="Vendor name"></div>
+        <div class="fgl"><label>Generation</label><input class="fi" type="number" min="1" id="cl-gen" value="1"></div>
+        <div class="fgl"><label>Status</label><select class="fs" id="cl-status">${CULTURE_STATUSES.map(s=>`<option value="${s[0]}">${s[1]}</option>`).join('')}</select></div>
+      </div>
+      <div class="fgl" style="margin-top:6px;margin-bottom:14px;"><label>Notes</label><textarea class="fta" id="cl-notes" placeholder="Media, observations, contamination notes…"></textarea></div>
+      <div class="form-acts"><button class="btn b-m b-lg" onclick="logCulture()">Log Culture</button><button class="btn b-g" onclick="clrCulture()">Clear</button></div>
+      <div class="toast" id="cl-t">✓ Culture logged</div>
+    </div>`:''}
+    <div class="sh" style="margin-top:24px;"><span>Culture Library</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${(DB.cultures||[]).length} CULTURES</span></div>
+    <div style="margin-bottom:12px;"><input class="fi" id="cl-search" placeholder="🔍 Search by lot, strain, form, status, parent…" value="${(_cultureQ||'').replace(/"/g,'&quot;')}" oninput="onCultureSearch(this.value)"></div>
+    <div class="tw"><table>
+      <thead><tr><th>Lot</th><th>Strain</th><th>Form</th><th>Gen</th><th>From</th><th>Status</th><th>Date</th><th>By</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  const si=document.getElementById('cl-search'); if(si && _cultureQ){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); }
+}
+
+// ── SPAWN (produced from cultures; consumed by block production) ──
+let _spawnQ = '';
+const SPAWN_RUN_STATUSES = [['colonizing','Colonizing'],['ready','Ready'],['used','Used up'],['contaminated','Contaminated']];
+function nextSpawnLot(){ const yr=new Date().getFullYear(); const ex=(DB.spawnRuns||[]).filter(s=>s.spawnLot&&s.spawnLot.startsWith('SPN-'+yr+'-')).map(s=>parseInt(s.spawnLot.slice(-3))||0); return 'SPN-'+yr+'-'+String((ex.length?Math.max(...ex):0)+1).padStart(3,'0'); }
+function spawnOnHand(s){ return Math.max(0,(parseInt(s.bagCount)||0)-(parseInt(s.usedBags)||0)); }
+function onHandSpawn(){ return (DB.spawnRuns||[]).filter(s=>s.status!=='contaminated'&&s.status!=='used'&&spawnOnHand(s)>0).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
+function spawnStatusBadge(s){ const m={colonizing:['Colonizing','var(--amber)'],ready:['Ready','var(--fern)'],used:['Used','var(--text3)'],contaminated:['Contam','var(--rust)']}; const [l,c]=m[s]||['—','var(--text3)']; return `<span style="font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;color:${c};background:${c}22;border:1px solid ${c}44;border-radius:3px;padding:2px 7px;">${l}</span>`; }
+function onSpawnCulture(){ const id=document.getElementById('sp-culture')?.value; const c=(DB.cultures||[]).find(x=>x.id===id); if(c){ const st=document.getElementById('sp-strain'); if(st&&!st.value) st.value=c.strain||''; } }
+function onSpawnSearch(v){ _spawnQ=v; clearTimeout(window._spST); window._spST=setTimeout(()=>rLab(document.getElementById('main-views')),250); }
+async function logSpawn(){
+  const val=id=>(document.getElementById(id)?.value||'').trim();
+  const sourceCultureId=val('sp-culture'); const cult=(DB.cultures||[]).find(c=>c.id===sourceCultureId);
+  const strain=val('sp-strain')||cult?.strain||''; if(!strain){ alert('Strain is required (pick a source culture or type it).'); return; }
+  const bagCount=parseInt(val('sp-bags'))||0; if(bagCount<1){ alert('Bag count must be at least 1.'); return; }
+  const spawnLot=nextSpawnLot();
+  const data={date:val('sp-date')||tday(),sourceCultureId:sourceCultureId||null,sourceCultureLot:cult?.cultureLot||'',strain,grain:val('sp-grain'),bagCount,usedBags:0,spawnLot,status:val('sp-status')||'colonizing',crew:val('sp-crew'),loggedBy:S.name||'',notes:val('sp-notes')};
+  const id=await FS.add('spawnRuns',data); DB.spawnRuns.push({id,...data});
+  if(cult&&cult.status==='viable'){ cult.status='in-use'; try{FS.update('cultures',cult.id,{status:'in-use'});}catch(e){} }
+  logAudit('spawn_logged',`Spawn ${spawnLot} — ${strain} on ${data.grain||'grain'} (${bagCount} bags) from ${cult?.cultureLot||'culture'}`);
+  toast('sp-t'); setTimeout(()=>rLab(document.getElementById('main-views')),600);
+}
+function clrSpawn(){ ['sp-strain','sp-bags','sp-crew','sp-notes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';}); }
+
+function rLabSpawn(el){
+  const q=(_spawnQ||'').toLowerCase();
+  const onHand=onHandSpawn(); const totalBags=onHand.reduce((s,r)=>s+spawnOnHand(r),0);
+  const history=[...(DB.spawnRuns||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+    .filter(s=>!q || [s.spawnLot,s.strain,s.grain,s.status,s.sourceCultureLot].some(x=>(x||'').toString().toLowerCase().includes(q)));
+  const cultureOpts=(DB.cultures||[]).filter(c=>c.status!=='contaminated'&&c.status!=='retired').sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+    .map(c=>`<option value="${c.id}">${c.cultureLot} · ${c.strain} (${cultureFormLabel(c.form)} G${c.generation||1})</option>`).join('');
+  const onHandRows=onHand.length? onHand.map(s=>`<tr>
+    <td class="mn" style="color:var(--gold);font-weight:700;">${s.spawnLot}</td><td style="font-weight:500;">${s.strain}</td><td>${s.grain||'—'}</td>
+    <td class="mn" style="font-size:10px;color:var(--text3);">${s.sourceCultureLot||'—'}</td><td class="mn">${s.bagCount||0}</td><td class="mn">${s.usedBags||0}</td>
+    <td class="mn" style="color:var(--fern);font-weight:700;">${spawnOnHand(s)}</td><td>${spawnStatusBadge(s.status)}</td>
+  </tr>`).join('') : `<tr><td colspan="8" class="empty">No spawn on hand — log a spawn run below.</td></tr>`;
+  const histRows=history.length? history.map(s=>`<tr>
+    <td class="mn">${fDate(s.date)}</td><td class="mn" style="color:var(--gold);font-weight:700;">${s.spawnLot}</td><td style="font-weight:500;">${s.strain}</td>
+    <td>${s.grain||'—'}</td><td class="mn" style="font-size:10px;color:var(--text3);">${s.sourceCultureLot||'—'}</td><td class="mn">${s.bagCount||0}</td>
+    <td class="mn">${spawnOnHand(s)}</td><td>${spawnStatusBadge(s.status)}</td><td style="font-size:11px;color:var(--text3);">${s.loggedBy||''}</td>
+  </tr>`).join('') : `<tr><td colspan="9" class="empty">No spawn runs logged${q?' match your search':' yet'}.</td></tr>`;
+  el.innerHTML=`
+    <div class="stats" style="margin-bottom:20px;">
+      <div class="sc g"><div class="sc-l">Spawn Bags On Hand</div><div class="sc-v">${totalBags}</div><div class="sc-n">${onHand.length} run${onHand.length===1?'':'s'} available</div></div>
+      <div class="sc"><div class="sc-l">Spawn Runs</div><div class="sc-v">${(DB.spawnRuns||[]).length}</div><div class="sc-n">all-time</div></div>
+    </div>
+    ${canEdit()?`<div class="card"><div class="card-t">Log Spawn Run</div>
+      <div class="fg2">
+        <div class="fgl"><label>Date</label><input class="fi" type="date" id="sp-date" value="${tday()}"></div>
+        <div class="fgl"><label>Source Culture</label><select class="fs" id="sp-culture" onchange="onSpawnCulture()"><option value="">— select culture —</option>${cultureOpts}</select></div>
+        <div class="fgl"><label>Strain</label><input class="fi" id="sp-strain" list="sp-strainl" placeholder="auto from culture"><datalist id="sp-strainl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+        <div class="fgl"><label>Grain</label><select class="fs" id="sp-grain">${GRAIN_TYPES.map(g=>`<option value="${g}">${g}</option>`).join('')}</select></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label># of Bags</label><input class="fi" type="number" min="1" id="sp-bags" placeholder="bags produced"></div>
+        <div class="fgl"><label>Status</label><select class="fs" id="sp-status">${SPAWN_RUN_STATUSES.filter(s=>s[0]!=='used').map(s=>`<option value="${s[0]}">${s[1]}</option>`).join('')}</select></div>
+        <div class="fgl"><label>Crew</label><input class="fi" id="sp-crew" value="${(S.name||'').replace(/"/g,'&quot;')}"></div>
+      </div>
+      <div class="fgl" style="margin-top:6px;margin-bottom:14px;"><label>Notes</label><textarea class="fta" id="sp-notes" placeholder="Colonization, contamination checks…"></textarea></div>
+      <div class="form-acts"><button class="btn b-m b-lg" onclick="logSpawn()">Log Spawn Run</button><button class="btn b-g" onclick="clrSpawn()">Clear</button></div>
+      <div class="toast" id="sp-t">✓ Spawn run logged</div>
+    </div>`:''}
+    <div class="sh" style="margin-top:24px;"><span>Spawn On Hand</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:${totalBags>0?'var(--fern)':'var(--text3)'};">${totalBags} BAGS</span></div>
+    <div class="tw" style="margin-bottom:24px;"><table>
+      <thead><tr><th>Spawn Lot</th><th>Strain</th><th>Grain</th><th>From Culture</th><th>Made</th><th>Used</th><th>On Hand</th><th>Status</th></tr></thead>
+      <tbody>${onHandRows}</tbody></table></div>
+    <div class="sh"><span>Spawn History</span></div>
+    <div style="margin:10px 0;"><input class="fi" id="sp-search" placeholder="🔍 Search by lot, strain, grain, culture…" value="${(_spawnQ||'').replace(/"/g,'&quot;')}" oninput="onSpawnSearch(this.value)"></div>
+    <div class="tw"><table>
+      <thead><tr><th>Date</th><th>Spawn Lot</th><th>Strain</th><th>Grain</th><th>From Culture</th><th>Bags</th><th>On Hand</th><th>Status</th><th>By</th></tr></thead>
+      <tbody>${histRows}</tbody></table></div>`;
+  const si=document.getElementById('sp-search'); if(si&&_spawnQ){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); }
+}
+
+function rCordyceps(el){
+  el.innerHTML=`<div class="ph"><div class="ph-t">🐛 Cordyceps</div><div class="ph-s">Cordyceps production — separate track</div></div>
+    <div class="card" style="padding:28px;text-align:center;color:var(--text3);">
+      <div style="font-size:30px;margin-bottom:10px;">🐛</div>
+      <div style="font-weight:600;color:var(--text2);margin-bottom:6px;">Cordyceps track — shell</div>
+      <div style="font-size:13px;line-height:1.7;max-width:500px;margin:0 auto;">Reserved for the cordyceps workflow (substrate / recipe → inoculation → grow / incubation → harvest). The tab and its data collection are wired so we can drop in the real workflow once you share how you run cordyceps.</div>
+    </div>`;
+}
+
+function rLabSubstrate(el){
   const allBatches = [...DB.labBatches].sort((a,b)=>(b.productionDate||b.date||'').localeCompare(a.productionDate||a.date||''));
+  const _subq=(_substrateQ||'').toLowerCase();
+  const shownBatches = !_subq ? allBatches : allBatches.filter(b=>{
+    const vl=batchVarietyLines(b);
+    const hay=[b.batchNum,b.lotCode,b.productionDate,b.date?fDate(b.date):'',b.productionDate?fDate(b.productionDate):'',b.substrateOrigin,b.order,b.substrateBatch,...vl.map(v=>v.variety),...vl.map(v=>v.spawnLot)].filter(Boolean).join(' ').toLowerCase();
+    return hay.includes(_subq);
+  });
   // Fresh per-variety form buffer each time the tab renders
   plVarieties = [blankPlVar()];
   // Edit mode: load the record being edited into the form buffer (admin only)
@@ -6134,10 +6606,7 @@ function rLab(el){
   const secHead = (title) => `<div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:3px;font-weight:700;color:var(--text2);text-transform:uppercase;border-bottom:2px solid var(--border);padding-bottom:6px;margin:20px 0 14px;">— ${title} —</div>`;
 
   el.innerHTML=`
-    <div class="ph">
-      <div class="ph-t">🧫 Lab — Carthage</div>
-      <div class="ph-s">Production Log · block making · sterilization · laboratory · inoculation room</div>
-    </div>
+    <div class="sh" style="margin-bottom:16px;"><span>Substrate / Block Production</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">MIX · STERILIZE · INOCULATE</span></div>
 
     <!-- ══ PRODUCTION LOG FORM ══ -->
     <div class="card"${editBatch?' style="border:2px solid var(--gold);"':''}>
@@ -6225,11 +6694,14 @@ function rLab(el){
     <!-- ══ LOG TABLE ══ -->
     <div class="sh" style="margin-top:28px;">
       <span>Production Log History</span>
-      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${allBatches.length} RECORDS</span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${shownBatches.length}${_subq?' / '+allBatches.length:''} RECORDS</span>
     </div>
+    <div style="margin:10px 0 14px;"><input class="fi" id="sub-search" placeholder="🔍 Search by batch #, cook lot, variety, date, substrate, order…" value="${(_substrateQ||'').replace(/"/g,'&quot;')}" oninput="onSubstrateSearch(this.value)"></div>
     ${allBatches.length===0
       ? '<div class="empty" style="padding:24px;">No production logs yet.</div>'
-      : allBatches.map(b=>{
+      : shownBatches.length===0
+      ? '<div class="empty" style="padding:24px;">No production logs match your search.</div>'
+      : shownBatches.map(b=>{
           const st = labStatusBadge(b);
           const vlines = batchVarietyLines(b);
           const totalBlocks = vlines.reduce((s,v)=>s+(parseInt(v.blockCount)||0),0) || b.blockCount || 0;
@@ -6282,7 +6754,7 @@ function rLab(el){
                       ${lost?`<div style="font-size:11px;color:#9a2a2a;font-weight:600;">⚠ ${lost} lost pre-fruiting → ${Math.max(0,made-lost)} to fruiting</div>`:''}
                       ${v.spawnDate?`<div style="font-size:11px;color:var(--text2);">Spawn: ${fDate(v.spawnDate)}${v.spawnSource?' · '+v.spawnSource:''}</div>`:(v.spawnSource?`<div style="font-size:11px;color:var(--text2);">Spawn Type: ${v.spawnSource}</div>`:'')}
                       ${v.spawnSupplier?`<div style="font-size:11px;color:var(--text2);">Supplier: ${v.spawnSupplier}</div>`:''}
-                      ${v.spawnLot?`<div style="font-size:11px;color:var(--text2);">Spawn Lot: <span style="font-family:'Syne Mono',monospace;font-weight:700;">${v.spawnLot}</span>${v.spawnQuantity?' · '+v.spawnQuantity:''}</div>`:(v.spawnQuantity?`<div style="font-size:11px;color:var(--text2);">${v.spawnQuantity}</div>`:'')}
+                      ${v.spawnLot?`<div style="font-size:11px;color:var(--text2);">Spawn Lot: <span style="font-family:'Syne Mono',monospace;font-weight:700;">${v.spawnLot}</span>${v.bagsUsed?' · '+v.bagsUsed+' bags':''}${v.spawnQuantity?' · '+v.spawnQuantity:''}</div>`:(v.spawnQuantity?`<div style="font-size:11px;color:var(--text2);">${v.spawnQuantity}</div>`:'')}
                       ${v.rack?`<div style="font-size:11px;color:var(--text2);">Rack: ${v.rack}${v.colDays?' · ~'+v.colDays+'d colonize':''}</div>`:(v.colDays?`<div style="font-size:11px;color:var(--text2);">~${v.colDays}d colonize</div>`:'')}
                       ${v.notes?`<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:2px;">${v.notes}</div>`:''}
                     </div>`;
@@ -6300,6 +6772,7 @@ function rLab(el){
         }).join('')
     }
   `;
+  const ss=document.getElementById('sub-search'); if(ss && _substrateQ){ ss.focus(); ss.setSelectionRange(ss.value.length,ss.value.length); }
 }
 
 async function logProductionBatch(){
@@ -6319,6 +6792,8 @@ async function logProductionBatch(){
       lot          : lotCode ? `${lotCode}${suffix?' '+suffix:''}` : '',
       variety      : v.variety,
       blockCount   : parseInt(v.blockCount)||0,
+      spawnRunId   : v.spawnRunId||'',
+      bagsUsed     : parseInt(v.bagsUsed)||0,
       spawnDate    : v.spawnDate||'',
       spawnSource  : v.spawnSource||'',
       spawnSupplier: (v.spawnSupplier||'').trim(),
@@ -6398,9 +6873,23 @@ async function logProductionBatch(){
     data.id='demo-lb-'+Date.now().toString(36);
   }
   DB.labBatches.push(data);
+  await applySpawnDraw(varieties);
   logAudit('lab_production_log',`${batchNum} — ${totalBlocks} blocks · ${varieties.length} variety(ies): ${data.strain}`);
   toast('pl-t');
   setTimeout(()=>renderC(),900);
+}
+
+// Draw produced spawn down as block production consumes it (create path only).
+async function applySpawnDraw(varieties){
+  for(const v of (varieties||[])){
+    if(v.spawnRunId && (parseInt(v.bagsUsed)||0)>0){
+      const s=(DB.spawnRuns||[]).find(x=>x.id===v.spawnRunId); if(!s) continue;
+      s.usedBags=(parseInt(s.usedBags)||0)+(parseInt(v.bagsUsed)||0);
+      const upd={usedBags:s.usedBags};
+      if(spawnOnHand(s)<=0){ s.status='used'; upd.status='used'; }
+      try{ await FS.update('spawnRuns',s.id,upd); }catch(e){ console.warn('spawn draw:',e); }
+    }
+  }
 }
 
 function openEditLabBatch(id){
@@ -6978,6 +7467,7 @@ function openAddClient(){
     <div class="fg2">
       <div class="fgl"><label>Venue / Business Name</label><input class="fi" id="ac-n" placeholder="e.g. The Catbird Seat"></div>
       <div class="fgl"><label>Client Type</label><select class="fs" id="ac-t"><option>Restaurant</option><option>Retail</option><option>Individual</option><option>Wholesale</option></select></div>
+      <div class="fgl"><label>Price List</label><select class="fs" id="ac-pl">${PRICE_LISTS.map(l=>`<option ${l==='Base'?'selected':''}>${l}</option>`).join('')}</select></div>
       <div class="fgl"><label>Delivery Day</label><select class="fs" id="ac-d"><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option></select></div>
       <div class="fgl"><label>Password <span style="font-size:9px;color:var(--text3);">(leave blank for temp code)</span></label><input class="fi" type="text" id="ac-pw" placeholder="Set a password, or leave blank"></div>
     </div>
@@ -7026,6 +7516,7 @@ async function saveNewClient(){
       acctContact:document.getElementById('ac-an').value.trim(),
       acctEmail:document.getElementById('ac-ae').value.trim(),
       acctPhone:document.getElementById('ac-aph').value.trim(),
+      priceList:document.getElementById('ac-pl').value,
       addr:document.getElementById('ac-addr').value.trim(),
       city:document.getElementById('ac-city').value.trim(),
       state:document.getElementById('ac-state').value.trim(),
@@ -7064,6 +7555,7 @@ function openEdit(cid){
     <div class="fg2">
       <div class="fgl"><label>Venue Name</label><input class="fi" id="ec-n" value="${c.name}"></div>
       <div class="fgl"><label>Client Type</label><select class="fs" id="ec-t">${['Restaurant','Retail','Individual','Wholesale'].map(t=>`<option ${c.type===t?'selected':''}>${t}</option>`).join('')}</select></div>
+      <div class="fgl"><label>Price List</label><select class="fs" id="ec-pl">${PRICE_LISTS.map(l=>`<option ${(c.priceList||'Base')===l?'selected':''}>${l}</option>`).join('')}</select></div>
       <div class="fgl"><label>Delivery Day</label><select class="fs" id="ec-d">${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=>`<option ${c.day===d?'selected':''}>${d}</option>`).join('')}</select></div>
     </div>
     <div style="margin-top:18px;margin-bottom:6px;" class="sh">Order Contact</div>
@@ -7111,12 +7603,13 @@ async function saveEdit(cid){
   c.city=document.getElementById('ec-city').value.trim();
   c.state=document.getElementById('ec-state').value.trim();
   c.zip=document.getElementById('ec-zip').value.trim();
+  c.priceList=document.getElementById('ec-pl').value;
   c.notes=document.getElementById('ec-notes').value.trim();
   c.isWholesale=c.type==='Wholesale';
   const npw=document.getElementById('ec-pw').value.trim();
   let _npwH=null;
   if(npw){ _npwH=await derivePwHash(npw); c.pwHash=_npwH; delete c.pw; c.firstLogin=true }
-  const upd={name:c.name,contact:c.contact,type:c.type,day:c.day,email:c.email,phone:c.phone,acctContact:c.acctContact,acctEmail:c.acctEmail,acctPhone:c.acctPhone,addr:c.addr,city:c.city,state:c.state,zip:c.zip,notes:c.notes,isWholesale:c.isWholesale};
+  const upd={name:c.name,contact:c.contact,type:c.type,day:c.day,email:c.email,phone:c.phone,acctContact:c.acctContact,acctEmail:c.acctEmail,acctPhone:c.acctPhone,priceList:c.priceList,addr:c.addr,city:c.city,state:c.state,zip:c.zip,notes:c.notes,isWholesale:c.isWholesale};
   if(npw){ upd.pwHash=_npwH; upd.pw=firebase.firestore.FieldValue.delete(); upd.firstLogin=true }
   FS.update('clients',cid,upd);
   toast('ec-t','✓ Client updated');
@@ -7435,7 +7928,28 @@ function rOrdersAll(el){
 }
 
 // ── SECURITY VIEW (Admin only) ──
+let _revQ = '';
+function onRevSearch(v){ _revQ=v; clearTimeout(window._revST); window._revST=setTimeout(()=>{ const mv=document.getElementById('main-views'); if(mv) rSecurity(mv); },250); }
+
 function rSecurity(el){
+  // #13 — field-level revision history (every create/update/delete, attributed)
+  const _rq=(_revQ||'').toLowerCase();
+  const _revs=[...(DB.revisions||[])].sort((a,b)=>(b.ts||'').localeCompare(a.ts||''))
+    .filter(r=>!_rq || [r.collection,r.docId,r.by,r.action,(r.fields||[]).join(' '),JSON.stringify(r.changes||{})].some(x=>(x||'').toString().toLowerCase().includes(_rq)))
+    .slice(0,250);
+  const _revRows=_revs.length? _revs.map(r=>{
+    const dt=new Date(r.ts);
+    const when=dt.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' '+dt.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+    const chg=(r.fields||[]).slice(0,6).map(f=>{ let v=r.changes?r.changes[f]:''; if(v&&typeof v==='object') v=JSON.stringify(v); v=String(v==null?'':v); if(v.length>40) v=v.slice(0,40)+'…'; return `<span style="font-family:'Syne Mono',monospace;font-size:9px;background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:1px 5px;margin:1px;display:inline-block;">${f}${r.action!=='delete'?'='+v:''}</span>`; }).join(' ');
+    const actCol={create:'var(--fern)',update:'var(--amber)',set:'var(--amber)',delete:'var(--rust)'}[r.action]||'var(--text3)';
+    return `<tr><td class="mn" style="font-size:10px;white-space:nowrap;">${when}</td><td style="font-size:12px;font-weight:500;">${r.by||'—'}</td><td><span style="font-family:'Syne Mono',monospace;font-size:9px;color:${actCol};font-weight:700;">${(r.action||'').toUpperCase()}</span></td><td class="mn" style="font-size:11px;">${r.collection}</td><td class="mn" style="font-size:9px;color:var(--text3);">${(r.docId||'').slice(0,8)}</td><td>${chg||'<span style="color:var(--text3);">—</span>'}</td></tr>`;
+  }).join('') : `<tr><td colspan="6" class="empty">No changes recorded${_rq?' match your search':' yet'}.</td></tr>`;
+  const revSection=`
+    <div class="sh" style="margin:24px 0 12px;"><span>Revision History — all changes</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${(DB.revisions||[]).length} CHANGES</span></div>
+    <div style="margin-bottom:10px;"><input class="fi" id="rev-search" placeholder="🔍 Search changes by who, record type, field, value…" value="${(_revQ||'').replace(/"/g,'&quot;')}" oninput="onRevSearch(this.value)"></div>
+    <div class="tw" style="margin-bottom:28px;"><table>
+      <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Record</th><th>Doc</th><th>Changes</th></tr></thead>
+      <tbody>${_revRows}</tbody></table></div>`;
   const logs=[...DB.loginHistory].sort((a,b)=>b.timestamp.localeCompare(a.timestamp));
   const users=DB.users.filter(u=>u.active!==false);
   const recentLogs=logs.slice(0,50);
@@ -7589,6 +8103,8 @@ function rSecurity(el){
       <tbody>${logRows}</tbody>
     </table></div>
 
+    ${revSection}
+
     ${auditSection}
 
     <div class="card" style="margin-bottom:0;">
@@ -7603,6 +8119,7 @@ function rSecurity(el){
       </div>
     </div>
   `;
+  const _rs=document.getElementById('rev-search'); if(_rs && _revQ){ _rs.focus(); _rs.setSelectionRange(_rs.value.length,_rs.value.length); }
 }
 
 // ── REPORTS (Accountant) ──
@@ -7645,6 +8162,16 @@ function buildLaborReport(){
   const grandTotal=sortedContainers.reduce((s,[,d])=>s+d.total,0);
 
   const actColors={Harvesting:'var(--fern)',Fruiting:'var(--blue)',Cleaning:'#7aabcc',Inspection:'var(--amber)',Maintenance:'var(--rust)',Manual:'var(--text2)'};
+
+  // #10 — per-employee container time
+  const byEmp={};
+  filtered.forEach(s=>{ const e=s.employeeName||'—'; if(!byEmp[e]) byEmp[e]={total:0,sessions:0,acts:{}}; byEmp[e].total+=(s.durationMinutes||0); byEmp[e].sessions++; byEmp[e].acts[s.activity]=(byEmp[e].acts[s.activity]||0)+(s.durationMinutes||0); });
+  const sortedEmp=Object.entries(byEmp).sort((a,b)=>b[1].total-a[1].total);
+  // #2 — lab / cook day personnel (from lab batches in the date range)
+  const cooks=(DB.labBatches||[]).filter(b=>{ const d=b.productionDate||b.sterilizationDate||b.date||''; return d&&d>=fromDate&&d<=toDate; }).sort((a,b)=>(b.productionDate||b.date||'').localeCompare(a.productionDate||a.date||''));
+  const labDaysByEmp={};
+  cooks.forEach(b=>{ const d=b.productionDate||b.sterilizationDate||b.date; const crew=[...String(b.sterCrew||'').split(','),...String(b.inocCrew||'').split(',')].map(x=>x.trim()).filter(Boolean); [...new Set(crew)].forEach(n=>{ if(!labDaysByEmp[n]) labDaysByEmp[n]=new Set(); labDaysByEmp[n].add(d); }); });
+  const sortedLabEmp=Object.entries(labDaysByEmp).map(([n,set])=>[n,set.size]).sort((a,b)=>b[1]-a[1]);
 
   return `
   <div class="sh" style="margin-bottom:14px;">
@@ -7690,6 +8217,29 @@ function buildLaborReport(){
         <td class="mn" style="font-family:'Syne Mono',monospace;color:var(--moss);">${fmtMins(grandTotal)}</td>
       </tr>
     </tbody>
+  </table></div>`}
+
+  <div class="sh" style="margin:26px 0 14px;"><span>By Employee — Container Time</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${sortedEmp.length} PEOPLE</span></div>
+  ${sortedEmp.length===0?`<div class="card" style="text-align:center;color:var(--text3);padding:18px;">No timed employee activity in this range.</div>`:`
+  <div class="tw" style="margin-bottom:28px;"><table>
+    <thead><tr><th>Employee</th>${CONTAINER_ACTIVITIES.map(a=>`<th style="font-size:9px;">${a}</th>`).join('')}<th>Sessions</th><th>Total</th></tr></thead>
+    <tbody>${sortedEmp.map(([e,d])=>`<tr>
+      <td style="font-weight:600;">${e}</td>
+      ${CONTAINER_ACTIVITIES.map(a=>{const m=d.acts[a]||0;return `<td class="mn" style="color:${actColors[a]||'var(--text2)'};font-weight:${m>0?'600':'400'};">${m>0?fmtMins(m):'—'}</td>`;}).join('')}
+      <td class="mn">${d.sessions}</td><td class="mn" style="font-weight:700;font-family:'Syne Mono',monospace;">${fmtMins(d.total)}</td>
+    </tr>`).join('')}</tbody>
+  </table></div>`}
+
+  <div class="sh" style="margin:24px 0 14px;"><span>Lab / Cook Day Personnel</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${cooks.length} COOK DAY${cooks.length===1?'':'S'}</span></div>
+  ${cooks.length===0?`<div class="card" style="text-align:center;color:var(--text3);padding:18px;">No lab/cook days in this range.</div>`:`
+  ${sortedLabEmp.length?`<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">${sortedLabEmp.map(([n,c])=>`<span style="font-family:'Syne Mono',monospace;font-size:11px;background:var(--paper);border:1px solid var(--border);border-radius:4px;padding:4px 10px;">${n}: <strong>${c}</strong> day${c===1?'':'s'}</span>`).join('')}</div>`:''}
+  <div class="tw"><table>
+    <thead><tr><th>Date</th><th>Batch</th><th>Cook / Sterilization Crew</th><th>Inoculation Crew</th><th>Blocks</th></tr></thead>
+    <tbody>${cooks.map(b=>{const vl=batchVarietyLines(b);const tb=vl.reduce((s,v)=>s+(parseInt(v.blockCount)||0),0)||b.blockCount||0;return `<tr>
+      <td class="mn">${fDate(b.productionDate||b.sterilizationDate||b.date)}</td>
+      <td class="mn" style="color:var(--fern);font-weight:700;">${b.batchNum||b.lotCode||'—'}</td>
+      <td>${b.sterCrew||'—'}</td><td>${b.inocCrew||'—'}</td><td class="mn">${tb}</td>
+    </tr>`;}).join('')}</tbody>
   </table></div>`}`;
 }
 
@@ -7801,11 +8351,11 @@ function rReports(el){
 
   // Accounting export — one row per line item, carries PO/Order Ref. For manual
   // entry into Wave or any generic invoicing system. Billable orders only.
-  window.dlAccountingCSV=function(){
+  window.dlAccountingCSV=function(fromDate, toDate){
     const header=['Date','Customer','PO / Order Ref','Invoice No','Item','Description','Qty','Unit Price','Amount','Order Total','Status'];
     const rows=[header];
     [...DB.orders]
-      .filter(o=>o.status==='packed'||o.status==='invoiced')
+      .filter(o=>(o.status==='packed'||o.status==='invoiced') && (!fromDate||(o.week||'')>=fromDate) && (!toDate||(o.week||'')<=toDate))
       .sort((a,b)=>(b.week||'').localeCompare(a.week||'')||(a.client||'').localeCompare(b.client||''))
       .forEach(o=>{
         const date=o.week?fDate(o.week):'';
@@ -7823,7 +8373,8 @@ function rReports(el){
             i===0?total:'',o.status]);
         });
       });
-    dlCSV('tm-accounting-'+tday()+'.csv',rows);
+    const suffix=(fromDate||toDate)?('-'+(fromDate||'start')+'_to_'+(toDate||'end')):'';
+    dlCSV('tm-accounting'+suffix+'-'+tday()+'.csv',rows);
   };
 
   const wkTableRows=wkRows.length===0
@@ -7881,11 +8432,16 @@ function rReports(el){
     ${recentInvHTML}
 
     <div class="sh" style="margin-top:28px;"><span>CSV Exports</span></div>
+    <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;background:var(--paper);border:1px solid var(--border);border-radius:var(--r);">
+      <div class="fgl" style="margin:0;"><label style="font-size:10px;">Accounting from (week)</label><input type="date" class="fi" id="acct-from" style="width:150px;"></div>
+      <div class="fgl" style="margin:0;"><label style="font-size:10px;">to</label><input type="date" class="fi" id="acct-to" style="width:150px;"></div>
+      <span style="font-size:10px;color:var(--text3);font-family:'Syne Mono',monospace;">leave blank = all dates · applies to the Accounting export</span>
+    </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:32px;">
-      <button style="${btnStyle}" onclick="dlAccountingCSV()">
+      <button style="${btnStyle}" onclick="dlAccountingCSV(document.getElementById('acct-from')?.value, document.getElementById('acct-to')?.value)">
         <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:#7a3a9a;text-transform:uppercase;">Accounting · PO + Items</div>
         <div style="font-size:13px;font-weight:600;color:var(--black);">Download ↓</div>
-        <div style="font-size:11px;color:var(--text3);">Line items w/ PO · packed + invoiced</div>
+        <div style="font-size:11px;color:var(--text3);">Line items w/ PO · date-range filtered</div>
       </button>
       <button style="${btnStyle}" onclick="dlRevenueCSV()">
         <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--moss);text-transform:uppercase;">Weekly Revenue</div>
