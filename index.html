@@ -3053,7 +3053,7 @@ function onVarietyInput(){
 }
 
 function onSourceChange(){ updateFruitingPreview(); }
-function onFrContainer(){ const sel=document.getElementById('fr-cid')?.value; const other=document.getElementById('fr-cid-other'); if(other){ other.style.display=sel==='__other__'?'block':'none'; if(sel==='__other__') other.focus(); } updateFruitingPreview(); }
+function onFrContainer(){ updateFruitingPreview(); }
 
 // Placing from a received batch: prefill lot/variety/source/vendor/weight from the pool.
 function onBatchSelect(){
@@ -3076,16 +3076,17 @@ function updateFruitingPreview(){
   const date=document.getElementById('fr-dt')?.value||tday();
   const variety=document.getElementById('fr-variety')?.value||'';
   const blocks=parseInt(document.getElementById('fr-bc')?.value)||0;
+  const rate=parseFloat(document.getElementById('fr-rate')?.value)||LBSPERBLOCK;
   const td=VARIETY_TURNAROUND[variety]||{min:7,max:14};
   const prev=document.getElementById('fr-preview');
   if(!prev) return;
   if(blocks>0 && variety){
-    const projLbs=(blocks*LBSPERBLOCK).toFixed(1);
+    const projLbs=(blocks*rate).toFixed(1);
     const d1=new Date(date); d1.setDate(d1.getDate()+td.min);
     const d2=new Date(date); d2.setDate(d2.getDate()+td.max);
     const fmt=d=>d.toLocaleDateString('en-US',{month:'short',day:'numeric'});
     prev.style.display='block';
-    prev.innerHTML=`<strong style="color:var(--fern);">Projected yield: ${projLbs} lb</strong> (${blocks} blocks × 1.5 lb) &nbsp;·&nbsp; Harvest window: <strong>${fmt(d1)} – ${fmt(d2)}</strong> (${td.min}–${td.max} days) &nbsp;·&nbsp; <em style="color:var(--text3);">${variety}</em>`;
+    prev.innerHTML=`<strong style="color:var(--fern);">Projected yield: ${projLbs} lb</strong> (${blocks} blocks × ${rate} lb) &nbsp;·&nbsp; Harvest window: <strong>${fmt(d1)} – ${fmt(d2)}</strong> (${td.min}–${td.max} days) &nbsp;·&nbsp; <em style="color:var(--text3);">${variety}</em>`;
   } else {
     prev.style.display='none';
   }
@@ -3111,6 +3112,7 @@ async function logReceiving(){
   if(!variety){ alert('Variety is required.'); return }
   if(!lotNumber){ alert('Lot / block number is required.'); return }
   if(blockCount<1){ alert('Block count must be at least 1.'); return }
+  if(variety) addVariety(variety); // persist any typed-in variety
   const rData={date,facility:'Hydes Ferry',source,vendor,variety,lotNumber,blockCount,blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,status:'on-hand'};
   const rId=await FS.add('receivings',rData);
   DB.receivings.push({id:rId,...rData});
@@ -3146,7 +3148,7 @@ function rReceiving(el){
         <div class="fgl"><label>Date Received</label><input class="fi" type="date" id="rc-date" value="${tday()}"></div>
         <div class="fgl"><label>Source</label><select class="fs" id="rc-source" onchange="onRecSourceChange()"><option value="vendor">Outside Vendor</option><option value="internal">Internal Production</option></select></div>
         <div class="fgl"><label>Producer / Vendor</label><input class="fi" id="rc-vendor" placeholder="Vendor or in-house production co." list="rc-vendl"><datalist id="rc-vendl"><option value="In-house Production"><option value="Wild Spore"></datalist></div>
-        <div class="fgl"><label>Variety</label><select class="fs" id="rc-variety"><option value="">Select variety…</option>${VARIETIES.map(v=>`<option value="${v}">${v}</option>`).join('')}</select></div>
+        <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:9px;">type or pick</span></label><input class="fi" id="rc-variety" list="rc-variety-dl" placeholder="Type or pick variety…" autocomplete="off"><datalist id="rc-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
       </div>
       <div class="fg2">
         <div class="fgl"><label>Lot / Block #</label><input class="fi" id="rc-lot" placeholder="e.g. 10184 or WSY00Y"></div>
@@ -3182,6 +3184,7 @@ function rFruiting(el){
   const active=DB.fruitings.filter(f=>f.status==='fruiting');
   const done=DB.fruitings.filter(f=>f.status==='harvested');
   const onHand=onHandReceivings();
+  _fruitingQueue=[]; // fresh multi-lot staging each render
   // Spawn lot suggestions pulled from lab cooks (for the Fruiting spawn-lot field)
 
   // Enrich active blocks with forecast data
@@ -3191,7 +3194,7 @@ function rFruiting(el){
     const daysIn=Math.floor((today-startD)/(1000*60*60*24));
     const harvestMin=new Date(startD); harvestMin.setDate(harvestMin.getDate()+td.min);
     const harvestMax=new Date(startD); harvestMax.setDate(harvestMax.getDate()+td.max);
-    const projLbs=(f.blockCount||0)*LBSPERBLOCK;
+    const projLbs=(f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK);
     const windowStatus=daysIn<td.min?'early':daysIn<=td.max?'ready':'overdue';
     return {...f,daysIn,harvestMin,harvestMax,projLbs,windowStatus,td};
   }).sort((a,b)=>a.harvestMin-b.harvestMin);
@@ -3239,14 +3242,9 @@ function rFruiting(el){
     </div>
     <div class="fg2">
       <div class="fgl"><label>Date Fruited</label><input class="fi" type="date" id="fr-dt" value="${tday()}" oninput="updateFruitingPreview()"></div>
-      <div class="fgl"><label>Container ID <span style="color:var(--text3);font-size:9px;">from container log</span></label>
-        <select class="fs" id="fr-cid" onchange="onFrContainer()">
-          <option value="">Select container…</option>
-          ${activeCons.map(c=>`<option value="${c.code}">${c.code} · ${c.farm} (${c.facility})</option>`).join('')}
-          ${legacyCons.length?`<optgroup label="Legacy / other">${legacyCons.map(c=>`<option value="${c}">${c}</option>`).join('')}</optgroup>`:''}
-          <option value="__other__">+ Other (type new)…</option>
-        </select>
-        <input class="fi" id="fr-cid-other" placeholder="New container ID" style="display:none;margin-top:8px;">
+      <div class="fgl"><label>Container ID <span style="color:var(--text3);font-size:9px;">type code or farm name</span></label>
+        <input class="fi" id="fr-cid" list="fr-cidl" placeholder="Type to search containers…" autocomplete="off" oninput="onFrContainer()">
+        <datalist id="fr-cidl">${activeCons.map(c=>`<option value="${c.code}">${c.code} · ${c.farm} (${c.facility})</option>`).join('')}${legacyCons.map(c=>`<option value="${c}">${c} (legacy)</option>`).join('')}</datalist>
       </div>
       <div class="fgl">
         <label>Lot Number</label>
@@ -3263,20 +3261,18 @@ function rFruiting(el){
     </div>
     <div class="fg2">
       <div class="fgl"><label>Supplier / Production Company</label><input class="fi" id="fr-vendor" placeholder="Supplier or in-house production co." list="fr-vendorl"><datalist id="fr-vendorl"><option value="Wild Spore"><option value="In-house"></datalist></div>
-      <div class="fgl"><label>Variety</label><select class="fs" id="fr-variety" onchange="onFrVariety(this)">${varietyOptHTML('')}</select></div>
+      <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:9px;">type or pick</span></label><input class="fi" id="fr-variety" list="fr-variety-dl" placeholder="Type or pick variety…" autocomplete="off" oninput="updateFruitingPreview()"><datalist id="fr-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
       <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="1" id="fr-bc" placeholder="# of blocks" oninput="updateFruitingPreview()"></div>
       <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="fr-bw" placeholder="e.g. 5.5" oninput="updateFruitingPreview()"></div>
-      <div class="fgl">
-        <label>Forecast Rate</label>
-        <div style="background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:9px 12px;font-size:13px;color:var(--text2);min-height:38px;display:flex;align-items:center;gap:6px;">
-          <strong style="color:var(--fern);">1.5 lb</strong><span style="font-size:11px;color:var(--text3);">per block (standard)</span>
-        </div>
-      </div>
+      <div class="fgl"><label>Forecast Rate <span style="color:var(--text3);font-size:9px;">lb / block</span></label><input class="fi" type="number" min="0" step="0.1" id="fr-rate" value="${LBSPERBLOCK}" oninput="updateFruitingPreview()"></div>
+      <div class="fgl"><label>Unusable Blocks <span style="color:var(--text3);font-size:9px;">→ waste stream</span></label><input class="fi" type="number" min="0" id="fr-unusable" placeholder="0"></div>
     </div>
     <div id="fr-preview" style="display:none;background:rgba(58,96,48,.07);border:1px solid rgba(58,96,48,.2);border-radius:3px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:var(--text2);line-height:1.6;"></div>
     <div class="fgl" style="margin-bottom:16px;"><label>Notes</label><textarea class="fta" id="fr-notes" placeholder="Block source, substrate mix, any observations…"></textarea></div>
+    <div id="fr-queue" style="margin-bottom:12px;"></div>
     <div class="form-acts">
-      <button class="btn b-m b-lg" onclick="subFruiting()">Log Block</button>
+      <button class="btn b-g b-lg" onclick="addFruitingRow()">+ Add another lot</button>
+      <button class="btn b-m b-lg" id="fr-logbtn" onclick="subFruiting()">Log Block</button>
       <button class="btn b-g" onclick="clrFruiting()">Clear</button>
     </div>
     <div class="toast" id="fr-t">✓ Fruiting block logged</div>
@@ -3331,14 +3327,14 @@ function rFruiting(el){
     <div class="tw" style="margin-bottom:24px;overflow-x:auto;">
       <table>
         <thead><tr>${thS('fruit-done','date','Date In')}${thS('fruit-done','containerID','Container')}${thS('fruit-done','lotNumber','Lot #')}${thS('fruit-done','vendor','Vendor')}${thS('fruit-done','variety','Variety')}${thS('fruit-done','blockCount','Blocks')}${thS('fruit-done','projLbs','Proj. Yield')}${thS('fruit-done','harvestedAt','Harvested')}</tr></thead>
-        <tbody>${sByKey('fruit-done',[...done],{date:f=>f.date,containerID:f=>f.containerID,lotNumber:f=>f.lotNumber,vendor:f=>f.vendor||'',variety:f=>f.variety,blockCount:f=>f.blockCount||0,projLbs:f=>(f.blockCount||0)*LBSPERBLOCK,harvestedAt:f=>f.harvestedAt||''}).map(f=>`<tr>
+        <tbody>${sByKey('fruit-done',[...done],{date:f=>f.date,containerID:f=>f.containerID,lotNumber:f=>f.lotNumber,vendor:f=>f.vendor||'',variety:f=>f.variety,blockCount:f=>f.blockCount||0,projLbs:f=>(f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK),harvestedAt:f=>f.harvestedAt||''}).map(f=>`<tr>
           <td class="mn">${fDate(f.date)}</td>
           <td>${f.containerID}</td>
           <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}</td>
           <td style="font-size:11px;color:var(--text3);">${(f.source||((f.vendor||'')==='In-house'?'internal':'supplier'))==='internal'?'<span style="font-family:\'Syne Mono\',monospace;font-size:8px;color:var(--fern);">[INT]</span> ':'<span style="font-family:\'Syne Mono\',monospace;font-size:8px;color:var(--blue);">[SUP]</span> '}${f.vendor}</td>
           <td style="font-weight:500;">${f.variety}</td>
           <td class="mn">${f.blockCount}</td>
-          <td class="mn" style="color:var(--fern);">${((f.blockCount||0)*LBSPERBLOCK).toFixed(1)} lb</td>
+          <td class="mn" style="color:var(--fern);">${((f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK)).toFixed(1)} lb</td>
           <td class="mn">${f.harvestedAt?fDate(f.harvestedAt):'—'}</td>
         </tr>`).join('')}</tbody>
       </table>
@@ -3347,46 +3343,95 @@ function rFruiting(el){
   tickTimers();
 }
 
-async function subFruiting(){
-  const date=document.getElementById('fr-dt')?.value||tday();
-  let containerID=document.getElementById('fr-cid')?.value||'';
-  if(containerID==='__other__') containerID=(document.getElementById('fr-cid-other')?.value||'').trim();
-  const lotNumber=document.getElementById('fr-lot')?.value.trim()||'';
-  const variety=document.getElementById('fr-variety')?.value||'';
-  const blockCount=parseInt(document.getElementById('fr-bc')?.value)||0;
-  const blockWeightLb=parseFloat(document.getElementById('fr-bw')?.value)||0;
-  if(!containerID){ alert('Container ID is required.'); return }
-  if(!lotNumber){ alert('Lot number is required.'); return }
-  if(!variety){ alert('Variety is required.'); return }
-  if(blockCount<1){ alert('Block count must be at least 1.'); return }
-  if(!blockWeightLb){ alert('Block weight (lb) is required.'); return }
+// ── Multi-lot fruiting staging (place several lots into containers at once) ──
+let _fruitingQueue = [];
+function _readFruitingRow(){
+  const containerID=(document.getElementById('fr-cid')?.value||'').trim();
+  const lotNumber=(document.getElementById('fr-lot')?.value||'').trim();
+  const variety=(document.getElementById('fr-variety')?.value||'').trim();
   const source=document.getElementById('fr-source')?.value||'supplier';
   const info=detectLot(lotNumber);
-  const vendor=(document.getElementById('fr-vendor')?.value.trim())||info?.vendor||(source==='internal'?'In-house':'Unknown');
-  // Pool link: if placing from a received batch, validate against remaining on-hand.
-  const receivingId=document.getElementById('fr-batch')?.value||'';
-  let rec=null;
-  if(receivingId){
-    rec=DB.receivings.find(x=>x.id===receivingId);
-    if(rec && blockCount>receivingOnHand(rec)){ alert(`Only ${receivingOnHand(rec)} block(s) remain in that received batch.`); return; }
+  const vendor=(document.getElementById('fr-vendor')?.value||'').trim()||info?.vendor||(source==='internal'?'In-house':'Unknown');
+  return {
+    date: document.getElementById('fr-dt')?.value||tday(),
+    containerID, lotNumber, variety, source, vendor,
+    blockCount: parseInt(document.getElementById('fr-bc')?.value)||0,
+    blockWeightLb: parseFloat(document.getElementById('fr-bw')?.value)||0,
+    rateLbPerBlock: parseFloat(document.getElementById('fr-rate')?.value)||LBSPERBLOCK,
+    receivingId: document.getElementById('fr-batch')?.value||'',
+    unusable: parseInt(document.getElementById('fr-unusable')?.value)||0,
+    notes: (document.getElementById('fr-notes')?.value||'').trim()
+  };
+}
+function _validFruitingRow(r){
+  if(!r.containerID){ alert('Container ID is required.'); return false; }
+  if(!r.lotNumber){ alert('Lot number is required.'); return false; }
+  if(!r.variety){ alert('Variety is required.'); return false; }
+  if(r.blockCount<1){ alert('Block count must be at least 1.'); return false; }
+  if(!r.blockWeightLb){ alert('Block weight (lb) is required.'); return false; }
+  return true;
+}
+function addFruitingRow(){
+  const r=_readFruitingRow(); if(!_validFruitingRow(r)) return;
+  if(r.receivingId){ const rec=DB.receivings.find(x=>x.id===r.receivingId); const staged=_fruitingQueue.filter(q=>q.receivingId===r.receivingId).reduce((s,q)=>s+q.blockCount,0); if(rec && (r.blockCount+staged)>receivingOnHand(rec)){ alert(`Only ${receivingOnHand(rec)-staged} block(s) remain in that received batch (after staged rows).`); return; } }
+  _fruitingQueue.push(r);
+  renderFruitingQueue();
+  ['fr-lot','fr-bc','fr-bw','fr-notes','fr-unusable'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  const v=document.getElementById('fr-variety'); if(v) v.value='';
+  const b=document.getElementById('fr-batch'); if(b) b.value='';
+  const rt=document.getElementById('fr-rate'); if(rt) rt.value=LBSPERBLOCK;
+  const prev=document.getElementById('fr-preview'); if(prev) prev.style.display='none';
+  const lh=document.getElementById('fr-lot'); if(lh) lh.focus();
+}
+function removeFruitingRow(i){ _fruitingQueue.splice(i,1); renderFruitingQueue(); }
+function renderFruitingQueue(){
+  const c=document.getElementById('fr-queue');
+  if(c) c.innerHTML = _fruitingQueue.length ? `<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;">STAGED — ${_fruitingQueue.length} LOT(S) TO PLACE</div>`+
+    _fruitingQueue.map((r,i)=>`<div style="display:flex;align-items:center;gap:10px;background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:7px 12px;margin-bottom:6px;font-size:12px;flex-wrap:wrap;">
+      <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);">${r.lotNumber}</span>
+      <span style="font-weight:600;">${r.variety}</span>
+      <span class="mn">${r.blockCount} blocks</span>
+      <span style="color:var(--text3);font-size:11px;">→ ${r.containerID}</span>
+      ${r.unusable?`<span style="color:var(--rust);font-size:11px;">${r.unusable} unusable</span>`:''}
+      <button class="btn b-r b-sm" style="margin-left:auto;" onclick="removeFruitingRow(${i})">✕</button>
+    </div>`).join('') : '';
+  const cur=_readFruitingRow();
+  const n=_fruitingQueue.length+((cur.lotNumber&&cur.variety)?1:0);
+  const btn=document.getElementById('fr-logbtn');
+  if(btn) btn.textContent = _fruitingQueue.length ? `Log All (${n})` : 'Log Block';
+}
+
+async function subFruiting(){
+  const rows=[..._fruitingQueue];
+  const cur=_readFruitingRow();
+  if(cur.lotNumber||cur.variety||cur.blockCount){ if(!_validFruitingRow(cur)) return; rows.push(cur); }
+  if(!rows.length){ alert('Enter at least one lot to place.'); return; }
+  let n=0;
+  for(const r of rows){
+    let rec=null;
+    if(r.receivingId){ rec=DB.receivings.find(x=>x.id===r.receivingId); if(rec && r.blockCount>receivingOnHand(rec)){ alert(`Skipped lot ${r.lotNumber}: only ${receivingOnHand(rec)} block(s) remain in its received batch.`); continue; } }
+    if(r.variety) addVariety(r.variety);
+    const fData={date:r.date,containerID:r.containerID,lotNumber:r.lotNumber,source:r.source,vendor:r.vendor,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,rateLbPerBlock:r.rateLbPerBlock,notes:r.notes,status:'fruiting'};
+    if(r.receivingId) fData.receivingId=r.receivingId;
+    const fId=await FS.add('fruitings',fData);
+    DB.fruitings.push({id:fId,...fData});
+    if(rec){ rec.placedCount=(rec.placedCount||0)+r.blockCount; const upd={placedCount:rec.placedCount}; if(receivingOnHand(rec)<=0){ rec.status='placed'; upd.status='placed'; } try{ await FS.update('receivings',rec.id,upd); }catch(e){ console.warn('receiving placedCount update:',e); } }
+    // Unusable blocks → waste stream (same blockDisposals stream as harvest)
+    if(r.unusable>0){
+      const dData={date:r.date,stage:'pre-fruiting',container:r.containerID,cookLot:'',labBatchId:'',variety:r.variety,source:r.source,supplier:r.vendor,blockCount:r.unusable,reason:'unusable',notes:`Unusable at fruiting — lot ${r.lotNumber}${r.notes?(' · '+r.notes):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+      const dId=await FS.add('blockDisposals',dData); dData.id=dId; DB.blockDisposals.push(dData);
+      logAudit('blocks_removed',`${r.unusable} unusable blocks at fruiting — lot ${r.lotNumber} — ${r.containerID}`);
+    }
+    n++;
   }
-  const fData={date,containerID,lotNumber,source,vendor,variety,blockCount,blockWeightLb,notes:document.getElementById('fr-notes')?.value.trim()||'',status:'fruiting'};
-  if(receivingId) fData.receivingId=receivingId;
-  const fId=await FS.add('fruitings',fData);
-  DB.fruitings.push({id:fId,...fData});
-  // Draw down the received pool
-  if(rec){
-    rec.placedCount=(rec.placedCount||0)+blockCount;
-    const upd={placedCount:rec.placedCount};
-    if(receivingOnHand(rec)<=0){ rec.status='placed'; upd.status='placed'; }
-    try{ await FS.update('receivings',rec.id,upd); }catch(e){ console.warn('receiving placedCount update:',e); }
-  }
-  toast('fr-t'); clrFruiting(); renderC();
+  _fruitingQueue=[];
+  toast('fr-t', n>1?`✓ ${n} lots placed`:'✓ Fruiting block logged');
+  clrFruiting(); renderC();
 }
 
 function clrFruiting(){
-  ['fr-lot','fr-cid','fr-cid-other','fr-bc','fr-bw','fr-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
-  const _co=document.getElementById('fr-cid-other'); if(_co) _co.style.display='none';
+  ['fr-lot','fr-cid','fr-bc','fr-bw','fr-notes','fr-unusable'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
+  const rEl=document.getElementById('fr-rate'); if(rEl) rEl.value=LBSPERBLOCK;
   const bEl=document.getElementById('fr-batch'); if(bEl) bEl.value='';
   const vEl=document.getElementById('fr-variety'); if(vEl) vEl.value='';
   const dtEl=document.getElementById('fr-dt'); if(dtEl) dtEl.value=tday();
@@ -3475,6 +3520,7 @@ function rHarvest(el){
   const activeContainers=getActiveContainers();
   // #5 — known lot numbers (harvests + fruitings + receivings) for the lot↔variety memory datalist
   const knownLots=[...new Set([...DB.harvests.map(h=>h.lotNumber),...DB.fruitings.map(f=>f.lotNumber),...(DB.receivings||[]).map(r=>r.lotNumber)].filter(Boolean))].sort();
+  _harvestQueue=[]; // fresh multi-lot staging each time the tab renders
   // Cook-lot options for pre-fruiting block loss (internal production from the Lab)
   const cookLotOpts=(DB.labBatches||[]).flatMap(b=>batchVarietyLines(b).map(v=>{
     const suffix=(v.suffix||'').trim();
@@ -3491,16 +3537,9 @@ function rHarvest(el){
     ${canEdit()?'<div class="card"><div class="card-t">Log a Harvest</div>':'<div style="display:none"><div>'}
     <div class="fg2">
       <div class="fgl"><label>Date</label><input class="fi" type="date" id="hl-dt" value="${tday()}"></div>
-      <div class="fgl"><label>Container</label>
-        <select class="fs" id="hl-c" onchange="onContainerSelect(this.value)">
-          <option value="">Select container...</option>
-          ${DB.facilities.map(fac=>{
-            const fc=activeContainers.filter(c=>c.facility===fac);
-            if(!fc.length) return '';
-            return `<optgroup label="── ${fac} ──">${fc.map(c=>`<option value="${c.code}">${c.code} · ${c.farm}</option>`).join('')}</optgroup>`;
-          }).join('')}
-          <option value="__other__">— Other / not listed —</option>
-        </select>
+      <div class="fgl"><label>Container <span style="color:var(--text3);font-size:9px;">type code or farm name</span></label>
+        <input class="fi" id="hl-c" list="hl-cl" placeholder="Type to search containers…" autocomplete="off" oninput="onContainerSelect(this.value)">
+        <datalist id="hl-cl">${activeContainers.map(c=>`<option value="${c.code}">${c.code} · ${c.farm} (${c.facility})</option>`).join('')}</datalist>
       </div>
       <div class="fgl"><label>Facility</label>
         <select class="fs" id="hl-fac">
@@ -3516,10 +3555,9 @@ function rHarvest(el){
         <datalist id="hl-lotl">${knownLots.map(l=>`<option value="${l}">`).join('')}</datalist>
         <div id="hl-lot-hint" style="display:none;font-family:'Syne Mono',monospace;font-size:9px;color:var(--fern);margin-top:4px;letter-spacing:.5px;"></div>
       </div>
-      <div class="fgl"><label>Variety</label>
-        <select class="fs" id="hl-v" onchange="onSimpleVarietyAdd(this)">
-          ${varietyOptHTML('')}
-        </select>
+      <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:9px;">type or pick</span></label>
+        <input class="fi" id="hl-v" list="hl-v-dl" placeholder="Type or pick variety…" autocomplete="off">
+        <datalist id="hl-v-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist>
       </div>
       <div class="fgl"><label>Grade</label>
         <select class="fs" id="hl-g">
@@ -3532,12 +3570,16 @@ function rHarvest(el){
       <div class="fgl"><label>Weight (lbs)</label><input class="fi" type="number" step="0.1" min="0" id="hl-w" placeholder="e.g. 12.5"></div>
       <div class="fgl"><label>Notes</label><input class="fi" id="hl-n" placeholder="Flush number, observations..."></div>
     </div>
-    <div class="form-acts"><button class="btn b-m b-lg" onclick="logHarv()">Log Harvest</button></div>
+    <div id="hl-queue" style="margin-bottom:12px;"></div>
+    <div class="form-acts">
+      <button class="btn b-g b-lg" onclick="addHarvestRow()">+ Add another lot / variety</button>
+      <button class="btn b-m b-lg" id="hl-logbtn" onclick="logHarv()">Log Harvest</button>
+    </div>
     <div class="toast" id="hl-t">✓ Harvest recorded</div></div>
     <div class="tw"><table>
-      <thead><tr>${thS('harvest','date','Date')}${thS('harvest','container','Container')}${thS('harvest','facility','Facility')}${thS('harvest','lotNumber','Lot Number')}${thS('harvest','variety','Variety')}${thS('harvest','grade','Grade')}${thS('harvest','weight','Harvested')}${thS('harvest','usedWeight','On Hand')}<th>Notes</th></tr></thead>
+      <thead><tr>${thS('harvest','date','Date')}${thS('harvest','container','Container')}${thS('harvest','facility','Facility')}${thS('harvest','lotNumber','Lot Number')}${thS('harvest','variety','Variety')}${thS('harvest','grade','Grade')}${thS('harvest','weight','Harvested')}${thS('harvest','usedWeight','On Hand')}<th>Notes</th>${canEdit()?'<th>Actions</th>':''}</tr></thead>
       <tbody>${s.length===0
-        ? '<tr><td colspan="9" class="empty">No harvests logged yet</td></tr>'
+        ? `<tr><td colspan="${canEdit()?10:9}" class="empty">No harvests logged yet</td></tr>`
         : s.map(h=>{ const onHand=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); const pct=h.weight>0?onHand/h.weight:0; const col=pct>0.5?'#3a6030':pct>0.2?'#b8820a':'#b84c20'; return `<tr>
             <td class="mn">${fDate(h.date)}</td>
             <td>${h.container}</td>
@@ -3548,6 +3590,7 @@ function rHarvest(el){
             <td class="mn">${h.weight?h.weight+' lb':'—'}</td>
             <td class="mn" style="font-weight:700;color:${col}">${onHand.toFixed(1)} lb</td>
             <td style="font-size:11px;color:var(--text3)">${h.notes||'—'}</td>
+            ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditHarvest('${h.id}')">✎ Edit</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delHarvest('${h.id}')">✕</button>`:''}</td>`:''}
           </tr>`}).join('')
       }</tbody>
     </table></div>
@@ -3690,30 +3733,126 @@ function rHarvest(el){
   tickTimers();
 }
 
+// ── Multi-lot harvest staging ──
+let _harvestQueue = [];
+function _readHarvestRow(){
+  const containerRaw=document.getElementById('hl-c')?.value||'';
+  return {
+    date: document.getElementById('hl-dt')?.value||'',
+    container: containerRaw==='__other__'?'Other':containerRaw,
+    facility: document.getElementById('hl-fac')?.value||'',
+    lotNumber: (document.getElementById('hl-lot')?.value||'').trim(),
+    variety: document.getElementById('hl-v')?.value||'',
+    grade: document.getElementById('hl-g')?.value||'',
+    weight: parseFloat(document.getElementById('hl-w')?.value)||0,
+    notes: (document.getElementById('hl-n')?.value||'').trim()
+  };
+}
+function _validHarvestRow(r){
+  if(!r.date||!r.container||!r.facility||!r.lotNumber||!r.variety||!r.grade){ alert('Date, container, facility, lot number, variety and grade are all required.'); return false; }
+  if(!r.weight||r.weight<=0){ alert('Weight (lbs) is required.'); return false; }
+  return true;
+}
+function addHarvestRow(){
+  const r=_readHarvestRow(); if(!_validHarvestRow(r)) return;
+  _harvestQueue.push(r);
+  renderHarvestQueue();
+  // clear the per-lot fields; keep date/container/facility for the next lot
+  ['hl-lot','hl-w','hl-n'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  const v=document.getElementById('hl-v'); if(v) v.value='';
+  const g=document.getElementById('hl-g'); if(g) g.value='';
+  const hint=document.getElementById('hl-lot-hint'); if(hint) hint.style.display='none';
+  const lh=document.getElementById('hl-lot'); if(lh) lh.focus();
+}
+function removeHarvestRow(i){ _harvestQueue.splice(i,1); renderHarvestQueue(); }
+function renderHarvestQueue(){
+  const c=document.getElementById('hl-queue');
+  if(c) c.innerHTML = _harvestQueue.length ? `<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;">STAGED — ${_harvestQueue.length} LOT(S) READY TO LOG</div>`+
+    _harvestQueue.map((r,i)=>`<div style="display:flex;align-items:center;gap:10px;background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:7px 12px;margin-bottom:6px;font-size:12px;">
+      <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);">${r.lotNumber}</span>
+      <span style="font-weight:600;">${r.variety}</span>
+      <span class="bdg ${r.grade==='A'?'bc':r.grade==='B'?'bad':'bp'}">${r.grade}</span>
+      <span class="mn">${r.weight} lb</span>
+      <span style="color:var(--text3);font-size:11px;">${r.container}</span>
+      <button class="btn b-r b-sm" style="margin-left:auto;" onclick="removeHarvestRow(${i})">✕</button>
+    </div>`).join('') : '';
+  const cur=_readHarvestRow();
+  const n=_harvestQueue.length+((cur.lotNumber&&cur.variety)?1:0);
+  const btn=document.getElementById('hl-logbtn');
+  if(btn) btn.textContent = _harvestQueue.length ? `Log All Harvests (${n})` : 'Log Harvest';
+}
+
 async function logHarv(){
-  const date=document.getElementById('hl-dt').value;
-  const containerRaw=document.getElementById('hl-c').value;
-  const container=containerRaw==='__other__'?'Other':containerRaw;
-  const facility=document.getElementById('hl-fac').value;
-  const lotNumber=document.getElementById('hl-lot').value.trim();
-  const variety=document.getElementById('hl-v').value;
-  const grade=document.getElementById('hl-g').value;
-  const weight=parseFloat(document.getElementById('hl-w').value)||0;
-  const notes=document.getElementById('hl-n').value.trim();
-  if(!date||!container||!facility||!lotNumber||!variety||!grade){
-    alert('Date, container, facility, lot number, variety and grade are all required.'); return;
+  const rows=[..._harvestQueue];
+  const cur=_readHarvestRow();
+  // include the in-progress form row if it's been started
+  if(cur.lotNumber||cur.variety||cur.weight){ if(!_validHarvestRow(cur)) return; rows.push(cur); }
+  if(!rows.length){ alert('Enter at least one harvest lot.'); return; }
+  let n=0;
+  for(const r of rows){
+    if(r.variety) addVariety(r.variety); // persist any typed-in variety
+    const hData={date:r.date,container:r.container,facility:r.facility,lotNumber:r.lotNumber,variety:r.variety,grade:r.grade,weight:r.weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes:r.notes};
+    const hId=await FS.add('harvests',hData);
+    DB.harvests.push({id:hId,...hData});
+    logAudit('harvest_logged',`Logged ${r.weight}lb ${r.variety} — Lot ${r.lotNumber} — ${r.container} @ ${r.facility}`);
+    n++;
   }
-  if(!weight||weight<=0){ alert('Weight (lbs) is required.'); return; }
-  const hData={date,container,facility,lotNumber,variety,grade,weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes};
-  const hId=await FS.add('harvests',hData);
-  DB.harvests.push({id:hId,...hData});
-  logAudit('harvest_logged',`Logged ${weight}lb ${variety} — Lot ${lotNumber} — ${container} @ ${facility}`);
-  toast('hl-t');
-  ['hl-lot','hl-w','hl-n'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value='' });
-  document.getElementById('hl-c').value='';
-  document.getElementById('hl-fac').value='';
-  document.getElementById('hl-v').value='';
-  document.getElementById('hl-g').value='';
+  _harvestQueue=[];
+  toast('hl-t', n>1?`✓ ${n} harvests recorded`:'✓ Harvest recorded');
+  rHarvest(document.getElementById('main-views'));
+}
+
+// ── EDIT / DELETE a harvest (fix mistakes) ──
+function openEditHarvest(id){
+  const h=DB.harvests.find(x=>x.id===id); if(!h) return;
+  document.getElementById('em-title').textContent='Edit Harvest — '+(h.lotNumber||'')+' · '+(h.variety||'');
+  const acts=getActiveContainers();
+  const conOpts=acts.map(c=>`<option value="${c.code}">${c.code} · ${c.farm} (${c.facility})</option>`).join('');
+  const grades=[['A','A — Premium'],['B','B — Good'],['C','C — Seconds']];
+  document.getElementById('em-body').innerHTML=`
+    <div class="fg2">
+      <div class="fgl"><label>Date</label><input class="fi" type="date" id="eh-dt" value="${attrEsc(h.date)}"></div>
+      <div class="fgl"><label>Container <span style="color:var(--text3);font-size:9px;">type code or farm name</span></label><input class="fi" id="eh-c" list="eh-cl" value="${attrEsc(h.container)}" autocomplete="off" placeholder="Type to search…"><datalist id="eh-cl">${conOpts}</datalist></div>
+      <div class="fgl"><label>Facility</label><input class="fi" id="eh-fac" value="${attrEsc(h.facility)}"></div>
+    </div>
+    <div class="fg2">
+      <div class="fgl"><label>Lot Number</label><input class="fi" id="eh-lot" value="${attrEsc(h.lotNumber)}"></div>
+      <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:9px;">type or pick</span></label><input class="fi" id="eh-v" list="eh-v-dl" value="${attrEsc(h.variety)}" placeholder="Type or pick variety…" autocomplete="off"><datalist id="eh-v-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+      <div class="fgl"><label>Grade</label><select class="fs" id="eh-g"><option value="">—</option>${grades.map(g=>`<option value="${g[0]}" ${h.grade===g[0]?'selected':''}>${g[1]}</option>`).join('')}</select></div>
+      <div class="fgl"><label>Harvested Weight (lb)</label><input class="fi" type="number" step="0.1" min="0" id="eh-w" value="${h.weight||0}"></div>
+    </div>
+    <div class="fgl" style="margin-top:10px;"><label>Notes</label><textarea class="fta" id="eh-n">${h.notes||''}</textarea></div>
+    <div style="font-size:10px;color:var(--text3);margin-top:8px;font-family:'Syne Mono',monospace;">On-hand recalculates from harvested weight minus already used / sampled / preserved.</div>
+    <div class="form-acts" style="margin-top:16px;">
+      <button class="btn b-m b-lg" onclick="saveHarvestEdit('${id}')">Save Changes</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="eh-t">✓ Harvest updated</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+async function saveHarvestEdit(id){
+  const h=DB.harvests.find(x=>x.id===id); if(!h) return;
+  const val=i=>(document.getElementById(i)?.value||'').trim();
+  const upd={ date:val('eh-dt')||h.date, container:document.getElementById('eh-c')?.value||h.container, facility:val('eh-fac'),
+    lotNumber:val('eh-lot'), variety:document.getElementById('eh-v')?.value||h.variety, grade:document.getElementById('eh-g')?.value||h.grade,
+    weight:parseFloat(document.getElementById('eh-w')?.value)||0, notes:val('eh-n') };
+  if(!upd.lotNumber||!upd.variety||!upd.grade){ alert('Lot number, variety and grade are required.'); return; }
+  if(!upd.weight||upd.weight<=0){ alert('Harvested weight must be greater than 0.'); return; }
+  if(upd.variety) addVariety(upd.variety); // persist any typed-in variety
+  const used=(h.usedWeight||0)+(h.sampleWeight||0)+(h.preservedWeight||0);
+  if(upd.weight<used && !confirm(`This lot already has ${used.toFixed(1)} lb used/sampled/preserved, which is more than the new ${upd.weight} lb. Save anyway?`)) return;
+  Object.assign(h,upd);
+  try{ await FS.update('harvests',id,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  logAudit('harvest_edited',`Edited harvest Lot ${upd.lotNumber} — ${upd.variety} ${upd.grade} ${upd.weight}lb`);
+  toast('eh-t','✓ Harvest updated');
+  setTimeout(()=>{ closeModal(); rHarvest(document.getElementById('main-views')); },800);
+}
+function delHarvest(id){
+  const h=DB.harvests.find(x=>x.id===id); if(!h) return;
+  if(!confirm(`Delete harvest Lot ${h.lotNumber||''} (${h.variety||''}, ${h.weight||0} lb)? This can't be undone.`)) return;
+  DB.harvests=DB.harvests.filter(x=>x.id!==id);
+  FS.del('harvests',id);
+  logAudit('harvest_deleted',`Deleted harvest Lot ${h.lotNumber||''} — ${h.variety||''} ${h.weight||0}lb`);
   rHarvest(document.getElementById('main-views'));
 }
 
@@ -4995,7 +5134,7 @@ function buildForecastSection(){
     const daysIn=Math.floor((today-sd)/(1000*60*60*24));
     const hMin=new Date(sd); hMin.setDate(sd.getDate()+td.min);
     const hMax=new Date(sd); hMax.setDate(sd.getDate()+td.max);
-    const projLbs=(f.blockCount||0)*LBSPERBLOCK;
+    const projLbs=(f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK);
     const ws=daysIn<td.min?'early':daysIn<=td.max?'ready':'overdue';
     return Object.assign({},f,{daysIn:daysIn,hMin:hMin,hMax:hMax,projLbs:projLbs,ws:ws});
   }).sort(function(a,b){ return a.hMin-b.hMin; });
@@ -6322,7 +6461,7 @@ function renderPlVarietiesHTML(){
       </div>
       <div class="fg2">
         <div class="fgl"><label>Lot Suffix</label><input class="fi" id="plv-suffix-${i}" value="${attrEsc(row.suffix)}" placeholder="e.g. A" oninput="updatePlLotLabel(${i})" style="max-width:120px;"></div>
-        <div class="fgl"><label>Variety / Strain</label><select class="fs" id="plv-variety-${i}" onchange="onPlVariety(this,${i})">${varietyOptHTML(row.variety)}</select></div>
+        <div class="fgl"><label>Variety / Strain <span style="color:var(--text3);font-size:9px;">type or pick</span></label><input class="fi" id="plv-variety-${i}" list="plv-vdl-${i}" value="${attrEsc(row.variety)}" placeholder="Type or pick…" autocomplete="off"><datalist id="plv-vdl-${i}">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
         <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="0" id="plv-blocks-${i}" value="${attrEsc(row.blockCount)}" placeholder="e.g. 24"></div>
       </div>
       <div class="fg2" style="background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.18);border-radius:5px;padding:10px 12px;margin-bottom:10px;">
@@ -6805,6 +6944,7 @@ async function logProductionBatch(){
       };
     });
   if(!varieties.length){ alert('Add at least one variety (with a strain selected).'); return; }
+  varieties.forEach(v=>{ if(v.variety) addVariety(v.variety); }); // persist typed-in varieties
 
   const totalBlocks = varieties.reduce((s,v)=>s+(v.blockCount||0),0);
 
