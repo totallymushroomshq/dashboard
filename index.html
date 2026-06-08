@@ -982,6 +982,26 @@ const AUDIT_ICONS = {
 const CONTAINER_ACTIVITIES = ['Harvesting','Fruiting','Cleaning','Inspection','Maintenance'];
 let _timerInterval = null;
 
+// All staff names available in the system (Firebase Auth users + anyone already on a
+// session), so admins can log / reassign time for any staff via a type-ahead dropdown.
+function staffNames(){
+  const set=new Set();
+  (DB.users||[]).filter(u=>u.active!==false&&u.name).forEach(u=>set.add(u.name));
+  (DB.containerSessions||[]).forEach(s=>{ if(s.employeeName) set.add(s.employeeName); });
+  if(S&&S.name) set.add(S.name);
+  return [...set].filter(Boolean).sort();
+}
+// Staff input. ADMINS get a type-ahead dropdown of all staff (log/reassign for anyone).
+// NON-ADMINS are locked to their own name — they can only add/edit their own time.
+function staffInput(id, value){
+  const isAdmin = S && S.role==='admin';
+  if(!isAdmin){
+    return `<input class="fi" id="${id}" value="${String((S&&S.name)||'').replace(/"/g,'&quot;')}" readonly style="background:var(--paper);color:var(--text3);cursor:not-allowed;" title="Only admins can log time for other staff">`;
+  }
+  const v=(value!=null&&value!=='')?value:((S&&S.name)||'');
+  return `<input class="fi" id="${id}" list="${id}-dl" value="${String(v).replace(/"/g,'&quot;')}" placeholder="Staff name…" autocomplete="off"><datalist id="${id}-dl">${staffNames().map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('')}</datalist>`;
+}
+
 function fmtDuration(ms){
   if(ms<0) ms=0;
   const t=Math.floor(ms/1000), h=Math.floor(t/3600), m=Math.floor((t%3600)/60), s=t%60;
@@ -1063,13 +1083,13 @@ async function logNoActivityContainer(containerCode, date, notes){
   DB.containerSessions.push(entry);
 }
 
-async function logManualTime(containerCode, activity, minutes, date, notes){
+async function logManualTime(containerCode, activity, minutes, date, notes, employeeName){
   const c=CONTAINERS.find(x=>x.code===containerCode);
   const ts=new Date().toISOString();
   const entry={
     date:date||tday(), containerCode,
     containerFarm:c?.farm||'', facility:c?.facility||'',
-    employeeName:S.name||S.role||'Staff',
+    employeeName:employeeName||S.name||S.role||'Staff',
     activity, startTime:ts, endTime:ts,
     durationMinutes:parseInt(minutes)||0,
     notes:notes||'', status:'manual',
@@ -1082,7 +1102,7 @@ async function logManualTime(containerCode, activity, minutes, date, notes){
     entry.id=sid;
   }
   DB.containerSessions.push(entry);
-  logAudit('manual_time',`Manual: ${activity} in ${containerCode} — ${fmtMins(parseInt(minutes)||0)}`);
+  logAudit('manual_time',`Manual: ${activity} in ${containerCode} — ${fmtMins(parseInt(minutes)||0)} (${entry.employeeName})`);
   renderC();
 }
 
@@ -1114,14 +1134,52 @@ function openStartTimerModal(defaultActivity){
         </select>
       </div>
     </div>
-    <div class="fgl" style="margin-bottom:18px;"><label>Your Name</label>
-      <input class="fi" id="cst-emp" value="${S.name||''}" placeholder="Your name...">
-    </div>
+    <div class="fgl" style="margin-bottom:18px;"><label>Staff Member <span style="color:var(--text3);font-size:9px;">pick or type</span></label>${staffInput('cst-emp','')}</div>
     <div class="form-acts">
       <button class="btn b-m b-lg" onclick="submitStartTimer()">▶ Start Timer</button>
       <button class="btn b-g" onclick="closeModal()">Cancel</button>
     </div>`;
   document.getElementById('edit-modal').classList.add('open');
+}
+
+// Primary labor entry — manual time for any staff (admins log for others). Live timer is secondary.
+function openAddLaborModal(defaultActivity){
+  const activeC=getActiveContainers();
+  document.getElementById('em-title').textContent='➕ Add Labor / Time';
+  document.getElementById('em-body').innerHTML=`
+    <div class="fg2" style="margin-bottom:14px;">
+      <div class="fgl"><label>Date</label><input class="fi" type="date" id="al-date" value="${tday()}"></div>
+      <div class="fgl"><label>Staff Member <span style="color:var(--text3);font-size:9px;">pick or type</span></label>${staffInput('al-emp','')}</div>
+    </div>
+    <div class="fg2" style="margin-bottom:14px;">
+      <div class="fgl"><label>Container</label>
+        <select class="fs" id="al-con"><option value="">Select container…</option>
+          ${activeC.map(c=>`<option value="${c.code}">${c.code} · ${c.farm} (${c.facility})</option>`).join('')}
+        </select>
+      </div>
+      <div class="fgl"><label>Activity</label><select class="fs" id="al-act">${CONTAINER_ACTIVITIES.map(a=>`<option value="${a}"${a===defaultActivity?' selected':''}>${a}</option>`).join('')}</select></div>
+      <div class="fgl"><label>Duration (minutes)</label><input class="fi" type="number" min="1" id="al-min" placeholder="e.g. 45"></div>
+    </div>
+    <div class="fgl" style="margin-bottom:18px;"><label>Notes</label><input class="fi" id="al-notes" placeholder="What was done…"></div>
+    <div class="form-acts">
+      <button class="btn b-m b-lg" onclick="submitAddLabor()">➕ Add Labor</button>
+      <button class="btn b-g" onclick="openStartTimerModal('${defaultActivity||'Harvesting'}')">▶ Use live timer instead</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+function submitAddLabor(){
+  const con=document.getElementById('al-con')?.value;
+  const act=document.getElementById('al-act')?.value;
+  const min=document.getElementById('al-min')?.value;
+  const emp=(document.getElementById('al-emp')?.value||'').trim();
+  const date=document.getElementById('al-date')?.value||tday();
+  const notes=(document.getElementById('al-notes')?.value||'').trim();
+  if(!con){ alert('Select a container.'); return; }
+  if(!min||parseInt(min)<1){ alert('Enter the duration in minutes.'); return; }
+  if(!emp){ alert('Select a staff member.'); return; }
+  closeModal();
+  logManualTime(con, act, min, date, notes, emp);
 }
 
 function submitStartTimer(){
@@ -1145,7 +1203,7 @@ function buildContainerSessionPanel(defaultActivity){
       <span>⏱ Container Activity — Today</span>
       <div style="display:flex;gap:8px;align-items:center;">
         <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${todayS.length} ENTRIES</span>
-        ${canEdit()?`<button class="btn b-m b-sm" onclick="openStartTimerModal('${defaultActivity||'Harvesting'}')">▶ Start Timer</button>`:''}
+        ${canEdit()?`<button class="btn b-m b-sm" onclick="openAddLaborModal('${defaultActivity||'Harvesting'}')">➕ Add Labor</button>`:''}
       </div>
     </div>
     ${active.length>0?`
@@ -1209,9 +1267,10 @@ function openDayCloseout(){
     </div>`:''}
 
     <div style="margin-bottom:20px;">
-      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin-bottom:6px;">MANUAL TIME ENTRY</div>
-      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Add cleaning, maintenance, or any time not captured by the timer.</div>
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--gold);margin-bottom:6px;">LOG LABOR / TIME</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;">Log who worked and how long — admins can add time for any staff member.</div>
       <div class="fg2" style="margin-bottom:10px;">
+        <div class="fgl"><label>Staff Member</label>${staffInput('cman-emp','')}</div>
         <div class="fgl"><label>Container</label>
           <select class="fs" id="cman-c">
             <option value="">Select...</option>
@@ -1263,6 +1322,9 @@ async function finalizeDayCloseout(date){
     alert(`${stillActive.length} timer${stillActive.length===1?' is':'s are'} still running. Stop ${stillActive.length===1?'it':'them'} before closing out.`);
     return;
   }
+  // Can't close out the day without logging someone's labor time.
+  const laborLogged=DB.containerSessions.some(s=>s.date===date && (s.durationMinutes||0)>0);
+  if(!laborLogged && !confirm("No labor time has been logged for today.\n\nUse 'Log Labor / Time' above to add who worked and how long. Close out anyway?")) return;
   // Auto-log No Activity for every container with nothing logged today
   const logged=new Set(DB.containerSessions.filter(s=>s.date===date).map(s=>s.containerCode));
   const unlogged=getActiveContainers().filter(c=>!logged.has(c.code));
@@ -1285,8 +1347,10 @@ function submitManualEntry(date){
   const a=document.getElementById('cman-a')?.value;
   const m=document.getElementById('cman-min')?.value;
   const n=document.getElementById('cman-notes')?.value.trim();
+  const emp=(document.getElementById('cman-emp')?.value||'').trim();
   if(!c||!m){ alert('Container and duration are required.'); return; }
-  logManualTime(c,a,m,date,n);
+  if(!emp){ alert('Select a staff member.'); return; }
+  logManualTime(c,a,m,date,n,emp);
   const t=document.getElementById('dc-t');
   if(t){ t.style.opacity='1'; setTimeout(()=>t.style.opacity='0',2000); }
 }
@@ -1313,9 +1377,7 @@ function openEditSessionModal(sessionId){
           <option value="No Activity"${s.activity==='No Activity'?' selected':''}>No Activity</option>
         </select>
       </div>
-      <div class="fgl"><label>Employee Name</label>
-        <input class="fi" id="es-emp" value="${s.employeeName||''}">
-      </div>
+      <div class="fgl"><label>Staff Member <span style="color:var(--text3);font-size:9px;">reassign if needed</span></label>${staffInput('es-emp', s.employeeName)}</div>
     </div>
     <div class="fg2" style="margin-bottom:14px;">
       <div class="fgl"><label>Start Time</label>
