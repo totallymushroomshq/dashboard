@@ -3156,7 +3156,7 @@ function updateFruitingPreview(){
 
 // ── RECEIVING (blocks into Hydes Ferry — internal production or vendors) ──
 function receivingOnHand(r){ return Math.max(0,(r.blockCount||0)-(r.placedCount||0)); }
-function onHandReceivings(){ return DB.receivings.filter(r=>receivingOnHand(r)>0).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
+function onHandReceivings(){ return DB.receivings.filter(r=>receivingOnHand(r)>0).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')); }
 function onRecSourceChange(){ const src=document.getElementById('rc-source')?.value; const vEl=document.getElementById('rc-vendor'); if(vEl && !vEl.value && src==='internal') vEl.value='In-house Production'; }
 
 async function logReceiving(){
@@ -3175,7 +3175,7 @@ async function logReceiving(){
   if(!lotNumber){ alert('Lot / block number is required.'); return }
   if(blockCount<1){ alert('Block count must be at least 1.'); return }
   if(variety) addVariety(variety); // persist any typed-in variety
-  const rData={date,facility:'Hydes Ferry',source,vendor,variety,lotNumber,blockCount,blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,status:'on-hand'};
+  const rData={date,facility:'Hydes Ferry',source,vendor,variety,lotNumber,blockCount,blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,status:'on-hand',createdAt:new Date().toISOString()};
   const rId=await FS.add('receivings',rData);
   DB.receivings.push({id:rId,...rData});
   logAudit('blocks_received',`Received ${blockCount} ${variety} blocks — Lot ${lotNumber} from ${vendor||source} @ Hydes Ferry`);
@@ -3185,7 +3185,7 @@ function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes']
 
 function rReceiving(el){
   const onHand=onHandReceivings();
-  const history=[...DB.receivings].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const history=[...DB.receivings].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
   const totalOnHand=onHand.reduce((s,r)=>s+receivingOnHand(r),0);
   const srcBadge=(r)=> (r.source==='internal') ? '<span class="bdg bc" style="font-size:8px;">INTERNAL</span>' : '<span class="bdg bp" style="font-size:8px;">VENDOR</span>';
   const onHandRows = onHand.length? onHand.map(r=>`<tr>
@@ -3389,7 +3389,7 @@ function rFruiting(el){
     <div class="tw" style="margin-bottom:24px;overflow-x:auto;">
       <table>
         <thead><tr>${thS('fruit-done','date','Date In')}${thS('fruit-done','containerID','Container')}${thS('fruit-done','lotNumber','Lot #')}${thS('fruit-done','vendor','Vendor')}${thS('fruit-done','variety','Variety')}${thS('fruit-done','blockCount','Blocks')}${thS('fruit-done','projLbs','Proj. Yield')}${thS('fruit-done','harvestedAt','Harvested')}</tr></thead>
-        <tbody>${sByKey('fruit-done',[...done],{date:f=>f.date,containerID:f=>f.containerID,lotNumber:f=>f.lotNumber,vendor:f=>f.vendor||'',variety:f=>f.variety,blockCount:f=>f.blockCount||0,projLbs:f=>(f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK),harvestedAt:f=>f.harvestedAt||''}).map(f=>`<tr>
+        <tbody>${sByKey('fruit-done',[...done].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')),{date:f=>f.date,containerID:f=>f.containerID,lotNumber:f=>f.lotNumber,vendor:f=>f.vendor||'',variety:f=>f.variety,blockCount:f=>f.blockCount||0,projLbs:f=>(f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK),harvestedAt:f=>f.harvestedAt||''}).map(f=>`<tr>
           <td class="mn">${fDate(f.date)}</td>
           <td>${f.containerID}</td>
           <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}</td>
@@ -3473,7 +3473,7 @@ async function subFruiting(){
     let rec=null;
     if(r.receivingId){ rec=DB.receivings.find(x=>x.id===r.receivingId); if(rec && r.blockCount>receivingOnHand(rec)){ alert(`Skipped lot ${r.lotNumber}: only ${receivingOnHand(rec)} block(s) remain in its received batch.`); continue; } }
     if(r.variety) addVariety(r.variety);
-    const fData={date:r.date,containerID:r.containerID,lotNumber:r.lotNumber,source:r.source,vendor:r.vendor,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,rateLbPerBlock:r.rateLbPerBlock,notes:r.notes,status:'fruiting'};
+    const fData={date:r.date,containerID:r.containerID,lotNumber:r.lotNumber,source:r.source,vendor:r.vendor,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,rateLbPerBlock:r.rateLbPerBlock,notes:r.notes,status:'fruiting',createdAt:new Date().toISOString()};
     if(r.receivingId) fData.receivingId=r.receivingId;
     const fId=await FS.add('fruitings',fData);
     DB.fruitings.push({id:fId,...fData});
@@ -3578,7 +3578,7 @@ function onContainerSelect(code){
 }
 
 function rHarvest(el){
-  const s=sByKey('harvest',[...DB.harvests].sort((a,b)=>b.date.localeCompare(a.date)),{date:h=>h.date,container:h=>h.container,facility:h=>h.facility||'',lotNumber:h=>h.lotNumber||'',variety:h=>h.variety,grade:h=>h.grade||'',weight:h=>h.weight||0,usedWeight:h=>h.usedWeight||0});
+  const s=sByKey('harvest',[...DB.harvests].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')),{date:h=>h.date,container:h=>h.container,facility:h=>h.facility||'',lotNumber:h=>h.lotNumber||'',variety:h=>h.variety,grade:h=>h.grade||'',weight:h=>h.weight||0,usedWeight:h=>h.usedWeight||0});
   const activeContainers=getActiveContainers();
   // #5 — known lot numbers (harvests + fruitings + receivings) for the lot↔variety memory datalist
   const knownLots=[...new Set([...DB.harvests.map(h=>h.lotNumber),...DB.fruitings.map(f=>f.lotNumber),...(DB.receivings||[]).map(r=>r.lotNumber)].filter(Boolean))].sort();
@@ -3853,7 +3853,7 @@ async function logHarv(){
   let n=0;
   for(const r of rows){
     if(r.variety) addVariety(r.variety); // persist any typed-in variety
-    const hData={date:r.date,container:r.container,facility:r.facility,lotNumber:r.lotNumber,variety:r.variety,grade:r.grade,weight:r.weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes:r.notes};
+    const hData={date:r.date,container:r.container,facility:r.facility,lotNumber:r.lotNumber,variety:r.variety,grade:r.grade,weight:r.weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes:r.notes,createdAt:new Date().toISOString()};
     const hId=await FS.add('harvests',hData);
     DB.harvests.push({id:hId,...hData});
     logAudit('harvest_logged',`Logged ${r.weight}lb ${r.variety} — Lot ${r.lotNumber} — ${r.container} @ ${r.facility}`);
@@ -6644,7 +6644,7 @@ async function logCulture(){
   const source=val('cl-source'); const parentId=val('cl-parent');
   let parentLot=''; if(source==='transfer'&&parentId){ const p=DB.cultures.find(c=>c.id===parentId); if(p) parentLot=p.cultureLot; }
   const cultureLot=nextCultureLot();
-  const data={date:val('cl-date')||tday(),strain,form:val('cl-form'),source,parentId:(source==='transfer'?parentId:null)||null,parentLot,vendor:(source==='vendor'?val('cl-vendor'):''),generation:parseInt(val('cl-gen'))||1,cultureLot,status:val('cl-status')||'viable',loggedBy:S.name||'',notes:val('cl-notes')};
+  const data={date:val('cl-date')||tday(),strain,form:val('cl-form'),source,parentId:(source==='transfer'?parentId:null)||null,parentLot,vendor:(source==='vendor'?val('cl-vendor'):''),generation:parseInt(val('cl-gen'))||1,cultureLot,status:val('cl-status')||'viable',loggedBy:S.name||'',notes:val('cl-notes'),createdAt:new Date().toISOString()};
   const id=await FS.add('cultures',data); DB.cultures.push({id,...data});
   logAudit('culture_logged',`Culture ${cultureLot} — ${strain} (${cultureFormLabel(data.form)}) G${data.generation}`);
   toast('cl-t'); setTimeout(()=>rLab(document.getElementById('main-views')),600);
@@ -6653,7 +6653,7 @@ function clrCulture(){ ['cl-strain','cl-vendor','cl-notes'].forEach(id=>{const e
 
 function rLabCultures(el){
   const q=(_cultureQ||'').toLowerCase();
-  const list=[...(DB.cultures||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+  const list=[...(DB.cultures||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''))
     .filter(c=>!q || [c.cultureLot,c.strain,c.form,c.status,c.vendor,c.parentLot].some(x=>(x||'').toString().toLowerCase().includes(q)));
   const parentOpts=(DB.cultures||[]).filter(c=>c.status!=='contaminated'&&c.status!=='retired').sort((a,b)=>(b.date||'').localeCompare(a.date||''))
     .map(c=>`<option value="${c.id}">${c.cultureLot} · ${c.strain} (G${c.generation||1})</option>`).join('');
@@ -6709,7 +6709,7 @@ async function logSpawn(){
   const strain=val('sp-strain')||cult?.strain||''; if(!strain){ alert('Strain is required (pick a source culture or type it).'); return; }
   const bagCount=parseInt(val('sp-bags'))||0; if(bagCount<1){ alert('Bag count must be at least 1.'); return; }
   const spawnLot=nextSpawnLot();
-  const data={date:val('sp-date')||tday(),sourceCultureId:sourceCultureId||null,sourceCultureLot:cult?.cultureLot||'',strain,grain:val('sp-grain'),bagCount,usedBags:0,spawnLot,status:val('sp-status')||'colonizing',crew:val('sp-crew'),loggedBy:S.name||'',notes:val('sp-notes')};
+  const data={date:val('sp-date')||tday(),sourceCultureId:sourceCultureId||null,sourceCultureLot:cult?.cultureLot||'',strain,grain:val('sp-grain'),bagCount,usedBags:0,spawnLot,status:val('sp-status')||'colonizing',crew:val('sp-crew'),loggedBy:S.name||'',notes:val('sp-notes'),createdAt:new Date().toISOString()};
   const id=await FS.add('spawnRuns',data); DB.spawnRuns.push({id,...data});
   if(cult&&cult.status==='viable'){ cult.status='in-use'; try{FS.update('cultures',cult.id,{status:'in-use'});}catch(e){} }
   logAudit('spawn_logged',`Spawn ${spawnLot} — ${strain} on ${data.grain||'grain'} (${bagCount} bags) from ${cult?.cultureLot||'culture'}`);
@@ -6720,7 +6720,7 @@ function clrSpawn(){ ['sp-strain','sp-bags','sp-crew','sp-notes'].forEach(id=>{c
 function rLabSpawn(el){
   const q=(_spawnQ||'').toLowerCase();
   const onHand=onHandSpawn(); const totalBags=onHand.reduce((s,r)=>s+spawnOnHand(r),0);
-  const history=[...(DB.spawnRuns||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+  const history=[...(DB.spawnRuns||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''))
     .filter(s=>!q || [s.spawnLot,s.strain,s.grain,s.status,s.sourceCultureLot].some(x=>(x||'').toString().toLowerCase().includes(q)));
   const cultureOpts=(DB.cultures||[]).filter(c=>c.status!=='contaminated'&&c.status!=='retired').sort((a,b)=>(b.date||'').localeCompare(a.date||''))
     .map(c=>`<option value="${c.id}">${c.cultureLot} · ${c.strain} (${cultureFormLabel(c.form)} G${c.generation||1})</option>`).join('');
@@ -6777,7 +6777,7 @@ function rCordyceps(el){
 }
 
 function rLabSubstrate(el){
-  const allBatches = [...DB.labBatches].sort((a,b)=>(b.productionDate||b.date||'').localeCompare(a.productionDate||a.date||''));
+  const allBatches = [...DB.labBatches].sort((a,b)=>(b.productionDate||b.date||'').localeCompare(a.productionDate||a.date||'')||(b.timestamp||'').localeCompare(a.timestamp||''));
   const _subq=(_substrateQ||'').toLowerCase();
   const shownBatches = !_subq ? allBatches : allBatches.filter(b=>{
     const vl=batchVarietyLines(b);
