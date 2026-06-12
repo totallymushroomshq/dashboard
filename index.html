@@ -6703,67 +6703,134 @@ function onHandSpawn(){ return (DB.spawnRuns||[]).filter(s=>s.status!=='contamin
 function spawnStatusBadge(s){ const m={colonizing:['Colonizing','var(--amber)'],ready:['Ready','var(--fern)'],used:['Used','var(--text3)'],contaminated:['Contam','var(--rust)']}; const [l,c]=m[s]||['—','var(--text3)']; return `<span style="font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;color:${c};background:${c}22;border:1px solid ${c}44;border-radius:3px;padding:2px 7px;">${l}</span>`; }
 function onSpawnCulture(){ const id=document.getElementById('sp-culture')?.value; const c=(DB.cultures||[]).find(x=>x.id===id); if(c){ const st=document.getElementById('sp-strain'); if(st&&!st.value) st.value=c.strain||''; } }
 function onSpawnSearch(v){ _spawnQ=v; clearTimeout(window._spST); window._spST=setTimeout(()=>rLab(document.getElementById('main-views')),250); }
+const SPAWN_INOC_METHODS = ['LC (Liquid Culture)','Grain-to-grain','Agar wedge','Spore syringe','Other'];
+function spawnLabel(s){ return s.lotCode || s.spawnLot || '—'; }
 async function logSpawn(){
   const val=id=>(document.getElementById(id)?.value||'').trim();
   const sourceCultureId=val('sp-culture'); const cult=(DB.cultures||[]).find(c=>c.id===sourceCultureId);
   const strain=val('sp-strain')||cult?.strain||''; if(!strain){ alert('Strain is required (pick a source culture or type it).'); return; }
-  const bagCount=parseInt(val('sp-bags'))||0; if(bagCount<1){ alert('Bag count must be at least 1.'); return; }
+  const bagCount=parseInt(val('sp-bags'))||0; if(bagCount<1){ alert('# of bags / jars must be at least 1.'); return; }
+  const pdate=val('sp-pdate')||tday();
   const spawnLot=nextSpawnLot();
-  const data={date:val('sp-date')||tday(),sourceCultureId:sourceCultureId||null,sourceCultureLot:cult?.cultureLot||'',strain,grain:val('sp-grain'),bagCount,usedBags:0,spawnLot,status:val('sp-status')||'colonizing',crew:val('sp-crew'),loggedBy:S.name||'',notes:val('sp-notes'),createdAt:new Date().toISOString()};
+  if(strain) addVariety(strain);
+  const data={
+    spawnLot, lotCode:val('sp-lotcode'),
+    productionDate:pdate, date:pdate,
+    substrateBatch:val('sp-subbatch'), order:val('sp-order'), batchNo:val('sp-batchno'),
+    grain:val('sp-grain'), totalGrainWeight:val('sp-grainwt'), additives:val('sp-additives'), grainBatchLot:val('sp-grainlot'),
+    bagCount, usedBags:0, substrateNotes:val('sp-subnotes'),
+    sterilizationDate:val('sp-sterdate'), autoclaveTemp:val('sp-actemp'), cookTimeHours:val('sp-cookhrs'), cookTimeStart:val('sp-cookstart'), cookTimeEnd:val('sp-cookend'), sterNotes:val('sp-sternotes'),
+    inoculationDate:val('sp-inocdate'), strain, sourceCultureId:sourceCultureId||null, sourceCultureLot:cult?.cultureLot||'',
+    cultureSource:val('sp-culsource'), inoculationMethod:val('sp-method'), grainTempCooling:val('sp-graintemp'),
+    lcSourceLot:val('sp-lclot'), spawnQuantity:val('sp-spawnqty'), inocNotes:val('sp-inocnotes'),
+    status:val('sp-status')||'colonizing', crew:val('sp-crew'), loggedBy:S.name||'', createdAt:new Date().toISOString()
+  };
   const id=await FS.add('spawnRuns',data); DB.spawnRuns.push({id,...data});
   if(cult&&cult.status==='viable'){ cult.status='in-use'; try{FS.update('cultures',cult.id,{status:'in-use'});}catch(e){} }
-  logAudit('spawn_logged',`Spawn ${spawnLot} — ${strain} on ${data.grain||'grain'} (${bagCount} bags) from ${cult?.cultureLot||'culture'}`);
+  logAudit('spawn_logged',`Grain spawn ${data.lotCode||spawnLot} — ${strain} on ${data.grain||'grain'} (${bagCount} bags)`);
   toast('sp-t'); setTimeout(()=>rLab(document.getElementById('main-views')),600);
 }
-function clrSpawn(){ ['sp-strain','sp-bags','sp-crew','sp-notes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';}); }
+function clrSpawn(){ ['sp-lotcode','sp-subbatch','sp-order','sp-batchno','sp-grainwt','sp-additives','sp-grainlot','sp-bags','sp-subnotes','sp-actemp','sp-cookhrs','sp-cookstart','sp-cookend','sp-sternotes','sp-strain','sp-culsource','sp-graintemp','sp-lclot','sp-spawnqty','sp-inocnotes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';}); }
 
 function rLabSpawn(el){
   const q=(_spawnQ||'').toLowerCase();
   const onHand=onHandSpawn(); const totalBags=onHand.reduce((s,r)=>s+spawnOnHand(r),0);
   const history=[...(DB.spawnRuns||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''))
-    .filter(s=>!q || [s.spawnLot,s.strain,s.grain,s.status,s.sourceCultureLot].some(x=>(x||'').toString().toLowerCase().includes(q)));
+    .filter(s=>!q || [s.spawnLot,s.lotCode,s.strain,s.grain,s.status,s.sourceCultureLot,s.substrateBatch].some(x=>(x||'').toString().toLowerCase().includes(q)));
   const cultureOpts=(DB.cultures||[]).filter(c=>c.status!=='contaminated'&&c.status!=='retired').sort((a,b)=>(b.date||'').localeCompare(a.date||''))
     .map(c=>`<option value="${c.id}">${c.cultureLot} · ${c.strain} (${cultureFormLabel(c.form)} G${c.generation||1})</option>`).join('');
+  const sec=(t)=>`<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;font-weight:700;color:var(--gold);text-transform:uppercase;border-bottom:1px solid var(--border);padding-bottom:5px;margin:18px 0 12px;">— ${t} —</div>`;
   const onHandRows=onHand.length? onHand.map(s=>`<tr>
-    <td class="mn" style="color:var(--gold);font-weight:700;">${s.spawnLot}</td><td style="font-weight:500;">${s.strain}</td><td>${s.grain||'—'}</td>
-    <td class="mn" style="font-size:10px;color:var(--text3);">${s.sourceCultureLot||'—'}</td><td class="mn">${s.bagCount||0}</td><td class="mn">${s.usedBags||0}</td>
+    <td class="mn" style="color:var(--gold);font-weight:700;">${spawnLabel(s)}</td><td style="font-weight:500;">${s.strain}</td><td>${s.grain||'—'}</td>
+    <td class="mn" style="font-size:10px;color:var(--text3);">${s.sourceCultureLot||s.cultureSource||'—'}</td><td class="mn">${s.bagCount||0}</td><td class="mn">${s.usedBags||0}</td>
     <td class="mn" style="color:var(--fern);font-weight:700;">${spawnOnHand(s)}</td><td>${spawnStatusBadge(s.status)}</td>
-  </tr>`).join('') : `<tr><td colspan="8" class="empty">No spawn on hand — log a spawn run below.</td></tr>`;
-  const histRows=history.length? history.map(s=>`<tr>
-    <td class="mn">${fDate(s.date)}</td><td class="mn" style="color:var(--gold);font-weight:700;">${s.spawnLot}</td><td style="font-weight:500;">${s.strain}</td>
-    <td>${s.grain||'—'}</td><td class="mn" style="font-size:10px;color:var(--text3);">${s.sourceCultureLot||'—'}</td><td class="mn">${s.bagCount||0}</td>
-    <td class="mn">${spawnOnHand(s)}</td><td>${spawnStatusBadge(s.status)}</td><td style="font-size:11px;color:var(--text3);">${s.loggedBy||''}</td>
-  </tr>`).join('') : `<tr><td colspan="9" class="empty">No spawn runs logged${q?' match your search':' yet'}.</td></tr>`;
+  </tr>`).join('') : `<tr><td colspan="8" class="empty">No spawn on hand — log a grain spawn run below.</td></tr>`;
+  const fld=(l,v)=>v?`<div style="font-size:12px;margin-bottom:3px;"><span style="color:var(--text3);">${l}: </span>${v}</div>`:'';
+  const histCards=history.length? history.map(s=>`<details style="border:1px solid var(--border);border-radius:6px;margin-bottom:8px;background:white;overflow:hidden;">
+    <summary style="padding:11px 15px;cursor:pointer;display:flex;align-items:center;gap:10px;list-style:none;flex-wrap:wrap;">
+      <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);font-size:12px;">${spawnLabel(s)}</span>
+      <span style="font-weight:600;font-size:13px;">${s.strain||'—'}</span>
+      <span style="font-size:11px;color:var(--text3);">${s.grain||''}</span>
+      <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${fDate(s.productionDate||s.date)}</span>
+      <span class="mn" style="font-size:11px;">${s.bagCount||0} bags · ${spawnOnHand(s)} on hand</span>
+      <span style="margin-left:auto;">${spawnStatusBadge(s.status)}</span>
+    </summary>
+    <div style="padding:0 15px 14px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div>
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin:12px 0 6px;">HEADER & SUBSTRATE</div>
+        ${fld('Lot Code',s.lotCode)}${fld('Auto Lot',s.spawnLot)}${fld('Substrate Batch',s.substrateBatch)}${fld('Order',s.order)}${fld('Batch #',s.batchNo)}
+        ${fld('Grain',s.grain)}${fld('Total Grain Weight',s.totalGrainWeight)}${fld('Grain Batch/Lot',s.grainBatchLot)}${fld('Additives',s.additives)}${fld('# Bags/Jars',s.bagCount)}${fld('Substrate Notes',s.substrateNotes)}
+      </div>
+      <div>
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin:12px 0 6px;">STERILIZATION</div>
+        ${fld('Date',s.sterilizationDate?fDate(s.sterilizationDate):'')}${fld('Autoclave Temp',s.autoclaveTemp)}${fld('Cook Time (hrs)',s.cookTimeHours)}${fld('Cook Start',s.cookTimeStart)}${fld('Cook End',s.cookTimeEnd)}${fld('Notes',s.sterNotes)}
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin:14px 0 6px;">INOCULATION</div>
+        ${fld('Date',s.inoculationDate?fDate(s.inoculationDate):'')}${fld('Method',s.inoculationMethod)}${fld('Source Culture',s.sourceCultureLot)}${fld('Culture Source',s.cultureSource)}${fld('LC Source Lot',s.lcSourceLot)}${fld('Grain Temp (cooling)',s.grainTempCooling)}${fld('Spawn Qty',s.spawnQuantity)}${fld('Notes',s.inocNotes)}${fld('Crew',s.crew)}${fld('Logged by',s.loggedBy)}
+      </div>
+    </div></details>`).join('') : `<div class="empty" style="padding:20px;">No grain spawn runs logged${q?' match your search':' yet'}.</div>`;
   el.innerHTML=`
     <div class="stats" style="margin-bottom:20px;">
       <div class="sc g"><div class="sc-l">Spawn Bags On Hand</div><div class="sc-v">${totalBags}</div><div class="sc-n">${onHand.length} run${onHand.length===1?'':'s'} available</div></div>
       <div class="sc"><div class="sc-l">Spawn Runs</div><div class="sc-v">${(DB.spawnRuns||[]).length}</div><div class="sc-n">all-time</div></div>
     </div>
-    ${canEdit()?`<div class="card"><div class="card-t">Log Spawn Run</div>
+    ${canEdit()?`<div class="card"><div class="card-t">Grain Spawn Production Log</div>
+      ${sec('Header')}
       <div class="fg2">
-        <div class="fgl"><label>Date</label><input class="fi" type="date" id="sp-date" value="${tday()}"></div>
-        <div class="fgl"><label>Source Culture</label><select class="fs" id="sp-culture" onchange="onSpawnCulture()"><option value="">— select culture —</option>${cultureOpts}</select></div>
-        <div class="fgl"><label>Strain</label><input class="fi" id="sp-strain" list="sp-strainl" placeholder="auto from culture"><datalist id="sp-strainl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
-        <div class="fgl"><label>Grain</label><select class="fs" id="sp-grain">${GRAIN_TYPES.map(g=>`<option value="${g}">${g}</option>`).join('')}</select></div>
+        <div class="fgl"><label>Production Date</label><input class="fi" type="date" id="sp-pdate" value="${tday()}"></div>
+        <div class="fgl"><label>Lot Code</label><input class="fi" id="sp-lotcode" placeholder="e.g. #060826"></div>
+        <div class="fgl"><label>Substrate Batch</label><input class="fi" id="sp-subbatch" placeholder="e.g. #HFM-24"></div>
+        <div class="fgl"><label>Order</label><input class="fi" id="sp-order" placeholder="optional"></div>
+        <div class="fgl"><label>Batch #</label><input class="fi" id="sp-batchno" placeholder="e.g. 001"></div>
+      </div>
+      ${sec('Substrate & Ingredients')}
+      <div class="fg2">
+        <div class="fgl"><label>Grain Type</label><select class="fs" id="sp-grain">${GRAIN_TYPES.map(g=>`<option value="${g}">${g}</option>`).join('')}</select></div>
+        <div class="fgl"><label>Total Grain Weight</label><input class="fi" id="sp-grainwt" placeholder="e.g. 1100 g/bag"></div>
+        <div class="fgl"><label>Grain Batch/Lot</label><input class="fi" id="sp-grainlot" placeholder="e.g. 002"></div>
+        <div class="fgl"><label># of Bags / Jars</label><input class="fi" type="number" min="1" id="sp-bags" placeholder="e.g. 8"></div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label># of Bags</label><input class="fi" type="number" min="1" id="sp-bags" placeholder="bags produced"></div>
+        <div class="fgl"><label>Additives (type & amount)</label><input class="fi" id="sp-additives" placeholder="optional"></div>
+        <div class="fgl"><label>Notes (water rate, etc.)</label><input class="fi" id="sp-subnotes" placeholder="e.g. Water: 835 mL/bag"></div>
+      </div>
+      ${sec('Sterilization')}
+      <div class="fg2">
+        <div class="fgl"><label>Sterilization Date</label><input class="fi" type="date" id="sp-sterdate" value="${tday()}"></div>
+        <div class="fgl"><label>Autoclave Temp</label><input class="fi" id="sp-actemp" placeholder="e.g. 121°C"></div>
+        <div class="fgl"><label>Cook Time (hrs)</label><input class="fi" id="sp-cookhrs" placeholder="e.g. 2.5"></div>
+        <div class="fgl"><label>Cook Start</label><input class="fi" id="sp-cookstart" placeholder="e.g. 1:10 PM"></div>
+        <div class="fgl"><label>Cook End</label><input class="fi" id="sp-cookend" placeholder="e.g. 3:40 PM"></div>
+      </div>
+      <div class="fgl" style="margin-bottom:4px;"><label>Sterilization Notes</label><input class="fi" id="sp-sternotes" placeholder="optional"></div>
+      ${sec('Inoculation')}
+      <div class="fg2">
+        <div class="fgl"><label>Inoculation Date</label><input class="fi" type="date" id="sp-inocdate"></div>
+        <div class="fgl"><label>Strain / Lot #(s)</label><input class="fi" id="sp-strain" list="sp-strainl" placeholder="e.g. 061226 A, 061226 B"><datalist id="sp-strainl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+        <div class="fgl"><label>Inoculation Method</label><select class="fs" id="sp-method">${SPAWN_INOC_METHODS.map(m=>`<option value="${m}">${m}</option>`).join('')}</select></div>
+        <div class="fgl"><label>Grain Temp (cooling)</label><input class="fi" id="sp-graintemp" placeholder="e.g. 70°F"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Source Culture <span style="color:var(--text3);font-size:9px;">links lineage</span></label><select class="fs" id="sp-culture" onchange="onSpawnCulture()"><option value="">— select culture —</option>${cultureOpts}</select></div>
+        <div class="fgl"><label>Culture Source</label><input class="fi" id="sp-culsource" placeholder="e.g. Hyphae-Hill"></div>
+        <div class="fgl"><label>Liquid Culture Source Lot #</label><input class="fi" id="sp-lclot" placeholder="optional"></div>
+        <div class="fgl"><label>Spawn Quantity</label><input class="fi" id="sp-spawnqty" placeholder="optional"></div>
+      </div>
+      <div class="fgl" style="margin-bottom:4px;"><label>Inoculation Notes</label><input class="fi" id="sp-inocnotes" placeholder="optional"></div>
+      ${sec('Run Status')}
+      <div class="fg2">
         <div class="fgl"><label>Status</label><select class="fs" id="sp-status">${SPAWN_RUN_STATUSES.filter(s=>s[0]!=='used').map(s=>`<option value="${s[0]}">${s[1]}</option>`).join('')}</select></div>
         <div class="fgl"><label>Crew</label><input class="fi" id="sp-crew" value="${(S.name||'').replace(/"/g,'&quot;')}"></div>
       </div>
-      <div class="fgl" style="margin-top:6px;margin-bottom:14px;"><label>Notes</label><textarea class="fta" id="sp-notes" placeholder="Colonization, contamination checks…"></textarea></div>
-      <div class="form-acts"><button class="btn b-m b-lg" onclick="logSpawn()">Log Spawn Run</button><button class="btn b-g" onclick="clrSpawn()">Clear</button></div>
-      <div class="toast" id="sp-t">✓ Spawn run logged</div>
+      <div class="form-acts" style="margin-top:14px;"><button class="btn b-m b-lg" onclick="logSpawn()">Log Grain Spawn</button><button class="btn b-g" onclick="clrSpawn()">Clear</button></div>
+      <div class="toast" id="sp-t">✓ Grain spawn logged</div>
     </div>`:''}
     <div class="sh" style="margin-top:24px;"><span>Spawn On Hand</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:${totalBags>0?'var(--fern)':'var(--text3)'};">${totalBags} BAGS</span></div>
     <div class="tw" style="margin-bottom:24px;"><table>
-      <thead><tr><th>Spawn Lot</th><th>Strain</th><th>Grain</th><th>From Culture</th><th>Made</th><th>Used</th><th>On Hand</th><th>Status</th></tr></thead>
+      <thead><tr><th>Lot</th><th>Strain</th><th>Grain</th><th>Source</th><th>Made</th><th>Used</th><th>On Hand</th><th>Status</th></tr></thead>
       <tbody>${onHandRows}</tbody></table></div>
-    <div class="sh"><span>Spawn History</span></div>
-    <div style="margin:10px 0;"><input class="fi" id="sp-search" placeholder="🔍 Search by lot, strain, grain, culture…" value="${(_spawnQ||'').replace(/"/g,'&quot;')}" oninput="onSpawnSearch(this.value)"></div>
-    <div class="tw"><table>
-      <thead><tr><th>Date</th><th>Spawn Lot</th><th>Strain</th><th>Grain</th><th>From Culture</th><th>Bags</th><th>On Hand</th><th>Status</th><th>By</th></tr></thead>
-      <tbody>${histRows}</tbody></table></div>`;
+    <div class="sh"><span>Spawn Production Log</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${(DB.spawnRuns||[]).length} RUNS</span></div>
+    <div style="margin:10px 0;"><input class="fi" id="sp-search" placeholder="🔍 Search by lot, strain, grain, substrate batch, culture…" value="${(_spawnQ||'').replace(/"/g,'&quot;')}" oninput="onSpawnSearch(this.value)"></div>
+    ${histCards}`;
   const si=document.getElementById('sp-search'); if(si&&_spawnQ){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); }
 }
 
