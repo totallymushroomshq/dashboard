@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Totally Mushrooms — Wholesale Line Sheet</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Syne:wght@400;500;600;700&family=Syne+Mono&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --black:#1a1710; --ink:#2a2418; --gold:#b8820a; --amber:#d4980c;
+    --paper:#fbfaf6; --card:#ffffff; --line:#e7e0cf; --spore:#8a7d63; --moss:#5a6a3a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Syne',sans-serif;background:var(--paper);color:var(--ink);line-height:1.5;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1080px;margin:0 auto;padding:40px 24px 64px;}
+
+  header{text-align:center;border-bottom:2px solid var(--gold);padding-bottom:24px;margin-bottom:8px;}
+  .brand{font-family:'Cormorant Garamond',serif;font-size:52px;font-weight:700;letter-spacing:-1px;color:var(--black);line-height:1;}
+  .brand .org{color:var(--gold);font-style:italic;}
+  .sub{font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:4px;text-transform:uppercase;color:var(--spore);margin-top:10px;}
+  .tag{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:19px;color:var(--ink);margin-top:12px;}
+
+  .controls{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin:24px 0 18px;}
+  .controls h2{font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:3px;text-transform:uppercase;color:var(--gold);}
+  .distro{display:flex;align-items:center;gap:10px;}
+  .distro label{font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--spore);}
+  .distro select{font-family:'Syne',sans-serif;font-size:14px;font-weight:600;color:var(--ink);background:var(--card);border:1.5px solid var(--gold);border-radius:7px;padding:9px 14px;cursor:pointer;}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:22px;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 1px 3px rgba(60,50,20,.05);}
+  .photo{position:relative;aspect-ratio:4/3;background:#f1ece0;overflow:hidden;}
+  .photo img{width:100%;height:100%;object-fit:cover;display:block;}
+  .photo .ph{position:absolute;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--spore);background:linear-gradient(135deg,#f3eede,#e9e1cd);}
+  .photo .ph .icon{font-size:34px;opacity:.55;}
+  .photo .ph .lbl{font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;}
+  .nav{position:absolute;top:50%;transform:translateY(-50%);width:34px;height:34px;border:none;border-radius:50%;background:rgba(26,23,16,.55);color:#fff;font-size:18px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:3;transition:background .15s;}
+  .nav:hover{background:rgba(26,23,16,.85);}
+  .nav.prev{left:8px;} .nav.next{right:8px;}
+  .counter{position:absolute;bottom:8px;right:10px;z-index:3;background:rgba(26,23,16,.6);color:#fff;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;padding:3px 8px;border-radius:10px;}
+  .soon-badge{position:absolute;top:10px;left:10px;z-index:4;background:var(--gold);color:#fff;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;font-weight:700;padding:5px 11px;border-radius:4px;box-shadow:0 1px 5px rgba(0,0,0,.25);}
+  .card.coming .photo img{filter:grayscale(.25);}
+
+  .body{padding:16px 18px 18px;display:flex;flex-direction:column;flex:1;}
+  .name{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:700;color:var(--black);line-height:1.1;}
+  .pack{font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--moss);margin-top:3px;}
+  .desc{font-size:13px;color:var(--ink);margin-top:9px;flex:1;}
+  .codes{margin-top:14px;border-top:1px solid var(--line);padding-top:10px;}
+  .crow{display:flex;justify-content:space-between;align-items:center;font-size:12px;padding:3px 0;}
+  .crow .k{font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--spore);}
+  .crow .v{font-family:'Syne Mono',monospace;font-weight:700;color:var(--ink);}
+  .crow .v.tm{color:var(--gold);}
+  .crow .v.tbd{color:#c2b89c;font-weight:400;font-style:italic;}
+
+  footer{margin-top:40px;border-top:2px solid var(--gold);padding-top:20px;text-align:center;}
+  .order{font-family:'Cormorant Garamond',serif;font-size:20px;color:var(--black);}
+  .contact{font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--spore);margin-top:8px;line-height:1.9;}
+  .note{font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:#c2b89c;margin-top:18px;}
+
+  @media print{ body{background:#fff;} .wrap{max-width:none;padding:0;} .card{break-inside:avoid;box-shadow:none;} .nav{display:none;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">Totally <span class="org">Mushrooms</span></div>
+    <div class="sub">Certified Organic · Nashville, Tennessee</div>
+    <div class="tag">Specialty &amp; gourmet mushrooms, grown fresh — harvested to order.</div>
+  </header>
+
+  <div class="controls">
+    <h2>Wholesale Line Sheet</h2>
+    <div class="distro">
+      <label for="distro-sel">Select your distributor</label>
+      <select id="distro-sel" onchange="setDistro(this.value)">
+        <option value="all">All distributors</option>
+        <option value="sysco">Sysco</option>
+        <option value="pfg">PFG</option>
+        <option value="dock">Off-the-Dock</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <footer>
+    <div class="order">To order, contact our team</div>
+    <div class="contact">
+      <a href="mailto:orders@totallymushrooms.com" style="color:var(--gold);text-decoration:none;font-weight:700;">orders@totallymushrooms.com</a><br>
+      Nashville, TN &nbsp;·&nbsp; totallymushrooms.com
+    </div>
+    <div class="note" id="foot-note">All items certified organic · availability seasonal · item codes for distributor ordering</div>
+  </footer>
+</div>
+
+<script>
+  // ── EDIT HERE ──  imgs = photos in img/ for that variety (arrow-scroll).  Distributor item #s below.
+  const ITEMS = [
+    { tm:'MO8',  name:'Mixed Oyster',  pack:'3 lb box', imgs:['oyster-1.jpg','oyster-2.jpg','oyster-3.jpg'],
+      desc:'A chef’s blend of our farm oyster mushrooms — Blue, White, Italian, Black Pearl & Trail of Tears.',
+      sysco:'7504968', pfg:'', dock:'' },
+    { tm:'CB09', name:'Shiitake',      pack:'3 lb box', imgs:['shiitake-1.jpg'],
+      desc:'“Chonk” shiitake — dense, meaty caps with exceptional texture and shelf life.',
+      sysco:'4277861', pfg:'850159', dock:'' },
+    { tm:'CM5',  name:'Chef’s Mix',    pack:'3 lb box', imgs:['chefsmix-1.jpg','chefsmix-2.jpg','chefsmix-3.jpg','chefsmix-4.jpg'],
+      desc:'A culinary medley of everything available — no Lion’s Mane, no King Trumpet.',
+      sysco:'4121358', pfg:'617610', dock:'' },
+    { tm:'CB08', name:'Lion’s Mane',   pack:'3 lb box', imgs:['lionsmane-1.jpg'],
+      desc:'Tender, crab-like texture — a gourmet favorite, beautiful on the plate.',
+      sysco:'7351283', pfg:'617613', dock:'' },
+    { tm:'CH02', name:'Chestnut Royale', pack:'3 lb box', imgs:['chestnutroyale-1.jpg','chestnutroyale-2.jpg'],
+      desc:'Premium chestnut mushroom — firm, nutty, and richly flavored. A standout on any menu.',
+      sysco:'7351247', pfg:'', dock:'' },
+    { tm:'WD01', name:'Wild Mix',      pack:'3 lb box', imgs:['wildmix-1.jpg','wildmix-2.jpg','wildmix-3.jpg','wildmix-4.jpg'], coming:true,
+      desc:'Wild, local & bioregional specialty — Lynx Paw, Coral Tooth, Golden Needle, White Winter & ToT Oyster.',
+      sysco:'3827029', pfg:'363421', dock:'' },
+  ];
+
+  const DISTRO_LABELS = { sysco:'Sysco #', pfg:'PFG #', dock:'Off-the-Dock #' };
+  let _distro = 'all';
+  const PH = {}; // carousel state per card index
+
+  const codeRow = (k,v,cls)=>`<div class="crow"><span class="k">${k}</span><span class="v ${cls||''} ${v?'':'tbd'}">${v||(cls==='tm'?'—':'Ask your rep')}</span></div>`;
+
+  function codeBlock(it){
+    let rows = codeRow('TM SKU', it.tm, 'tm');
+    if(_distro==='all'){
+      rows += codeRow('Sysco #', it.sysco) + codeRow('PFG #', it.pfg) + codeRow('Off-the-Dock #', it.dock);
+    } else {
+      rows += codeRow(DISTRO_LABELS[_distro], it[_distro]);
+    }
+    return rows;
+  }
+
+  function renderGrid(){
+    document.getElementById('grid').innerHTML = ITEMS.map((it,i)=>{
+      PH[i] = { imgs: it.imgs||[], idx:0 };
+      const first = (it.imgs&&it.imgs[0]) ? it.imgs[0] : '';
+      const multi = (it.imgs||[]).length>1;
+      return `
+      <div class="card${it.coming?' coming':''}">
+        <div class="photo">
+          ${it.coming?'<div class="soon-badge">Coming Soon</div>':''}
+          <img id="ph-img-${i}" src="img/${first}" alt="Organic ${it.name}" onerror="this.style.display='none';this.parentElement.querySelector('.ph').style.display='flex';">
+          <div class="ph"><div class="icon">🍄</div><div class="lbl">${it.coming?'Coming soon':'Photo coming soon'}</div></div>
+          ${multi?`<button class="nav prev" onclick="photoNav(${i},-1)" aria-label="Previous">‹</button>
+                   <button class="nav next" onclick="photoNav(${i},1)" aria-label="Next">›</button>
+                   <span class="counter" id="ph-cnt-${i}">1/${it.imgs.length}</span>`:''}
+        </div>
+        <div class="body">
+          <div class="name">Organic ${it.name}</div>
+          <div class="pack">${it.pack}</div>
+          <div class="desc">${it.desc}</div>
+          <div class="codes">${codeBlock(it)}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function photoNav(i, dir){
+    const st = PH[i]; if(!st || st.imgs.length<2) return;
+    st.idx = (st.idx + dir + st.imgs.length) % st.imgs.length;
+    const img = document.getElementById('ph-img-'+i);
+    const cnt = document.getElementById('ph-cnt-'+i);
+    if(img){ img.style.display='block'; img.src = 'img/'+st.imgs[st.idx];
+             const ph=img.parentElement.querySelector('.ph'); if(ph) ph.style.display='none'; }
+    if(cnt) cnt.textContent = (st.idx+1)+'/'+st.imgs.length;
+  }
+
+  function setDistro(v){
+    _distro = v;
+    renderGrid();
+    const fn=document.getElementById('foot-note');
+    fn.textContent = v==='all'
+      ? 'All items certified organic · availability seasonal · item codes for distributor ordering'
+      : 'Showing '+(DISTRO_LABELS[v]||'').replace(' #','')+' item numbers · certified organic · availability seasonal';
+  }
+
+  renderGrid();
+</script>
+</body>
+</html>
