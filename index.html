@@ -2019,7 +2019,7 @@ function rToday(el){
     </div>
     <div class="sh" style="margin-top:4px;"><span>Inventory vs Today's Orders</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${dk.toUpperCase()}</span></div>
     <div class="inv-snap">${snapHTML}</div>
-    ${(S.role==='admin'||S.role==='staff')?buildPackDaySection(DB.packSessions.find(ps=>ps.date===tday()&&ps.status==='open'),DB.harvests.map(h=>({...h,onHand:Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0))})).filter(h=>h.onHand>0.05).sort((a,b)=>a.variety.localeCompare(b.variety)||b.date.localeCompare(a.date)),snapCards):''}
+    ${(S.role==='admin'||S.role==='staff')?buildPackDaySection(DB.packSessions.filter(ps=>ps.date===tday()&&ps.status==='open'),DB.harvests.map(h=>({...h,onHand:packOnHand(h)})).filter(h=>h.onHand>0.05).sort((a,b)=>a.variety.localeCompare(b.variety)||b.date.localeCompare(a.date)),snapCards):''}
     <div class="sh"><span>Confirmed — Ready to Pack Today</span><span>${dk.toUpperCase()}</span></div>
     <div class="tw" style="margin-bottom:24px;">
       <table><thead><tr><th>Client</th><th>Items (codes)</th><th>Notes</th><th>Action</th></tr></thead>
@@ -2292,18 +2292,38 @@ async function batchMarkPacked(){
 }
 
 // ── PACK SESSION FUNCTIONS ──
-function buildPackDaySection(openSession, availLots, snapCards){
-  if(openSession){
-    return `<div class="sh"><span>📦 Pack Session</span><span class="bdg bpk">OPEN</span></div>
-    <div class="card" style="padding:18px;margin-bottom:24px;">
-      <div style="font-size:13px;color:var(--fern);font-weight:700;margin-bottom:8px;">Pack session open — ${openSession.pulled.length} lot${openSession.pulled.length!==1?'s':''} pulled</div>
-      <div style="font-size:12px;color:var(--text3);line-height:1.9;">${openSession.pulled.map(p=>`<span style="background:rgba(58,96,48,.08);border-radius:4px;padding:2px 8px;margin-right:4px;display:inline-block;">${p.variety} · Lot ${p.lotNumber} · ${p.pulledWeight.toFixed(1)} lb</span>`).join('')}</div>
-      <div style="margin-top:14px;font-size:12px;color:var(--warm);">Pack your orders, then go to <strong>Inventory</strong> to weigh back leftovers and close the session.</div>
-    </div>`;
+// Weight of a lot already pulled into still-open pack sessions today (committed, not yet closed).
+function lotCommitted(harvestId){
+  return DB.packSessions.filter(s=>s.date===tday()&&s.status==='open')
+    .reduce((sum,s)=>sum + (s.pulled||[]).filter(p=>p.harvestId===harvestId).reduce((a,p)=>a+(parseFloat(p.pulledWeight)||0),0), 0);
+}
+// True on-hand available to pull = raw on-hand minus what's committed to open sessions.
+function packOnHand(h){
+  return Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)-lotCommitted(h.id));
+}
+
+function buildPackDaySection(openSessions, availLots, snapCards){
+  openSessions = Array.isArray(openSessions) ? openSessions : (openSessions?[openSessions]:[]);
+  openSessions = [...openSessions].sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+  // Summary of any open sessions (multiple per day allowed)
+  let openBlock='';
+  if(openSessions.length){
+    openBlock = `<div class="sh"><span>📦 Open Pack Session${openSessions.length>1?'s':''}</span><span class="bdg bpk">${openSessions.length} OPEN</span></div>
+      <div style="margin-bottom:20px;">
+        ${openSessions.map((s,i)=>{
+          const t=s.createdAt?new Date(s.createdAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'';
+          return `<div class="card" style="padding:14px 16px;margin-bottom:10px;">
+            <div style="font-size:13px;color:var(--fern);font-weight:700;margin-bottom:6px;">Session ${i+1}${t?' · opened '+t:''} — ${s.pulled.length} lot${s.pulled.length!==1?'s':''} pulled</div>
+            <div style="font-size:12px;color:var(--text3);line-height:1.9;">${s.pulled.map(p=>`<span style="background:rgba(58,96,48,.08);border-radius:4px;padding:2px 8px;margin-right:4px;display:inline-block;">${p.variety} · Lot ${p.lotNumber} · ${p.pulledWeight.toFixed(1)} lb</span>`).join('')}</div>
+          </div>`;
+        }).join('')}
+        <div style="font-size:12px;color:var(--warm);">Pack your orders, then go to <strong>Inventory</strong> to weigh back leftovers and close each session. You can start another pull below anytime.</div>
+      </div>`;
   }
   if(availLots.length===0){
-    return `<div class="sh"><span>📦 Pack Day</span></div><div class="card" style="padding:18px;margin-bottom:24px;"><div class="empty">No harvest lots with stock available.</div></div>`;
+    return openBlock + (openSessions.length?'':`<div class="sh"><span>📦 Pack Day</span></div><div class="card" style="padding:18px;margin-bottom:24px;"><div class="empty">No harvest lots with stock available.</div></div>`);
   }
+  const PACK_OPEN_BLOCK = openBlock;
   const needSummary=snapCards.filter(x=>x.neededLbs>0).map(x=>`<span style="font-family:'Syne Mono',monospace;font-size:10px;background:rgba(58,96,48,.1);color:var(--fern);padding:3px 8px;border-radius:4px;">${x.label}: ${x.neededLbs.toFixed(1)} lb</span>`).join(' ');
   const totalSel=Object.values(packDaySelected).reduce((s,w)=>s+w,0);
   const lotCards=availLots.map(h=>{
@@ -2313,11 +2333,11 @@ function buildPackDaySection(openSession, availLots, snapCards){
       <div class="pack-lot-top"><span class="pack-lot-var">${h.variety}</span><span class="pack-lot-num">LOT ${h.lotNumber}</span></div>
       <div class="pack-lot-mid">${h.container||''}${h.container&&h.date?' · ':''}${h.date?fDate(h.date):''}</div>
       <div class="pack-lot-wt">${h.onHand.toFixed(1)} lb</div>
-      ${sel?`<div class="pack-lot-inp" onclick="event.stopPropagation()">Pull: <input type="number" step="0.1" min="0.1" max="${h.onHand}" value="${pullWt.toFixed(1)}" style="width:72px;font-size:14px;padding:4px 6px;border:1px solid var(--sage);border-radius:4px;text-align:center;" onchange="updatePackWeight('${h.id}',parseFloat(this.value)||0)" oninput="updatePackWeight('${h.id}',parseFloat(this.value)||0)"> lb</div>`:''}
+      ${sel?`<div class="pack-lot-inp" onclick="event.stopPropagation()">Pull: <input type="number" step="0.1" min="0.1" max="${h.onHand}" value="${pullWt.toFixed(1)}" style="width:72px;font-size:14px;padding:4px 6px;border:1px solid var(--sage);border-radius:4px;text-align:center;" onchange="updatePackWeight('${h.id}',parseFloat(this.value)||0)" oninput="updatePackWeight('${h.id}',parseFloat(this.value)||0)"> lb<div id="left-${h.id}" style="font-family:'Syne Mono',monospace;font-size:10px;color:${(h.onHand-pullWt)<=0.05?'var(--rust)':'var(--text3)'};margin-top:4px;">${Math.max(0,h.onHand-pullWt).toFixed(1)} lb left in lot${(h.onHand-pullWt)<=0.05?' · fully pulled':''}</div></div>`:''}
     </div>`;
   }).join('');
   const nSel=Object.keys(packDaySelected).length;
-  return `<div class="sh"><span>📦 Pack Day — Pull Inventory</span><span id="pack-total" style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--fern);">${totalSel>0?totalSel.toFixed(1)+' LB SELECTED':''}</span></div>
+  return PACK_OPEN_BLOCK + `<div class="sh"><span>📦 Pack Day — Pull Inventory${openSessions.length?' (new session)':''}</span><span id="pack-total" style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--fern);">${totalSel>0?totalSel.toFixed(1)+' LB SELECTED':''}</span></div>
   <div style="margin-bottom:24px;">
     ${needSummary?`<div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.9;">Today needs: ${needSummary}</div>`:'<div style="font-size:11px;color:var(--text3);margin-bottom:12px;">No confirmed orders today — you can still pull stock.</div>'}
     <div class="pack-lots-grid">${lotCards}</div>
@@ -2338,6 +2358,15 @@ function updatePackWeight(id, weight){
   const total=Object.values(packDaySelected).reduce((s,w)=>s+w,0);
   const el=document.getElementById('pack-total');
   if(el) el.textContent=total.toFixed(1)+' LB SELECTED';
+  // live "X lb left in lot" under the pull input (max attr = available on-hand)
+  const inp=document.querySelector(`#plt-${id} input.qi, #plt-${id} input[type=number]`);
+  const leftEl=document.getElementById('left-'+id);
+  if(inp&&leftEl){
+    const onHand=parseFloat(inp.getAttribute('max'))||0;
+    const left=Math.max(0,onHand-(parseFloat(weight)||0));
+    leftEl.textContent=left.toFixed(1)+' lb left in lot'+(left<=0.05?' · fully pulled':'');
+    leftEl.style.color=left<=0.05?'var(--rust)':'var(--text3)';
+  }
 }
 async function confirmPackPull(){
   const lots=Object.entries(packDaySelected).map(([id,w])=>{
@@ -2351,20 +2380,30 @@ async function confirmPackPull(){
   packDaySelected={};
   renderC();
 }
-function updateReturnCalc(harvestId, pulledWeight){
-  const inp=document.getElementById('ret-'+harvestId);
-  const used=document.getElementById('used-'+harvestId);
+function updateReturnCalc(sessId, harvestId, pulledWeight){
+  const inp=document.getElementById('ret-'+sessId+'-'+harvestId);
+  const used=document.getElementById('used-'+sessId+'-'+harvestId);
   if(!inp||!used) return;
   const ret=parseFloat(inp.value)||0;
   const usedLbs=Math.max(0,pulledWeight-ret);
   used.innerHTML=`Used: <strong>${usedLbs.toFixed(1)} lb</strong>`;
+  // auto status: how much remains in the lot after this session, or cashed out
+  const h=DB.harvests.find(x=>x.id===harvestId);
+  const st=document.getElementById('status-'+sessId+'-'+harvestId);
+  if(h&&st){
+    const raw=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0));
+    const left=Math.max(0,raw-usedLbs);
+    const cashed=left<=0.05;
+    st.textContent=cashed?'✓ Lot cashed out':left.toFixed(1)+' lb will remain';
+    st.style.color=cashed?'var(--rust)':'var(--fern)';
+  }
 }
 async function closePackSession(sessionId){
   const sess=DB.packSessions.find(s=>s.id===sessionId); if(!sess) return;
   const updates=[];
   let totalUsedByVariety={};
   for(const p of sess.pulled){
-    const inp=document.getElementById('ret-'+p.harvestId);
+    const inp=document.getElementById('ret-'+sessionId+'-'+p.harvestId);
     const returned=inp?Math.max(0,Math.min(parseFloat(inp.value)||0,p.pulledWeight)):0;
     const used=Math.max(0,p.pulledWeight-returned);
     if(used>0){
@@ -4126,38 +4165,48 @@ function rInventory(el){
   const PRESERVE_METHODS=['Fresh Frozen','Freeze Dried','Dehydrated','Waste / Compost'];
 
   // ── RETURN LEFTOVERS BANNER ──
-  const openSess = DB.packSessions.find(ps=>ps.date===tday()&&ps.status==='open');
+  const openSessList = DB.packSessions.filter(ps=>ps.date===tday()&&ps.status==='open').sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
   let returnBanner = '';
-  if(openSess){
-    const retRows = openSess.pulled.map(p=>`
-      <div class="pack-ret-row">
-        <div style="flex:1;min-width:140px;">
-          <div style="font-size:13px;font-weight:700;">${p.variety}</div>
-          <div style="font-size:11px;color:var(--text3);">Lot ${p.lotNumber} · ${p.container||''} · Pulled <strong>${p.pulledWeight.toFixed(1)} lb</strong></div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <label style="font-size:11px;color:var(--text3);">Return:</label>
-          <input class="pack-ret-inp" type="number" step="0.1" min="0" max="${p.pulledWeight}" value="0"
-            id="ret-${p.harvestId}" oninput="updateReturnCalc('${p.harvestId}',${p.pulledWeight})">
-          <span style="font-size:12px;color:var(--text3);">lb</span>
-        </div>
-        <div style="font-size:12px;color:var(--warm);min-width:110px;text-align:right;" id="used-${p.harvestId}">
-          Used: <strong>${p.pulledWeight.toFixed(1)} lb</strong>
-        </div>
-      </div>`).join('');
-    returnBanner = `
-      <div style="background:rgba(58,96,48,.08);border:2px solid var(--fern);border-radius:var(--r);padding:18px;margin-bottom:24px;">
-        <div class="sh" style="margin:0 0 14px 0;padding:0;border:none;background:none;">
-          <span style="color:var(--fern);">📦 Return Leftovers — Close Pack Session</span>
-          <span class="bdg bpk">${openSess.pulled.length} LOTS PULLED</span>
-        </div>
-        <div style="font-size:12px;color:var(--text3);margin-bottom:14px;">Weigh what's left after packing. Enter each amount below — the system will calculate what was used and update inventory.</div>
-        ${retRows}
-        <div style="margin-top:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-          <button class="btn b-m" onclick="closePackSession('${openSess.id}')" style="padding:12px 28px;font-size:14px;">✓ Close Session &amp; Update Inventory</button>
-          <div style="font-size:11px;color:var(--text3);">Lots with 0 returned = fully used</div>
-        </div>
-      </div>`;
+  if(openSessList.length){
+    returnBanner = openSessList.map((openSess,si)=>{
+      const t=openSess.createdAt?new Date(openSess.createdAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'';
+      const retRows = openSess.pulled.map(p=>{
+        const h=DB.harvests.find(x=>x.id===p.harvestId);
+        const raw=h?Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)):0;
+        const initLeft=Math.max(0,raw-p.pulledWeight); // assumes 0 returned to start
+        const cashed=initLeft<=0.05;
+        return `
+        <div class="pack-ret-row">
+          <div style="flex:1;min-width:140px;">
+            <div style="font-size:13px;font-weight:700;">${p.variety}</div>
+            <div style="font-size:11px;color:var(--text3);">Lot ${p.lotNumber} · ${p.container||''} · Pulled <strong>${p.pulledWeight.toFixed(1)} lb</strong></div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <label style="font-size:11px;color:var(--text3);">Return:</label>
+            <input class="pack-ret-inp" type="number" step="0.1" min="0" max="${p.pulledWeight}" value="0"
+              id="ret-${openSess.id}-${p.harvestId}" oninput="updateReturnCalc('${openSess.id}','${p.harvestId}',${p.pulledWeight})">
+            <span style="font-size:12px;color:var(--text3);">lb</span>
+          </div>
+          <div style="min-width:150px;text-align:right;">
+            <div style="font-size:12px;color:var(--warm);" id="used-${openSess.id}-${p.harvestId}">Used: <strong>${p.pulledWeight.toFixed(1)} lb</strong></div>
+            <div style="font-size:11px;font-weight:700;color:${cashed?'var(--rust)':'var(--fern)'};" id="status-${openSess.id}-${p.harvestId}">${cashed?'✓ Lot cashed out':initLeft.toFixed(1)+' lb will remain'}</div>
+          </div>
+        </div>`;
+      }).join('');
+      return `
+        <div style="background:rgba(58,96,48,.08);border:2px solid var(--fern);border-radius:var(--r);padding:18px;margin-bottom:16px;">
+          <div class="sh" style="margin:0 0 14px 0;padding:0;border:none;background:none;">
+            <span style="color:var(--fern);">📦 Close Pack Session ${si+1}${t?' · opened '+t:''}</span>
+            <span class="bdg bpk">${openSess.pulled.length} LOTS PULLED</span>
+          </div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:14px;">Weigh what's left after packing. Enter each amount below — the system will calculate what was used and update inventory.</div>
+          ${retRows}
+          <div style="margin-top:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+            <button class="btn b-m" onclick="closePackSession('${openSess.id}')" style="padding:12px 28px;font-size:14px;">✓ Close Session &amp; Update Inventory</button>
+            <div style="font-size:11px;color:var(--text3);">Lots with 0 returned = fully used</div>
+          </div>
+        </div>`;
+    }).join('');
   }
 
   const _fac=_invFacility||'all';
@@ -6701,13 +6750,13 @@ function nextSpawnLot(){ const yr=new Date().getFullYear(); const ex=(DB.spawnRu
 function spawnOnHand(s){ return Math.max(0,(parseInt(s.bagCount)||0)-(parseInt(s.usedBags)||0)); }
 function onHandSpawn(){ return (DB.spawnRuns||[]).filter(s=>s.status!=='contaminated'&&s.status!=='used'&&spawnOnHand(s)>0).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
 function spawnStatusBadge(s){ const m={colonizing:['Colonizing','var(--amber)'],ready:['Ready','var(--fern)'],used:['Used','var(--text3)'],contaminated:['Contam','var(--rust)']}; const [l,c]=m[s]||['—','var(--text3)']; return `<span style="font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;color:${c};background:${c}22;border:1px solid ${c}44;border-radius:3px;padding:2px 7px;">${l}</span>`; }
-function onSpawnCulture(){ const id=document.getElementById('sp-culture')?.value; const c=(DB.cultures||[]).find(x=>x.id===id); if(c){ const st=document.getElementById('sp-strain'); if(st&&!st.value) st.value=c.strain||''; } }
+function onSpawnCulture(){ const v=(document.getElementById('sp-culture')?.value||'').trim(); const c=(DB.cultures||[]).find(x=>x.cultureLot===v||x.id===v); if(c){ const st=document.getElementById('sp-strain'); if(st&&!st.value) st.value=c.strain||''; } }
 function onSpawnSearch(v){ _spawnQ=v; clearTimeout(window._spST); window._spST=setTimeout(()=>rLab(document.getElementById('main-views')),250); }
 const SPAWN_INOC_METHODS = ['LC (Liquid Culture)','Grain-to-grain','Agar wedge','Spore syringe','Other'];
 function spawnLabel(s){ return s.lotCode || s.spawnLot || '—'; }
 async function logSpawn(){
   const val=id=>(document.getElementById(id)?.value||'').trim();
-  const sourceCultureId=val('sp-culture'); const cult=(DB.cultures||[]).find(c=>c.id===sourceCultureId);
+  const cultVal=val('sp-culture'); const cult=(DB.cultures||[]).find(c=>c.cultureLot===cultVal||c.id===cultVal);
   const strain=val('sp-strain')||cult?.strain||''; if(!strain){ alert('Strain is required (pick a source culture or type it).'); return; }
   const bagCount=parseInt(val('sp-bags'))||0; if(bagCount<1){ alert('# of bags / jars must be at least 1.'); return; }
   const pdate=val('sp-pdate')||tday();
@@ -6720,7 +6769,7 @@ async function logSpawn(){
     grain:val('sp-grain'), totalGrainWeight:val('sp-grainwt'), additives:val('sp-additives'), grainBatchLot:val('sp-grainlot'),
     bagCount, usedBags:0, substrateNotes:val('sp-subnotes'),
     sterilizationDate:val('sp-sterdate'), autoclaveTemp:val('sp-actemp'), cookTimeHours:val('sp-cookhrs'), cookTimeStart:val('sp-cookstart'), cookTimeEnd:val('sp-cookend'), sterNotes:val('sp-sternotes'),
-    inoculationDate:val('sp-inocdate'), strain, sourceCultureId:sourceCultureId||null, sourceCultureLot:cult?.cultureLot||'',
+    inoculationDate:val('sp-inocdate'), strain, sourceCultureId:cult?.id||null, sourceCultureLot:cult?.cultureLot||cultVal||'',
     cultureSource:val('sp-culsource'), inoculationMethod:val('sp-method'), grainTempCooling:val('sp-graintemp'),
     lcSourceLot:val('sp-lclot'), spawnQuantity:val('sp-spawnqty'), inocNotes:val('sp-inocnotes'),
     status:val('sp-status')||'colonizing', crew:val('sp-crew'), loggedBy:S.name||'', createdAt:new Date().toISOString()
@@ -6730,7 +6779,7 @@ async function logSpawn(){
   logAudit('spawn_logged',`Grain spawn ${data.lotCode||spawnLot} — ${strain} on ${data.grain||'grain'} (${bagCount} bags)`);
   toast('sp-t'); setTimeout(()=>rLab(document.getElementById('main-views')),600);
 }
-function clrSpawn(){ ['sp-lotcode','sp-subbatch','sp-order','sp-batchno','sp-grainwt','sp-additives','sp-grainlot','sp-bags','sp-subnotes','sp-actemp','sp-cookhrs','sp-cookstart','sp-cookend','sp-sternotes','sp-strain','sp-culsource','sp-graintemp','sp-lclot','sp-spawnqty','sp-inocnotes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';}); }
+function clrSpawn(){ ['sp-lotcode','sp-subbatch','sp-order','sp-batchno','sp-grainwt','sp-additives','sp-grainlot','sp-bags','sp-subnotes','sp-actemp','sp-cookhrs','sp-cookstart','sp-cookend','sp-sternotes','sp-strain','sp-culture','sp-culsource','sp-graintemp','sp-lclot','sp-spawnqty','sp-inocnotes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';}); }
 
 function rLabSpawn(el){
   const q=(_spawnQ||'').toLowerCase();
@@ -6738,7 +6787,7 @@ function rLabSpawn(el){
   const history=[...(DB.spawnRuns||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''))
     .filter(s=>!q || [s.spawnLot,s.lotCode,s.strain,s.grain,s.status,s.sourceCultureLot,s.substrateBatch].some(x=>(x||'').toString().toLowerCase().includes(q)));
   const cultureOpts=(DB.cultures||[]).filter(c=>c.status!=='contaminated'&&c.status!=='retired').sort((a,b)=>(b.date||'').localeCompare(a.date||''))
-    .map(c=>`<option value="${c.id}">${c.cultureLot} · ${c.strain} (${cultureFormLabel(c.form)} G${c.generation||1})</option>`).join('');
+    .map(c=>`<option value="${(c.cultureLot||'').replace(/"/g,'&quot;')}">${c.strain} · ${cultureFormLabel(c.form)} G${c.generation||1}</option>`).join('');
   const sec=(t)=>`<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;font-weight:700;color:var(--gold);text-transform:uppercase;border-bottom:1px solid var(--border);padding-bottom:5px;margin:18px 0 12px;">— ${t} —</div>`;
   const onHandRows=onHand.length? onHand.map(s=>`<tr>
     <td class="mn" style="color:var(--gold);font-weight:700;">${spawnLabel(s)}</td><td style="font-weight:500;">${s.strain}</td><td>${s.grain||'—'}</td>
@@ -6810,7 +6859,7 @@ function rLabSpawn(el){
         <div class="fgl"><label>Grain Temp (cooling)</label><input class="fi" id="sp-graintemp" placeholder="e.g. 70°F"></div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Source Culture <span style="color:var(--text3);font-size:9px;">links lineage</span></label><select class="fs" id="sp-culture" onchange="onSpawnCulture()"><option value="">— select culture —</option>${cultureOpts}</select></div>
+        <div class="fgl"><label>Source Culture <span style="color:var(--text3);font-size:9px;">type or pick · links lineage</span></label><input class="fi" id="sp-culture" list="sp-culturel" placeholder="Type a culture lot, or pick one…" autocomplete="off" oninput="onSpawnCulture()"><datalist id="sp-culturel">${cultureOpts}</datalist></div>
         <div class="fgl"><label>Culture Source</label><input class="fi" id="sp-culsource" placeholder="e.g. Hyphae-Hill"></div>
         <div class="fgl"><label>Liquid Culture Source Lot #</label><input class="fi" id="sp-lclot" placeholder="optional"></div>
         <div class="fgl"><label>Spawn Quantity</label><input class="fi" id="sp-spawnqty" placeholder="optional"></div>
