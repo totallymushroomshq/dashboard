@@ -3237,7 +3237,8 @@ function rReceiving(el){
     <td class="mn" style="color:var(--gold);">${r.lotNumber}</td><td class="mn">${r.blockCount}</td><td class="mn">${r.placedCount||0}</td>
     <td class="mn">${receivingOnHand(r)}</td><td class="mn" style="font-size:10px;color:var(--text3);">${r.poNum||''}${r.cost?` · $${r.cost}`:''}</td>
     <td style="font-size:11px;color:var(--text3);">${r.receivedBy||''}</td>
-  </tr>`).join('') : `<tr><td colspan="9" class="empty">No receivings logged yet.</td></tr>`;
+    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditReceiving('${r.id}')">✎ Edit</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
+  </tr>`).join('') : `<tr><td colspan="${canEdit()?10:9}" class="empty">No receivings logged yet.</td></tr>`;
   el.innerHTML=`
     <div class="ph"><div class="ph-t">📥 Receiving</div><div class="ph-s">Blocks into Hydes Ferry · internal production or vendors → placed into fruiting</div></div>
     <div class="stats" style="margin-bottom:24px;">
@@ -3275,9 +3276,72 @@ function rReceiving(el){
     </table></div>
     <div class="sh"><span>Receiving History</span></div>
     <div class="tw"><table>
-      <thead><tr><th>Date</th><th>Source</th><th>Variety</th><th>Lot #</th><th>Received</th><th>Placed</th><th>Remaining</th><th>PO / Cost</th><th>By</th></tr></thead>
+      <thead><tr><th>Date</th><th>Source</th><th>Variety</th><th>Lot #</th><th>Received</th><th>Placed</th><th>Remaining</th><th>PO / Cost</th><th>By</th>${canEdit()?'<th>Actions</th>':''}</tr></thead>
       <tbody>${histRows}</tbody>
     </table></div>`;
+}
+
+// ── EDIT / DELETE a receiving log (fix mistakes) ──
+function openEditReceiving(id){
+  const r=DB.receivings.find(x=>x.id===id); if(!r) return;
+  const placed=r.placedCount||0;
+  document.getElementById('em-title').textContent='Edit Receiving — '+(r.lotNumber||'')+' · '+(r.variety||'');
+  document.getElementById('em-body').innerHTML=`
+    ${placed?`<div style="background:rgba(184,130,10,.06);border:1px solid rgba(184,130,10,.2);border-radius:4px;padding:8px 12px;margin-bottom:14px;font-size:11px;color:var(--text3);">${placed} block(s) already placed into fruiting — block count can't go below that.</div>`:''}
+    <div class="fg2">
+      <div class="fgl"><label>Date Received</label><input class="fi" type="date" id="er-date" value="${attrEsc(r.date)}"></div>
+      <div class="fgl"><label>Source</label><select class="fs" id="er-source"><option value="vendor" ${r.source!=='internal'?'selected':''}>Outside Vendor</option><option value="internal" ${r.source==='internal'?'selected':''}>Internal Production</option></select></div>
+      <div class="fgl"><label>Producer / Vendor</label><input class="fi" id="er-vendor" value="${attrEsc(r.vendor)}"></div>
+      <div class="fgl"><label>Variety</label><input class="fi" id="er-variety" list="er-variety-dl" value="${attrEsc(r.variety)}"><datalist id="er-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+    </div>
+    <div class="fg2">
+      <div class="fgl"><label>Lot / Block #</label><input class="fi" id="er-lot" value="${attrEsc(r.lotNumber)}"></div>
+      <div class="fgl"><label># of Blocks</label><input class="fi" type="number" min="${placed||1}" id="er-bc" value="${r.blockCount||0}"></div>
+      <div class="fgl"><label>Block Weight (lb)</label><input class="fi" type="number" min="0" step="0.1" id="er-bw" value="${r.blockWeightLb||''}"></div>
+      <div class="fgl"><label>Received By</label><input class="fi" id="er-by" value="${attrEsc(r.receivedBy)}"></div>
+    </div>
+    <div class="fg2">
+      <div class="fgl"><label>PO #</label><input class="fi" id="er-po" value="${attrEsc(r.poNum)}"></div>
+      <div class="fgl"><label>Cost $</label><input class="fi" type="number" min="0" step="0.01" id="er-cost" value="${r.cost!=null?r.cost:''}"></div>
+    </div>
+    <div class="fgl" style="margin-top:8px;"><label>Notes</label><textarea class="fta" id="er-notes">${r.notes||''}</textarea></div>
+    <div class="form-acts" style="margin-top:14px;">
+      <button class="btn b-m b-lg" onclick="saveReceivingEdit('${id}')">Save Changes</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="er-t">✓ Receiving updated</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+async function saveReceivingEdit(id){
+  const r=DB.receivings.find(x=>x.id===id); if(!r) return;
+  const val=i=>(document.getElementById(i)?.value||'').trim();
+  const placed=r.placedCount||0;
+  const bc=parseInt(document.getElementById('er-bc')?.value)||0;
+  if(!val('er-variety')){ alert('Variety is required.'); return; }
+  if(!val('er-lot')){ alert('Lot / block number is required.'); return; }
+  if(bc<1){ alert('Block count must be at least 1.'); return; }
+  if(bc<placed){ alert(`Can't set blocks below ${placed} — that many are already placed into fruiting.`); return; }
+  const cost=parseFloat(document.getElementById('er-cost')?.value);
+  const upd={ date:val('er-date')||r.date, source:document.getElementById('er-source')?.value||'vendor',
+    vendor:val('er-vendor'), variety:val('er-variety'), lotNumber:val('er-lot'), blockCount:bc,
+    blockWeightLb:parseFloat(document.getElementById('er-bw')?.value)||0, receivedBy:val('er-by'),
+    poNum:val('er-po'), cost:isNaN(cost)?null:cost, notes:val('er-notes'),
+    status: (placed>=bc) ? 'placed' : 'on-hand' };
+  if(upd.variety) addVariety(upd.variety);
+  Object.assign(r,upd);
+  try{ await FS.update('receivings',id,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  logAudit('receiving_edited',`Edited receiving Lot ${upd.lotNumber} — ${upd.variety} (${bc} blocks)`);
+  toast('er-t','✓ Receiving updated');
+  setTimeout(()=>{ closeModal(); rReceiving(document.getElementById('main-views')); },800);
+}
+function delReceiving(id){
+  const r=DB.receivings.find(x=>x.id===id); if(!r) return;
+  if((r.placedCount||0)>0){ alert(`Can't delete — ${r.placedCount} block(s) from this receiving are already placed into fruiting. Edit it instead.`); return; }
+  if(!confirm(`Delete receiving Lot ${r.lotNumber||''} (${r.variety||''}, ${r.blockCount||0} blocks)? This can't be undone.`)) return;
+  DB.receivings=DB.receivings.filter(x=>x.id!==id);
+  FS.del('receivings',id);
+  logAudit('receiving_deleted',`Deleted receiving Lot ${r.lotNumber||''} — ${r.variety||''} (${r.blockCount||0} blocks)`);
+  rReceiving(document.getElementById('main-views'));
 }
 
 function rFruiting(el){
