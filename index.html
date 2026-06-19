@@ -671,6 +671,11 @@ async function loadDB(){
         });
       }
     }catch(e){ console.warn('Custom varieties not found — using built-in list'); }
+    // Load custom suppliers (added on the fly) from appConfig
+    try{
+      const sDoc=await fdb.collection('appConfig').doc('suppliers').get();
+      if(sDoc.exists){ customSuppliers=(sDoc.data().custom||[]).filter(Boolean); }
+    }catch(e){ console.warn('Custom suppliers not found — using defaults'); }
     // Init EmailJS if configured
     if(DB.emailjs.publicKey){ emailjs.init({publicKey:DB.emailjs.publicKey}); }
   } catch(e){ console.error('Firestore load error:',e); throw e; }
@@ -3019,6 +3024,25 @@ async function addVariety(name){
   try{ if(!DB._isDemoMode) await fdb.collection('appConfig').doc('varieties').set({custom:customVarieties}); }catch(e){ console.warn('Could not save variety:',e); }
   try{ logAudit('other','Added variety: '+name); }catch(e){}
 }
+
+// ── SUPPLIERS / PRODUCERS (Fruiting & Receiving vendor pickers) ──
+let customSuppliers = [];
+// Always includes Wild Spore; auto-grows from past entries + the persisted custom list.
+function allSuppliers(){
+  const set=new Set(['Wild Spore']);
+  (customSuppliers||[]).forEach(s=>set.add(s));
+  (DB.fruitings||[]).forEach(f=>{ if(f.source==='supplier'&&f.vendor) set.add(f.vendor); });
+  (DB.receivings||[]).forEach(r=>{ if(r.source!=='internal'&&r.vendor) set.add(r.vendor); });
+  const out=[...set].map(s=>String(s).trim()).filter(Boolean).filter(s=>!/^in-?house/i.test(s));
+  return out.filter((s,i,a)=>a.findIndex(x=>x.toLowerCase()===s.toLowerCase())===i).sort();
+}
+// Remember a new supplier permanently so it appears in future pickers.
+async function addSupplier(name){
+  name=(name||'').trim(); if(!name || /^in-?house/i.test(name) || name.toLowerCase()==='unknown') return;
+  if(customSuppliers.some(s=>s.toLowerCase()===name.toLowerCase())) return;
+  customSuppliers.push(name);
+  try{ if(!DB._isDemoMode) await fdb.collection('appConfig').doc('suppliers').set({custom:customSuppliers}); }catch(e){ console.warn('Could not save supplier:',e); }
+}
 // Shared <select> change handler: when "add new" is picked, prompt, persist, and select the new value in place.
 async function ensureVarietyOption(sel){
   if(!sel||sel.value!=='__add__') return false;
@@ -3214,6 +3238,7 @@ async function logReceiving(){
   if(!lotNumber){ alert('Lot / block number is required.'); return }
   if(blockCount<1){ alert('Block count must be at least 1.'); return }
   if(variety) addVariety(variety); // persist any typed-in variety
+  if(source!=='internal' && vendor) addSupplier(vendor); // remember the supplier
   const rData={date,facility:'Hydes Ferry',source,vendor,variety,lotNumber,blockCount,blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,status:'on-hand',createdAt:new Date().toISOString()};
   const rId=await FS.add('receivings',rData);
   DB.receivings.push({id:rId,...rData});
@@ -3249,7 +3274,7 @@ function rReceiving(el){
       <div class="fg2">
         <div class="fgl"><label>Date Received</label><input class="fi" type="date" id="rc-date" value="${tday()}"></div>
         <div class="fgl"><label>Source</label><select class="fs" id="rc-source" onchange="onRecSourceChange()"><option value="vendor">Outside Vendor</option><option value="internal">Internal Production</option></select></div>
-        <div class="fgl"><label>Producer / Vendor</label><input class="fi" id="rc-vendor" placeholder="Vendor or in-house production co." list="rc-vendl"><datalist id="rc-vendl"><option value="In-house Production"><option value="Wild Spore"></datalist></div>
+        <div class="fgl"><label>Producer / Vendor</label><input class="fi" id="rc-vendor" placeholder="Vendor or in-house production co." list="rc-vendl" autocomplete="off"><datalist id="rc-vendl"><option value="In-house Production">${allSuppliers().map(s=>`<option value="${s.replace(/"/g,'&quot;')}">`).join('')}</datalist></div>
         <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:9px;">type or pick</span></label><input class="fi" id="rc-variety" list="rc-variety-dl" placeholder="Type or pick variety…" autocomplete="off"><datalist id="rc-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
       </div>
       <div class="fg2">
@@ -3425,7 +3450,7 @@ function rFruiting(el){
       </div>
     </div>
     <div class="fg2">
-      <div class="fgl"><label>Supplier / Production Company</label><input class="fi" id="fr-vendor" placeholder="Supplier or in-house production co." list="fr-vendorl"><datalist id="fr-vendorl"><option value="Wild Spore"><option value="In-house"></datalist></div>
+      <div class="fgl"><label>Supplier / Production Company <span style="color:var(--text3);font-size:9px;">type or pick</span></label><input class="fi" id="fr-vendor" placeholder="Supplier or in-house production co." list="fr-vendorl" autocomplete="off"><datalist id="fr-vendorl">${allSuppliers().map(s=>`<option value="${s.replace(/"/g,'&quot;')}">`).join('')}<option value="In-house Production"></datalist></div>
       <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:9px;">type or pick</span></label><input class="fi" id="fr-variety" list="fr-variety-dl" placeholder="Type or pick variety…" autocomplete="off" oninput="updateFruitingPreview()"><datalist id="fr-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
       <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="1" id="fr-bc" placeholder="# of blocks" oninput="updateFruitingPreview()"></div>
       <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="fr-bw" placeholder="e.g. 5.5" oninput="updateFruitingPreview()"></div>
@@ -3576,6 +3601,7 @@ async function subFruiting(){
     let rec=null;
     if(r.receivingId){ rec=DB.receivings.find(x=>x.id===r.receivingId); if(rec && r.blockCount>receivingOnHand(rec)){ alert(`Skipped lot ${r.lotNumber}: only ${receivingOnHand(rec)} block(s) remain in its received batch.`); continue; } }
     if(r.variety) addVariety(r.variety);
+    if(r.source==='supplier' && r.vendor) addSupplier(r.vendor); // remember the supplier
     const fData={date:r.date,containerID:r.containerID,lotNumber:r.lotNumber,source:r.source,vendor:r.vendor,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,rateLbPerBlock:r.rateLbPerBlock,notes:r.notes,status:'fruiting',createdAt:new Date().toISOString()};
     if(r.receivingId) fData.receivingId=r.receivingId;
     const fId=await FS.add('fruitings',fData);
