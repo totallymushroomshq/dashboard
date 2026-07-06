@@ -3488,9 +3488,10 @@ function rFruiting(el){
             <td class="mn" style="font-weight:700;color:var(--fern);">${f.projLbs.toFixed(1)} lb</td>
             <td style="font-size:11px;">${fmt(f.harvestMin)} – ${fmt(f.harvestMax)}</td>
             <td><span style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;font-weight:700;color:${sc};">${stLbl}</span></td>
-            <td>${canEdit()?`<div style="display:flex;gap:6px;">
-              <button class="btn b-g b-sm" onclick="markFruitingHarvested(${f.id})">Harvested ✓</button>
-              ${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting(${f.id})">Del</button>`:''}
+            <td>${canEdit()?`<div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn b-g b-sm" onclick="markFruitingHarvested('${f.id}')">Harvested ✓</button>
+              <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button>
+              ${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}
             </div>`:'—'}</td>
           </tr>`;
         }).join('')}</tbody>
@@ -3516,7 +3517,7 @@ function rFruiting(el){
     <div class="sh"><span>Harvested — Completed</span><span class="bdg bc">${done.length}</span></div>
     <div class="tw" style="margin-bottom:24px;overflow-x:auto;">
       <table>
-        <thead><tr>${thS('fruit-done','date','Date In')}${thS('fruit-done','containerID','Container')}${thS('fruit-done','lotNumber','Lot #')}${thS('fruit-done','vendor','Vendor')}${thS('fruit-done','variety','Variety')}${thS('fruit-done','blockCount','Blocks')}${thS('fruit-done','projLbs','Proj. Yield')}${thS('fruit-done','harvestedAt','Harvested')}</tr></thead>
+        <thead><tr>${thS('fruit-done','date','Date In')}${thS('fruit-done','containerID','Container')}${thS('fruit-done','lotNumber','Lot #')}${thS('fruit-done','vendor','Vendor')}${thS('fruit-done','variety','Variety')}${thS('fruit-done','blockCount','Blocks')}${thS('fruit-done','projLbs','Proj. Yield')}${thS('fruit-done','harvestedAt','Harvested')}${canEdit()?'<th>Action</th>':''}</tr></thead>
         <tbody>${sByKey('fruit-done',[...done].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')),{date:f=>f.date,containerID:f=>f.containerID,lotNumber:f=>f.lotNumber,vendor:f=>f.vendor||'',variety:f=>f.variety,blockCount:f=>f.blockCount||0,projLbs:f=>(f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK),harvestedAt:f=>f.harvestedAt||''}).map(f=>`<tr>
           <td class="mn">${fDate(f.date)}</td>
           <td>${f.containerID}</td>
@@ -3526,6 +3527,7 @@ function rFruiting(el){
           <td class="mn">${f.blockCount}</td>
           <td class="mn" style="color:var(--fern);">${((f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK)).toFixed(1)} lb</td>
           <td class="mn">${f.harvestedAt?fDate(f.harvestedAt):'—'}</td>
+          ${canEdit()?`<td><div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button>${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}</div></td>`:''}
         </tr>`).join('')}</tbody>
       </table>
     </div>`:''}
@@ -3640,10 +3642,68 @@ function markFruitingHarvested(id){
 }
 
 function delFruiting(id){
-  if(!confirm('Delete this fruiting record?')) return;
+  const f=DB.fruitings.find(x=>x.id===id);
+  if(!confirm(`Delete this fruiting record${f?` (Lot ${f.lotNumber||''} · ${f.variety||''} · ${f.blockCount||0} blocks)`:''}?`)) return;
   DB.fruitings=DB.fruitings.filter(x=>x.id!==id);
   FS.del('fruitings',id);
+  if(f) logAudit('fruiting_deleted',`Deleted fruiting Lot ${f.lotNumber||''} — ${f.variety||''} (${f.blockCount||0} blocks)`);
   renderC();
+}
+
+// ── EDIT a fruiting session (fix mistakes after submit) ──
+function openEditFruiting(id){
+  const f=DB.fruitings.find(x=>x.id===id); if(!f) return;
+  document.getElementById('em-title').textContent='Edit Fruiting — '+(f.lotNumber||'')+' · '+(f.variety||'');
+  const acts=getActiveContainers();
+  const conOpts=acts.map(c=>`<option value="${c.code}">${c.code} · ${c.farm} (${c.facility})</option>`).join('');
+  const linked=f.receivingId?`<div style="background:rgba(184,130,10,.06);border:1px solid rgba(184,130,10,.2);border-radius:4px;padding:8px 12px;margin-bottom:14px;font-size:11px;color:var(--text3);">Placed from a received batch — changing the block count here does <strong>not</strong> re-adjust that batch's placed count.</div>`:'';
+  document.getElementById('em-body').innerHTML=`
+    ${linked}
+    <div class="fg2">
+      <div class="fgl"><label>Date In</label><input class="fi" type="date" id="ef-dt" value="${attrEsc(f.date)}"></div>
+      <div class="fgl"><label>Container <span style="color:var(--text3);font-size:9px;">type code or name</span></label><input class="fi" id="ef-cid" list="ef-cl" value="${attrEsc(f.containerID)}" autocomplete="off"><datalist id="ef-cl">${conOpts}</datalist></div>
+      <div class="fgl"><label>Status</label><select class="fs" id="ef-status"><option value="fruiting" ${f.status!=='harvested'?'selected':''}>Fruiting</option><option value="harvested" ${f.status==='harvested'?'selected':''}>Harvested</option></select></div>
+    </div>
+    <div class="fg2">
+      <div class="fgl"><label>Lot Number</label><input class="fi" id="ef-lot" value="${attrEsc(f.lotNumber)}"></div>
+      <div class="fgl"><label>Source</label><select class="fs" id="ef-source"><option value="supplier" ${f.source!=='internal'?'selected':''}>Outside Supplier</option><option value="internal" ${f.source==='internal'?'selected':''}>Internal Production</option></select></div>
+      <div class="fgl"><label>Supplier / Producer <span style="color:var(--text3);font-size:9px;">type or pick</span></label><input class="fi" id="ef-vendor" list="ef-vendl" value="${attrEsc(f.vendor)}" autocomplete="off"><datalist id="ef-vendl">${allSuppliers().map(s=>`<option value="${s.replace(/"/g,'&quot;')}">`).join('')}<option value="In-house Production"></datalist></div>
+      <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:9px;">type or pick</span></label><input class="fi" id="ef-v" list="ef-v-dl" value="${attrEsc(f.variety)}" autocomplete="off"><datalist id="ef-v-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+    </div>
+    <div class="fg2">
+      <div class="fgl"><label># of Blocks</label><input class="fi" type="number" min="0" id="ef-bc" value="${f.blockCount||0}"></div>
+      <div class="fgl"><label>Block Weight (lb)</label><input class="fi" type="number" min="0" step="0.1" id="ef-bw" value="${f.blockWeightLb||''}"></div>
+      <div class="fgl"><label>Yield Rate (lb/block)</label><input class="fi" type="number" min="0" step="0.1" id="ef-rate" value="${f.rateLbPerBlock||LBSPERBLOCK}"></div>
+    </div>
+    <div class="fgl" style="margin-top:8px;"><label>Notes</label><textarea class="fta" id="ef-n">${f.notes||''}</textarea></div>
+    <div class="form-acts" style="margin-top:16px;">
+      <button class="btn b-m b-lg" onclick="saveFruitingEdit('${id}')">Save Changes</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="ef-t">✓ Fruiting updated</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+async function saveFruitingEdit(id){
+  const f=DB.fruitings.find(x=>x.id===id); if(!f) return;
+  const val=i=>(document.getElementById(i)?.value||'').trim();
+  const bc=parseInt(document.getElementById('ef-bc')?.value)||0;
+  if(!val('ef-lot')){ alert('Lot number is required.'); return; }
+  if(!val('ef-v')){ alert('Variety is required.'); return; }
+  if(bc<1){ alert('Block count must be at least 1.'); return; }
+  const upd={ date:val('ef-dt')||f.date, containerID:document.getElementById('ef-cid')?.value||f.containerID,
+    status:document.getElementById('ef-status')?.value||f.status||'fruiting',
+    lotNumber:val('ef-lot'), source:document.getElementById('ef-source')?.value||'supplier',
+    vendor:val('ef-vendor'), variety:document.getElementById('ef-v')?.value||f.variety, blockCount:bc,
+    blockWeightLb:parseFloat(document.getElementById('ef-bw')?.value)||0,
+    rateLbPerBlock:parseFloat(document.getElementById('ef-rate')?.value)||LBSPERBLOCK, notes:val('ef-n') };
+  if(upd.status==='harvested' && !f.harvestedAt) upd.harvestedAt=tday();
+  if(upd.variety) addVariety(upd.variety);
+  if(upd.source==='supplier' && upd.vendor) addSupplier(upd.vendor);
+  Object.assign(f,upd);
+  try{ await FS.update('fruitings',id,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  logAudit('fruiting_edited',`Edited fruiting Lot ${upd.lotNumber} — ${upd.variety} (${bc} blocks, ${upd.status})`);
+  toast('ef-t','✓ Fruiting updated');
+  setTimeout(()=>{ closeModal(); rFruiting(document.getElementById('main-views')); },800);
 }
 
 // Returns containers that are active (respects admin overrides)
