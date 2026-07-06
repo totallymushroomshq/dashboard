@@ -2609,7 +2609,7 @@ function printSlip(id){
   updateSlipSummary(id);
 
   document.getElementById('slip-acts').innerHTML=`
-    <button class="btn b-m" onclick="showFinalSlip(${id})">Preview &amp; Print →</button>
+    <button class="btn b-m" onclick="showFinalSlip('${id}')">Preview &amp; Print →</button>
     <button class="btn b-g" onclick="closeSlip()">Cancel</button>
   `;
   document.getElementById('slip-modal').classList.add('open');
@@ -4428,7 +4428,7 @@ function rInventory(el){
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
             ${!isEmpty&&canEdit()?`<button class="btn b-a b-sm" onclick="openPreserveModal('${h.id}')">Preserve →</button>`:''}
             ${!isEmpty&&canEdit()&&hasMultiFac?`<button class="btn b-sm" style="background:rgba(42,85,120,.1);color:var(--blue);border:1px solid rgba(42,85,120,.25);" onclick="openTransferModal('${h.id}')">Transfer →</button>`:''}
-            ${S.role==='admin'?`<button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="adminEditLot('${h.id}')">Edit</button>`:''}
+            ${S.role==='admin'?`<button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditHarvest('${h.id}')">✎ Edit</button><button class="btn b-sm" style="background:var(--paper);color:var(--text3);border:1px solid var(--border);" onclick="adminEditLot('${h.id}')">Adjust / Deduct</button>`:''}
             ${!canEdit()&&S.role!=='admin'?'<span style="font-size:10px;color:var(--text3);">—</span>':''}
           </div>
         </td>
@@ -4820,7 +4820,7 @@ function openPreserveModal(harvestId){
       <input class="fi" id="pm-notes" placeholder="Batch notes, equipment, observations...">
     </div>
     <div class="form-acts" style="margin-top:20px;">
-      <button class="btn b-m b-lg" onclick="savePreservation(${harvestId},${onHand})">Log &amp; Deduct</button>
+      <button class="btn b-m b-lg" onclick="savePreservation('${harvestId}',${onHand})">Log &amp; Deduct</button>
       <button class="btn b-g" onclick="closeModal()">Cancel</button>
     </div>
     <div class="toast" id="pm-t" style="margin-top:12px;">✓ Logged and inventory updated</div>
@@ -5045,7 +5045,7 @@ function rPreservation(el){
 
   // All batches history rows
   const batchRows = batches.length===0
-    ? '<tr><td colspan="8" class="empty">No PRSV batches yet — log the first one below</td></tr>'
+    ? `<tr><td colspan="${canEdit()?9:8}" class="empty">No PRSV batches yet — log the first one below</td></tr>`
     : batches.map(b=>{
         const col = PRESERVE_COLORS[b.method]||'#5a4a30';
         const varieties = [...new Set((b.sources||[]).map(s=>s.variety))].join(', ')||'—';
@@ -5068,6 +5068,7 @@ function rPreservation(el){
           <td class="mn">${b.weightOut?b.weightOut.toFixed(1)+' lb':'—'}</td>
           <td class="mn">${yPct}</td>
           <td>${statusBadge}</td>
+          ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditPreservation('${b.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delPreservationBatch('${b.id}')">✕</button>`:''}</td>`:''}
         </tr>`;
       }).join('');
 
@@ -5172,7 +5173,7 @@ function rPreservation(el){
 
     <div class="sh"><span>All PRSV Batches</span></div>
     <div class="tw" style="margin-bottom:24px;"><table>
-      <thead><tr><th>Batch #</th><th>Date</th><th>Method</th><th>Varieties / Sources</th><th>Wt In</th><th>Wt Out</th><th>Yield</th><th>Status</th></tr></thead>
+      <thead><tr><th>Batch #</th><th>Date</th><th>Method</th><th>Varieties / Sources</th><th>Wt In</th><th>Wt Out</th><th>Yield</th><th>Status</th>${canEdit()?'<th>Edit</th>':''}</tr></thead>
       <tbody>${batchRows}</tbody>
     </table></div>
 
@@ -5185,6 +5186,61 @@ function rPreservation(el){
       </table></div>
     </details>`:''}
   `;
+}
+
+// ── EDIT / DELETE a preservation batch (operational fields; delete restores source weights) ──
+function openEditPreservation(id){
+  const b=DB.preservationBatches.find(x=>x.id===id); if(!b) return;
+  document.getElementById('em-title').textContent='Edit PRSV Batch — '+(b.batchNumber||'');
+  const srcList=(b.sources||[]).map(s=>`${s.lotNumber||s.batchNumber||'?'} · ${s.variety||''} (${(s.weightIn||0).toFixed(1)} lb)`).join(', ')||'—';
+  document.getElementById('em-body').innerHTML=`
+    <div style="background:rgba(184,130,10,.06);border:1px solid rgba(184,130,10,.2);border-radius:4px;padding:8px 12px;margin-bottom:14px;font-size:11px;color:var(--text3);">Sources (${(b.totalWeightIn||0).toFixed(1)} lb in): ${srcList}. Source lots aren't editable here so harvest weights stay in sync — if the sources are wrong, delete &amp; re-log (delete restores those lots' weight).</div>
+    <div class="fg2">
+      <div class="fgl"><label>Date</label><input class="fi" type="date" id="ep-date" value="${attrEsc(b.date)}"></div>
+      <div class="fgl"><label>Method</label><select class="fs" id="ep-method">${PRESERVE_METHODS.map(m=>`<option value="${m}" ${b.method===m?'selected':''}>${m}</option>`).join('')}</select></div>
+      <div class="fgl"><label>Status</label><select class="fs" id="ep-status">${['in-stock','partial','dispatched','waste'].map(st=>`<option value="${st}" ${(b.status||'in-stock')===st?'selected':''}>${st}</option>`).join('')}</select></div>
+    </div>
+    <div class="fg2">
+      <div class="fgl"><label>Weight Out / Yield (lb)</label><input class="fi" type="number" min="0" step="0.1" id="ep-wout" value="${b.weightOut!=null?b.weightOut:''}"></div>
+      <div class="fgl"><label>On Hand (lb)</label><input class="fi" type="number" min="0" step="0.1" id="ep-onhand" value="${b.onHandWeight!=null?b.onHandWeight:''}"></div>
+    </div>
+    <div class="fgl" style="margin-top:8px;"><label>Notes</label><textarea class="fta" id="ep-notes">${b.notes||''}</textarea></div>
+    <div class="form-acts" style="margin-top:16px;">
+      <button class="btn b-m b-lg" onclick="savePreservationEdit('${id}')">Save Changes</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="ep-t">✓ Batch updated</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+async function savePreservationEdit(id){
+  const b=DB.preservationBatches.find(x=>x.id===id); if(!b) return;
+  const val=i=>(document.getElementById(i)?.value||'').trim();
+  const wout=parseFloat(document.getElementById('ep-wout')?.value);
+  const onh=parseFloat(document.getElementById('ep-onhand')?.value);
+  const method=document.getElementById('ep-method')?.value||b.method;
+  const upd={ date:val('ep-date')||b.date, method, status:document.getElementById('ep-status')?.value||b.status,
+    weightOut:isNaN(wout)?b.weightOut:wout, onHandWeight:isNaN(onh)?b.onHandWeight:onh,
+    isWaste:method==='Waste / Compost', notes:val('ep-notes') };
+  Object.assign(b,upd);
+  try{ await FS.update('preservationBatches',id,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  logAudit('preservation_edited',`Edited PRSV batch ${b.batchNumber} — ${method}`);
+  toast('ep-t','✓ Batch updated');
+  setTimeout(()=>{ closeModal(); rPreservation(document.getElementById('main-views')); },800);
+}
+function delPreservationBatch(id){
+  const b=DB.preservationBatches.find(x=>x.id===id); if(!b) return;
+  if(!confirm(`Delete PRSV batch ${b.batchNumber||''} (${b.method||''}, ${(b.totalWeightIn||0).toFixed(1)} lb in)?\n\nThis restores the source lots' preserved weight back to on-hand.`)) return;
+  for(const src of (b.sources||[])){
+    if(src.type==='prsv'){
+      const pb=DB.preservationBatches.find(x=>x.id===src.batchId); if(pb){ pb.onHandWeight=(pb.onHandWeight||0)+(src.weightIn||0); FS.update('preservationBatches',pb.id,{onHandWeight:pb.onHandWeight}); }
+    } else {
+      const h=DB.harvests.find(x=>x.id===src.harvestId); if(h){ h.preservedWeight=Math.max(0,(h.preservedWeight||0)-(src.weightIn||0)); FS.update('harvests',h.id,{preservedWeight:h.preservedWeight}); }
+    }
+  }
+  DB.preservationBatches=DB.preservationBatches.filter(x=>x.id!==id);
+  FS.del('preservationBatches',id);
+  logAudit('preservation_deleted',`Deleted PRSV batch ${b.batchNumber||''} — restored ${(b.totalWeightIn||0).toFixed(1)} lb to source lots`);
+  rPreservation(document.getElementById('main-views'));
 }
 
 async function logPreservationBatch(){
@@ -5957,10 +6013,10 @@ function rSampCardHTML(s, showActions){
   if(showActions){
     if(s.status==='pending'){
       acts=`<button class="btn b-sm" style="background:rgba(90,42,130,.1);color:#6a3a9a;border:1px solid rgba(90,42,130,.25);" onclick="markSampleSent('${s.id}')">✓ Mark Sent</button>`;
-      if(S.role==='admin') acts+=` <button class="btn b-r b-sm" onclick="delSample(${s.id})">Delete</button>`;
+      if(S.role==='admin') acts+=` <button class="btn b-r b-sm" onclick="delSample('${s.id}')">Delete</button>`;
     } else if(s.status==='sent'){
       acts=`<span style="font-family:'Syne Mono',monospace;font-size:9px;color:#3a6030;letter-spacing:1px;">✓ SENT${s.sentAt?' · '+fDate(s.sentAt):''}</span>`;
-      if(S.role==='admin') acts+=` <button class="btn b-r b-sm" style="margin-left:8px;" onclick="delSample(${s.id})">Delete</button>`;
+      if(S.role==='admin') acts+=` <button class="btn b-r b-sm" style="margin-left:8px;" onclick="delSample('${s.id}')">Delete</button>`;
     }
   }
   return `<div class="samp-card ${s.status}">
@@ -6849,6 +6905,60 @@ async function logCulture(){
   toast('cl-t'); setTimeout(()=>rLab(document.getElementById('main-views')),600);
 }
 function clrCulture(){ ['cl-strain','cl-vendor','cl-notes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';}); const g=document.getElementById('cl-gen'); if(g) g.value='1'; }
+// ── EDIT / DELETE a culture ──
+function openEditCulture(id){
+  const c=(DB.cultures||[]).find(x=>x.id===id); if(!c) return;
+  document.getElementById('em-title').textContent='Edit Culture — '+(c.cultureLot||'');
+  const parentOpts=(DB.cultures||[]).filter(x=>x.id!==id).sort((a,b)=>(b.date||'').localeCompare(a.date||''))
+    .map(x=>`<option value="${x.id}" ${c.parentId===x.id?'selected':''}>${x.cultureLot} · ${x.strain} (G${x.generation||1})</option>`).join('');
+  document.getElementById('em-body').innerHTML=`
+    <div class="fg2">
+      <div class="fgl"><label>Date</label><input class="fi" type="date" id="ec-date" value="${attrEsc(c.date)}"></div>
+      <div class="fgl"><label>Culture Lot</label><input class="fi" id="ec-lot" value="${attrEsc(c.cultureLot)}"></div>
+      <div class="fgl"><label>Strain / Species</label><input class="fi" id="ec-strain" list="ec-strainl" value="${attrEsc(c.strain)}"><datalist id="ec-strainl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+    </div>
+    <div class="fg2">
+      <div class="fgl"><label>Form</label><select class="fs" id="ec-form">${CULTURE_FORMS.map(f=>`<option value="${f[0]}" ${c.form===f[0]?'selected':''}>${f[1]}</option>`).join('')}</select></div>
+      <div class="fgl"><label>Source</label><select class="fs" id="ec-source">${CULTURE_SOURCES.map(sx=>`<option value="${sx[0]}" ${c.source===sx[0]?'selected':''}>${sx[1]}</option>`).join('')}</select></div>
+      <div class="fgl"><label>Generation</label><input class="fi" type="number" min="1" id="ec-gen" value="${c.generation||1}"></div>
+      <div class="fgl"><label>Status</label><select class="fs" id="ec-status">${CULTURE_STATUSES.map(sx=>`<option value="${sx[0]}" ${c.status===sx[0]?'selected':''}>${sx[1]}</option>`).join('')}</select></div>
+    </div>
+    <div class="fg2">
+      <div class="fgl"><label>Parent Culture <span style="color:var(--text3);font-size:9px;">(if transfer)</span></label><select class="fs" id="ec-parent"><option value="">— none —</option>${parentOpts}</select></div>
+      <div class="fgl"><label>Vendor <span style="color:var(--text3);font-size:9px;">(if purchased)</span></label><input class="fi" id="ec-vendor" value="${attrEsc(c.vendor)}"></div>
+    </div>
+    <div class="fgl" style="margin-top:8px;"><label>Notes</label><textarea class="fta" id="ec-notes">${c.notes||''}</textarea></div>
+    <div class="form-acts" style="margin-top:16px;">
+      <button class="btn b-m b-lg" onclick="saveCultureEdit('${id}')">Save Changes</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="ec-t">✓ Culture updated</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+async function saveCultureEdit(id){
+  const c=(DB.cultures||[]).find(x=>x.id===id); if(!c) return;
+  const val=i=>(document.getElementById(i)?.value||'').trim();
+  if(!val('ec-strain')){ alert('Strain / species is required.'); return; }
+  const pid=val('ec-parent'); const parent=(DB.cultures||[]).find(x=>x.id===pid);
+  const upd={ date:val('ec-date')||c.date, cultureLot:val('ec-lot')||c.cultureLot, strain:val('ec-strain'),
+    form:document.getElementById('ec-form')?.value||c.form, source:document.getElementById('ec-source')?.value||c.source,
+    generation:parseInt(val('ec-gen'))||1, status:document.getElementById('ec-status')?.value||c.status,
+    parentId:pid||null, parentLot:parent?parent.cultureLot:'', vendor:val('ec-vendor'), notes:val('ec-notes') };
+  if(upd.strain) addVariety(upd.strain);
+  Object.assign(c,upd);
+  try{ await FS.update('cultures',id,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  logAudit('culture_edited',`Edited culture ${upd.cultureLot} — ${upd.strain} G${upd.generation}`);
+  toast('ec-t','✓ Culture updated');
+  setTimeout(()=>{ closeModal(); rLab(document.getElementById('main-views')); },800);
+}
+function delCulture(id){
+  const c=(DB.cultures||[]).find(x=>x.id===id); if(!c) return;
+  if(!confirm(`Delete culture ${c.cultureLot||''} (${c.strain||''})? This can't be undone.`)) return;
+  DB.cultures=DB.cultures.filter(x=>x.id!==id);
+  FS.del('cultures',id);
+  logAudit('culture_deleted',`Deleted culture ${c.cultureLot||''} — ${c.strain||''}`);
+  rLab(document.getElementById('main-views'));
+}
 
 function rLabCultures(el){
   const q=(_cultureQ||'').toLowerCase();
@@ -6865,7 +6975,8 @@ function rLabCultures(el){
     <td>${cultureStatusBadge(c.status)}</td>
     <td class="mn">${fDate(c.date)}</td>
     <td style="font-size:11px;color:var(--text3);">${c.loggedBy||''}</td>
-  </tr>`).join('') : `<tr><td colspan="8" class="empty">No cultures logged${q?' match your search':' yet'}.</td></tr>`;
+    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditCulture('${c.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delCulture('${c.id}')">✕</button>`:''}</td>`:''}
+  </tr>`).join('') : `<tr><td colspan="${canEdit()?9:8}" class="empty">No cultures logged${q?' match your search':' yet'}.</td></tr>`;
   el.innerHTML=`
     ${canEdit()?`<div class="card"><div class="card-t">Log Culture</div>
       <div class="fg2">
@@ -6887,7 +6998,7 @@ function rLabCultures(el){
     <div class="sh" style="margin-top:24px;"><span>Culture Library</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${(DB.cultures||[]).length} CULTURES</span></div>
     <div style="margin-bottom:12px;"><input class="fi" id="cl-search" placeholder="🔍 Search by lot, strain, form, status, parent…" value="${(_cultureQ||'').replace(/"/g,'&quot;')}" oninput="onCultureSearch(this.value)"></div>
     <div class="tw"><table>
-      <thead><tr><th>Lot</th><th>Strain</th><th>Form</th><th>Gen</th><th>From</th><th>Status</th><th>Date</th><th>By</th></tr></thead>
+      <thead><tr><th>Lot</th><th>Strain</th><th>Form</th><th>Gen</th><th>From</th><th>Status</th><th>Date</th><th>By</th>${canEdit()?'<th>Edit</th>':''}</tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
   const si=document.getElementById('cl-search'); if(si && _cultureQ){ si.focus(); si.setSelectionRange(si.value.length,si.value.length); }
@@ -6930,6 +7041,95 @@ async function logSpawn(){
   toast('sp-t'); setTimeout(()=>rLab(document.getElementById('main-views')),600);
 }
 function clrSpawn(){ ['sp-lotcode','sp-subbatch','sp-order','sp-batchno','sp-grainwt','sp-additives','sp-grainlot','sp-bags','sp-subnotes','sp-actemp','sp-cookhrs','sp-cookstart','sp-cookend','sp-sternotes','sp-strain','sp-culture','sp-culsource','sp-graintemp','sp-lclot','sp-spawnqty','sp-inocnotes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';}); }
+// ── EDIT / DELETE a grain spawn run (all fields) ──
+function openEditSpawn(id){
+  const s=(DB.spawnRuns||[]).find(x=>x.id===id); if(!s) return;
+  const F=(l,fid,val,type='text',ph='')=>`<div class="fgl"><label>${l}</label><input class="fi" ${type==='date'?'type="date"':(type==='number'?'type="number" min="0"':'')} id="${fid}" value="${attrEsc(val==null?'':String(val))}" ${ph?`placeholder="${ph}"`:''}></div>`;
+  const sec=(t)=>`<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;font-weight:700;color:var(--gold);text-transform:uppercase;border-bottom:1px solid var(--border);padding-bottom:5px;margin:16px 0 10px;">— ${t} —</div>`;
+  document.getElementById('em-title').textContent='Edit Spawn Run — '+(spawnLabel(s));
+  document.getElementById('em-body').innerHTML=`
+    ${sec('Header')}
+    <div class="fg2">
+      ${F('Production Date','es-pdate',s.productionDate||s.date,'date')}
+      ${F('Lot Code','es-lotcode',s.lotCode)}
+      ${F('Auto Lot','es-spawnlot',s.spawnLot)}
+      ${F('Substrate Batch','es-subbatch',s.substrateBatch)}
+      ${F('Order','es-order',s.order)}
+      ${F('Batch #','es-batchno',s.batchNo)}
+    </div>
+    ${sec('Substrate & Ingredients')}
+    <div class="fg2">
+      <div class="fgl"><label>Grain Type</label><select class="fs" id="es-grain">${GRAIN_TYPES.map(g=>`<option value="${g}" ${s.grain===g?'selected':''}>${g}</option>`).join('')}<option value="" ${!GRAIN_TYPES.includes(s.grain)?'selected':''}>${s.grain&&!GRAIN_TYPES.includes(s.grain)?s.grain:'—'}</option></select></div>
+      ${F('Total Grain Weight','es-grainwt',s.totalGrainWeight)}
+      ${F('Grain Batch/Lot','es-grainlot',s.grainBatchLot)}
+      ${F('Additives','es-additives',s.additives)}
+      ${F('# of Bags / Jars','es-bags',s.bagCount,'number')}
+      ${F('Bags Used','es-usedbags',s.usedBags,'number')}
+    </div>
+    <div class="fgl"><label>Substrate Notes</label><textarea class="fta" id="es-subnotes">${s.substrateNotes||''}</textarea></div>
+    ${sec('Sterilization')}
+    <div class="fg2">
+      ${F('Sterilization Date','es-sterdate',s.sterilizationDate,'date')}
+      ${F('Autoclave Temp','es-actemp',s.autoclaveTemp)}
+      ${F('Cook Time (hrs)','es-cookhrs',s.cookTimeHours)}
+      ${F('Cook Start','es-cookstart',s.cookTimeStart)}
+      ${F('Cook End','es-cookend',s.cookTimeEnd)}
+    </div>
+    <div class="fgl"><label>Sterilization Notes</label><textarea class="fta" id="es-sternotes">${s.sterNotes||''}</textarea></div>
+    ${sec('Inoculation')}
+    <div class="fg2">
+      ${F('Inoculation Date','es-inocdate',s.inoculationDate,'date')}
+      ${F('Strain','es-strain',s.strain)}
+      ${F('Source Culture Lot','es-cullot',s.sourceCultureLot)}
+      <div class="fgl"><label>Inoculation Method</label><select class="fs" id="es-method"><option value="">—</option>${SPAWN_INOC_METHODS.map(m=>`<option value="${m}" ${s.inoculationMethod===m?'selected':''}>${m}</option>`).join('')}</select></div>
+      ${F('Culture Source','es-culsource',s.cultureSource)}
+      ${F('LC Source Lot','es-lclot',s.lcSourceLot)}
+      ${F('Grain Temp (cooling)','es-graintemp',s.grainTempCooling)}
+      ${F('Spawn Qty','es-spawnqty',s.spawnQuantity)}
+      ${F('Crew','es-crew',s.crew)}
+      <div class="fgl"><label>Status</label><select class="fs" id="es-status">${SPAWN_RUN_STATUSES.map(st=>`<option value="${st[0]}" ${s.status===st[0]?'selected':''}>${st[1]}</option>`).join('')}</select></div>
+    </div>
+    <div class="fgl"><label>Inoculation Notes</label><textarea class="fta" id="es-inocnotes">${s.inocNotes||''}</textarea></div>
+    <div class="form-acts" style="margin-top:16px;">
+      <button class="btn b-m b-lg" onclick="saveSpawnEdit('${id}')">Save Changes</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="es-t">✓ Spawn run updated</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+async function saveSpawnEdit(id){
+  const s=(DB.spawnRuns||[]).find(x=>x.id===id); if(!s) return;
+  const val=i=>(document.getElementById(i)?.value||'').trim();
+  const strain=val('es-strain'); if(!strain){ alert('Strain is required.'); return; }
+  const bags=parseInt(val('es-bags'))||0; if(bags<1){ alert('# of bags/jars must be at least 1.'); return; }
+  const used=parseInt(val('es-usedbags'))||0;
+  if(used>bags){ alert(`Bags used (${used}) can't exceed total bags (${bags}).`); return; }
+  const pdate=val('es-pdate')||s.productionDate||s.date;
+  const upd={ productionDate:pdate, date:pdate, lotCode:val('es-lotcode'), spawnLot:val('es-spawnlot')||s.spawnLot,
+    substrateBatch:val('es-subbatch'), order:val('es-order'), batchNo:val('es-batchno'),
+    grain:document.getElementById('es-grain')?.value||s.grain, totalGrainWeight:val('es-grainwt'), grainBatchLot:val('es-grainlot'),
+    additives:val('es-additives'), bagCount:bags, usedBags:used, substrateNotes:val('es-subnotes'),
+    sterilizationDate:val('es-sterdate'), autoclaveTemp:val('es-actemp'), cookTimeHours:val('es-cookhrs'),
+    cookTimeStart:val('es-cookstart'), cookTimeEnd:val('es-cookend'), sterNotes:val('es-sternotes'),
+    inoculationDate:val('es-inocdate'), strain, sourceCultureLot:val('es-cullot'),
+    inoculationMethod:document.getElementById('es-method')?.value||'', cultureSource:val('es-culsource'),
+    lcSourceLot:val('es-lclot'), grainTempCooling:val('es-graintemp'), spawnQuantity:val('es-spawnqty'),
+    crew:val('es-crew'), status:document.getElementById('es-status')?.value||s.status, inocNotes:val('es-inocnotes') };
+  if(strain) addVariety(strain);
+  Object.assign(s,upd);
+  try{ await FS.update('spawnRuns',id,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  logAudit('spawn_edited',`Edited spawn ${upd.lotCode||upd.spawnLot} — ${strain} (${bags} bags, ${upd.status})`);
+  toast('es-t','✓ Spawn run updated');
+  setTimeout(()=>{ closeModal(); rLab(document.getElementById('main-views')); },800);
+}
+function delSpawn(id){
+  const s=(DB.spawnRuns||[]).find(x=>x.id===id); if(!s) return;
+  if(!confirm(`Delete spawn run ${spawnLabel(s)} (${s.strain||''}, ${s.bagCount||0} bags)? This can't be undone.`)) return;
+  DB.spawnRuns=DB.spawnRuns.filter(x=>x.id!==id);
+  FS.del('spawnRuns',id);
+  logAudit('spawn_deleted',`Deleted spawn run ${spawnLabel(s)} — ${s.strain||''}`);
+  rLab(document.getElementById('main-views'));
+}
 
 function rLabSpawn(el){
   const q=(_spawnQ||'').toLowerCase();
@@ -6966,7 +7166,12 @@ function rLabSpawn(el){
         <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);margin:14px 0 6px;">INOCULATION</div>
         ${fld('Date',s.inoculationDate?fDate(s.inoculationDate):'')}${fld('Method',s.inoculationMethod)}${fld('Source Culture',s.sourceCultureLot)}${fld('Culture Source',s.cultureSource)}${fld('LC Source Lot',s.lcSourceLot)}${fld('Grain Temp (cooling)',s.grainTempCooling)}${fld('Spawn Qty',s.spawnQuantity)}${fld('Notes',s.inocNotes)}${fld('Crew',s.crew)}${fld('Logged by',s.loggedBy)}
       </div>
-    </div></details>`).join('') : `<div class="empty" style="padding:20px;">No grain spawn runs logged${q?' match your search':' yet'}.</div>`;
+    </div>
+      ${canEdit()?`<div style="padding:10px 15px 14px;border-top:1px solid var(--border);display:flex;gap:8px;">
+        <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditSpawn('${s.id}')">✎ Edit</button>
+        ${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delSpawn('${s.id}')">✕ Delete</button>`:''}
+      </div>`:''}
+    </details>`).join('') : `<div class="empty" style="padding:20px;">No grain spawn runs logged${q?' match your search':' yet'}.</div>`;
   el.innerHTML=`
     <div class="stats" style="margin-bottom:20px;">
       <div class="sc g"><div class="sc-l">Spawn Bags On Hand</div><div class="sc-v">${totalBags}</div><div class="sc-n">${onHand.length} run${onHand.length===1?'':'s'} available</div></div>
