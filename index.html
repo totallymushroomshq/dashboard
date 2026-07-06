@@ -5525,6 +5525,84 @@ function buildForecastSection(){
 }
 
 // ── ANALYTICS ──
+// ── LOT BREAKDOWN (Analytics): click a lot → yield, waste, blocks that didn't fruit, etc. ──
+let _anaLot = '';
+function anaKnownLots(){
+  return [...new Set([
+    ...DB.harvests.map(h=>h.lotNumber),
+    ...DB.fruitings.map(f=>f.lotNumber),
+    ...(DB.receivings||[]).map(r=>r.lotNumber),
+    ...(DB.blockDisposals||[]).map(d=>d.cookLot)
+  ].filter(Boolean))].sort();
+}
+function onAnaLotSelect(v){
+  _anaLot=(v||'').trim();
+  const panel=document.getElementById('ana-lot-panel');
+  if(panel) panel.innerHTML = _anaLot ? lotBreakdownHTML(_anaLot) : '<div class="empty" style="padding:16px;">Pick a lot above to see its breakdown.</div>';
+}
+function lotBreakdownHTML(lot){
+  const L=(lot||'').trim().toLowerCase();
+  const eq=x=>(x||'').toString().trim().toLowerCase()===L;
+  const recs=(DB.receivings||[]).filter(r=>eq(r.lotNumber));
+  const frs=DB.fruitings.filter(f=>eq(f.lotNumber));
+  const hvs=DB.harvests.filter(h=>eq(h.lotNumber)).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  const disp=(DB.blockDisposals||[]).filter(d=>eq(d.cookLot)||(d.notes||'').toLowerCase().includes('lot '+L));
+  const prsvLegacy=(DB.preservation||[]).filter(p=>eq(p.lotNumber));
+  if(!recs.length&&!frs.length&&!hvs.length&&!disp.length) return `<div class="empty" style="padding:16px;">No records found for lot <strong>${lot}</strong>.</div>`;
+  const any=hvs[0]||frs[0]||recs[0]||{};
+  const variety=any.variety||'—';
+  const src=(frs[0]&&frs[0].source)||(recs[0]&&recs[0].source)||'';
+  const vendor=(frs[0]&&frs[0].vendor)||(recs[0]&&recs[0].vendor)||'';
+  const blocksReceived=recs.reduce((s,r)=>s+(parseInt(r.blockCount)||0),0);
+  const blocksPlaced=frs.reduce((s,f)=>s+(parseInt(f.blockCount)||0),0);
+  const blocksNoFruit=disp.filter(d=>d.stage==='pre-fruiting').reduce((s,d)=>s+(parseInt(d.blockCount)||0),0);
+  const blocksSpent=disp.filter(d=>d.stage!=='pre-fruiting').reduce((s,d)=>s+(parseInt(d.blockCount)||0),0);
+  const yieldLb=hvs.reduce((s,h)=>s+(h.weight||0),0);
+  const used=hvs.reduce((s,h)=>s+(h.usedWeight||0),0);
+  const sampled=hvs.reduce((s,h)=>s+(h.sampleWeight||0),0);
+  const preservedH=hvs.reduce((s,h)=>s+(h.preservedWeight||0),0);
+  const preserved=preservedH+prsvLegacy.reduce((s,p)=>s+(p.weightIn||0),0);
+  const onHand=Math.max(0,yieldLb-used-sampled-preservedH);
+  const perBlock=blocksPlaced>0?yieldLb/blocksPlaced:0;
+  const fruitedBlocks=Math.max(0,blocksPlaced-blocksNoFruit);
+  const fruitPct=blocksPlaced>0?(fruitedBlocks/blocksPlaced*100):0;
+  const byGrade={}; hvs.forEach(h=>{const g=h.grade||'—';byGrade[g]=(byGrade[g]||0)+(h.weight||0);});
+  const gradeStr=Object.entries(byGrade).map(([g,w])=>`${g}: ${w.toFixed(1)}`).join(' · ')||'—';
+  const card=(cls,label,val,note)=>`<div class="sc ${cls}"><div class="sc-l">${label}</div><div class="sc-v">${val}</div><div class="sc-n">${note||''}</div></div>`;
+  const hvRows=hvs.length?hvs.map(h=>{const oh=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0));return `<tr><td class="mn">${fDate(h.date)}</td><td>${h.container||''}</td><td class="mn">${h.grade||'—'}</td><td class="mn">${(h.weight||0).toFixed(1)}</td><td class="mn">${(h.usedWeight||0).toFixed(1)}</td><td class="mn">${(h.sampleWeight||0).toFixed(2)}</td><td class="mn">${(h.preservedWeight||0).toFixed(1)}</td><td class="mn" style="font-weight:700;color:var(--fern);">${oh.toFixed(1)}</td></tr>`;}).join(''):`<tr><td colspan="8" class="empty">No harvests recorded for this lot yet.</td></tr>`;
+  const dispRows=disp.length?[...disp].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(d=>`<tr><td class="mn">${fDate(d.date)}</td><td>${d.stage==='pre-fruiting'?'Did not fruit':'Spent'}</td><td>${d.reason||''}</td><td class="mn" style="color:var(--rust);font-weight:700;">${d.blockCount||0}</td><td style="font-size:11px;color:var(--text3);">${d.notes||''}</td></tr>`).join(''):'';
+  return `
+    <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+      <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);font-size:16px;">${lot}</span>
+      <span style="font-weight:600;font-size:15px;">${variety}</span>
+      ${vendor?`<span style="font-size:11px;color:var(--text3);">${src==='internal'?'[Internal]':'[Supplier]'} ${vendor}</span>`:''}
+    </div>
+    <div class="stats" style="margin-bottom:14px;">
+      ${card('','Blocks Received',blocksReceived,recs.length+' receiving'+(recs.length!==1?'s':''))}
+      ${card('g','Blocks Placed',blocksPlaced,'into fruiting')}
+      ${card(blocksNoFruit>0?'r':'','Didn&#39;t Fruit',blocksNoFruit,blocksPlaced?fruitPct.toFixed(0)+'% fruited':'—')}
+      ${card('g','Yield Harvested',yieldLb.toFixed(1)+' lb',gradeStr)}
+      ${card('','Yield / Block',perBlock.toFixed(2)+' lb',blocksPlaced?'over '+blocksPlaced+' blocks':'—')}
+      ${card('b','On Hand',onHand.toFixed(1)+' lb','still available')}
+    </div>
+    <div class="stats" style="margin-bottom:18px;">
+      ${card('','Used / Sold',used.toFixed(1)+' lb','packed out')}
+      ${card('m','Sampled',sampled.toFixed(2)+' lb','sample program')}
+      ${card('','Preserved',preserved.toFixed(1)+' lb','frozen / dried')}
+      ${card((blocksNoFruit+blocksSpent)>0?'r':'','Waste Blocks',(blocksNoFruit+blocksSpent),'disposed total')}
+    </div>
+    <div class="sh"><span>Harvests off this lot</span></div>
+    <div class="tw" style="margin-bottom:18px;overflow-x:auto;"><table>
+      <thead><tr><th>Date</th><th>Container</th><th>Grade</th><th>Yield</th><th>Used</th><th>Sampled</th><th>Preserved</th><th>On Hand</th></tr></thead>
+      <tbody>${hvRows}</tbody>
+    </table></div>
+    ${dispRows?`<div class="sh"><span>Blocks Removed / Waste</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Date</th><th>Stage</th><th>Reason</th><th>Blocks</th><th>Notes</th></tr></thead>
+      <tbody>${dispRows}</tbody>
+    </table></div>`:''}`;
+}
+
 function rAna(el){
   const wo=wkOrds().filter(o=>o.status==='confirmed'), tB=wo.reduce((s,o)=>s+bxs(o),0), rev=wo.reduce((s,o)=>s+eRev(o),0), tH=DB.harvests.reduce((s,h)=>s+h.weight,0), sur=tH-tB*3;
   const vc={'Oyster Mix':0,"Chef's Mix":0,"Lion's Mane":0,'Chestnuts':0};
@@ -5595,6 +5673,14 @@ function rAna(el){
 
   el.innerHTML=`
     <div class="ph"><div class="ph-t">Analytics</div><div class="ph-s">Yield performance · weekly orders · forecast · sample program</div></div>
+
+    <div class="card" style="margin-top:18px;">
+      <div class="card-t">🔎 Lot Breakdown</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Pick any lot to see its full story — blocks received, placed, that didn't fruit, yield harvested, waste, preserved, and what's still on hand.</div>
+      <input class="fi" id="ana-lot-input" list="ana-lotl" placeholder="Type or pick a lot #…" value="${(_anaLot||'').replace(/"/g,'&quot;')}" autocomplete="off" oninput="onAnaLotSelect(this.value)">
+      <datalist id="ana-lotl">${anaKnownLots().map(l=>`<option value="${(l||'').replace(/"/g,'&quot;')}">`).join('')}</datalist>
+      <div id="ana-lot-panel" style="margin-top:16px;">${_anaLot?lotBreakdownHTML(_anaLot):'<div class="empty" style="padding:16px;">Pick a lot above to see its breakdown.</div>'}</div>
+    </div>
 
     ${buildYieldAverages()}
 
