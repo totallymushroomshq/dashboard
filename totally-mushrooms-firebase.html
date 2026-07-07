@@ -2512,8 +2512,13 @@ function buildPackOrderCard(){
   const clientNames=[...new Set(DB.clients.map(c=>c.name).filter(Boolean))].sort();
   const days=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
   const todayWd=new Date().toLocaleDateString('en-US',{weekday:'long'});
-  const pulled=DB.packSessions.filter(ps=>ps.date===tday()&&ps.status==='open').flatMap(s=>s.pulled||[]);
-  const pulledSummary=pulled.length?[...new Set(pulled.map(p=>`${p.variety} (Lot ${p.lotNumber})`))].join(' · '):'none pulled yet — open a pack session below first';
+  const pulledLots=[]; const seen=new Set();
+  DB.packSessions.filter(ps=>ps.date===tday()&&ps.status==='open').forEach(s=>(s.pulled||[]).forEach(p=>{ if(p.harvestId&&!seen.has(p.harvestId)){ seen.add(p.harvestId); pulledLots.push(p); } }));
+  const lotChecks=pulledLots.length?pulledLots.map(p=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:12px;background:var(--white);">
+      <input type="checkbox" class="po-lot-chk" value="${p.harvestId}" data-lot="${(p.lotNumber||'').replace(/"/g,'&quot;')}" checked>
+      <span><strong>${p.variety}</strong> · Lot ${p.lotNumber} · ${(p.pulledWeight||0).toFixed(1)} lb</span>
+    </label>`).join(''):`<div style="font-size:11px;color:var(--text3);">No lots pulled in an open session yet — open a pack session below and pull lots first.</div>`;
   const prodInputs=ALL_PRODS.map(p=>`
     <div style="display:flex;flex-direction:column;gap:2px;">
       <label style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:.5px;">${p.code} · ${p.name}</label>
@@ -2524,14 +2529,15 @@ function buildPackOrderCard(){
       <div class="card-t">📦 Pack → Log Order (from SO#)</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Enter the <strong>S.O. number from the packing slip</strong>, the client, and what you packed. This generates the order (marked <strong>packed</strong>) and auto-ties the lots pulled in today's open pack sessions for traceability.</div>
       <div class="fg2">
-        <div class="fgl"><label>S.O. # <span style="color:var(--rust);">*</span></label><input class="fi" id="po-so" placeholder="from packing slip"></div>
+        <div class="fgl"><label>S.O. # <span style="color:var(--text3);font-size:9px;">optional — add later</span></label><input class="fi" id="po-so" placeholder="from Accounting's slip (or blank)"></div>
         <div class="fgl"><label>Client <span style="color:var(--rust);">*</span></label><input class="fi" id="po-client" list="po-clientl" placeholder="Type or pick client…" autocomplete="off"><datalist id="po-clientl">${clientNames.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('')}</datalist></div>
         <div class="fgl"><label>Delivery Day</label><select class="fs" id="po-day">${days.map(d=>`<option value="${d}"${d===todayWd?' selected':''}>${d}</option>`).join('')}</select></div>
       </div>
       <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:14px 0 8px;">CASES / UNITS PACKED (by code)</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px;">${prodInputs}</div>
       <div class="fgl" style="margin-bottom:12px;"><label>Notes</label><input class="fi" id="po-notes" placeholder="Optional"></div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:14px;">Lots to attach: <strong style="color:var(--fern);">${pulledSummary}</strong></div>
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:6px 0 8px;">LOTS FOR THIS CLIENT <span style="text-transform:none;letter-spacing:0;">— check only the lots that went to this order (uncheck ones for other clients)</span></div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">${lotChecks}</div>
       <div class="form-acts">
         <button class="btn b-m b-lg" onclick="savePackOrder()">Generate Packed Order</button>
         <button class="btn b-g" onclick="clrPackOrder()">Clear</button>
@@ -2543,23 +2549,23 @@ async function savePackOrder(){
   const so=(document.getElementById('po-so')?.value||'').trim();
   const client=(document.getElementById('po-client')?.value||'').trim();
   const day=document.getElementById('po-day')?.value||'';
-  if(!so){ alert('S.O. number is required (it comes from the packing slip).'); return; }
   if(!client){ alert('Client is required.'); return; }
   const qtys={}; let anyQty=false;
   ALL_PRODS.forEach(p=>{ const q=parseInt(document.getElementById('po-'+p.dataKey)?.value)||0; qtys[p.dataKey]=q; if(q>0) anyQty=true; });
   if(!anyQty){ alert('Enter at least one packed item.'); return; }
   const cr=DB.clients.find(c=>(c.name||'').toLowerCase()===client.toLowerCase());
-  const pulled=DB.packSessions.filter(ps=>ps.date===tday()&&ps.status==='open').flatMap(s=>s.pulled||[]);
-  const usedHarvests=[...new Set(pulled.map(p=>p.harvestId).filter(Boolean))];
-  const usedLots=[...new Set(pulled.map(p=>p.lotNumber).filter(Boolean))];
+  // only the lots checked for THIS client (per-client traceability)
+  const checked=[...document.querySelectorAll('.po-lot-chk:checked')];
+  const usedHarvests=[...new Set(checked.map(c=>c.value).filter(Boolean))];
+  const usedLots=[...new Set(checked.map(c=>c.getAttribute('data-lot')).filter(Boolean))];
   const o={ clientId:cr?.id||null, client, day, status:'packed', receivedAt:new Date().toISOString(), packedAt:new Date().toISOString(),
     ...qtys, notes:(document.getElementById('po-notes')?.value||'').trim(),
     orderRef:nextHQOrderNum(), soNum:so, custom:false, isStanding:false, week:wkStart(),
     usedHarvests, usedLots, source:'pack' };
   try{ const oId=await FS.add('orders',o); o.id=oId; DB.orders.push(o); }
   catch(e){ alert('Save failed: '+(e.message||e)); return; }
-  logAudit('order_created',`Packed order SO#${so} for ${client} — ${usedLots.length} lot(s) tied`);
-  toast('po-t','✓ Packed order SO#'+so+' created');
+  logAudit('order_created',`Packed order${so?' SO#'+so:''} for ${client} — ${usedLots.length} lot(s) tied`);
+  toast('po-t','✓ Packed order for '+client+(so?' (SO#'+so+')':' — add SO# later')+' created');
   clrPackOrder(); renderC();
 }
 function clrPackOrder(){
@@ -2591,6 +2597,7 @@ function openEditOrder(id){
     <div class="fg2" style="margin-top:14px;">
       <div class="fgl"><label>Delivery Day</label><select class="fs" id="eo-day">${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=>`<option ${o.day===d?'selected':''}>${d}</option>`).join('')}</select></div>
       <div class="fgl"><label>PO / Order Ref</label><input class="fi" id="eo-ref" value="${(o.orderRef||'').replace(/"/g,'&quot;')}"></div>
+      <div class="fgl"><label>S.O. # <span style="color:var(--text3);font-size:9px;">from Accounting slip</span></label><input class="fi" id="eo-so" value="${(o.soNum||'').toString().replace(/"/g,'&quot;')}" placeholder="add when you get it"></div>
     </div>
     <div class="fgl" style="margin-top:10px;"><label>Notes</label><textarea class="fta" id="eo-notes">${o.notes||''}</textarea></div>
     <div class="form-acts" style="margin-top:18px;">
@@ -2607,6 +2614,7 @@ async function saveOrderEdits(id){
   ALL_PRODS.forEach(p=>{ const v=Math.max(0,parseInt(document.getElementById('eo-'+p.dataKey)?.value)||0); o[p.dataKey]=v; upd[p.dataKey]=v; });
   const day=document.getElementById('eo-day')?.value; if(day){ o.day=day; upd.day=day; }
   const ref=document.getElementById('eo-ref')?.value.trim(); o.orderRef=ref; upd.orderRef=ref;
+  const soEl=document.getElementById('eo-so'); if(soEl){ const so=soEl.value.trim(); o.soNum=so; upd.soNum=so; }
   const notes=document.getElementById('eo-notes')?.value.trim(); o.notes=notes; upd.notes=notes;
   if(o.custom){
     const cuv=document.getElementById('eo-cuv'); if(cuv){ o.customVarieties=cuv.value.trim(); upd.customVarieties=o.customVarieties; }
