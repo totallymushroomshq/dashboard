@@ -542,6 +542,7 @@ const ALL_INTERNAL_TABS = [
   {id:'receiving',l:'📥 Receiving'},
   {id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},
   {id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},
+  {id:'cleaning',l:'🧽 Clean & Flip'},
   {id:'trace',l:'🔍 Trace'},
   {id:'lab',l:'🧫 Lab'},
   {id:'cordyceps',l:'🐛 Cordyceps'},
@@ -551,9 +552,9 @@ const ALL_INTERNAL_TABS = [
   {id:'qb',l:'📒 QB',c:'at'}
 ];
 const DEFAULT_PERMS = {
-  admin: {today:true,week:true,'new-order':true,'email-parse':true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
-  staff: {today:true,week:true,'new-order':true,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
-  accountant: {today:true,week:true,'new-order':false,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
+  admin: {today:true,week:true,'new-order':true,'email-parse':true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
+  staff: {today:true,week:true,'new-order':true,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
+  accountant: {today:true,week:true,'new-order':false,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:false,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
 };
 const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',lab:'Lab — Carthage',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
 
@@ -617,16 +618,16 @@ const FS = {
 // ── LOAD ALL DATA FROM FIRESTORE ──
 async function loadDB(){
   try {
-    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog,containerSessions,preservationBatches,labBatches,blockDisposals,receivings,cultures,spawnRuns,cordyceps,revisions] = await Promise.all([
+    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog,containerSessions,preservationBatches,labBatches,blockDisposals,receivings,cultures,spawnRuns,cordyceps,revisions,containerFlips] = await Promise.all([
       FS.getAll('orders'), FS.getAll('clients'), FS.getAll('harvests'),
       FS.getAll('samples'), FS.getAll('fruitings'), FS.getAll('preservation'),
       FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('packSessions'),
       FS.getAll('users'), FS.getAll('loginHistory'), FS.getAll('transfers'), FS.getAll('productMovements'),
       FS.getAll('auditLog'), FS.getAll('containerSessions'), FS.getAll('preservationBatches'),
       FS.getAll('labBatches'), FS.getAll('blockDisposals'), FS.getAll('receivings'),
-      FS.getAll('cultures'), FS.getAll('spawnRuns'), FS.getAll('cordyceps'), FS.getAll('revisions')
+      FS.getAll('cultures'), FS.getAll('spawnRuns'), FS.getAll('cordyceps'), FS.getAll('revisions'), FS.getAll('containerFlips')
     ]);
-    DB.receivings=receivings; DB.cultures=cultures; DB.spawnRuns=spawnRuns; DB.cordyceps=cordyceps; DB.revisions=revisions;
+    DB.receivings=receivings; DB.cultures=cultures; DB.spawnRuns=spawnRuns; DB.cordyceps=cordyceps; DB.revisions=revisions; DB.containerFlips=containerFlips||[];
     DB.orders=orders; DB.clients=clients; DB.harvests=harvests;
     DB.samples=samples; DB.fruitings=fruitings; DB.preservation=preservation;
     // ── ONE-TIME MIGRATION: drop o.chestnut (legacy ungraded field) since chestnut is now CH01/CH02 only.
@@ -1246,7 +1247,7 @@ async function confirmSessionLabor(){
   for(const c of crew){ await logManualTime(con, act, c.min, date, act+' session', c.emp); }
   const commit=_pendingSessionCommit; _pendingSessionCommit=null;
   closeModal();
-  if(commit) await commit();
+  if(commit) await commit(crew);
 }
 function cancelSessionLabor(){ _pendingSessionCommit=null; closeModal(); }
 
@@ -1937,7 +1938,7 @@ function buildNav(){
 
   const GROUPS=[
     {label:'Daily',       ids:['today','week','new-order','email-parse']},
-    {label:'Operations',  ids:['receiving','harvest','fruiting','inventory','preservation','trace']},
+    {label:'Operations',  ids:['receiving','harvest','fruiting','inventory','preservation','cleaning','trace']},
     {label:'Production',  ids:['lab','cordyceps']},
     {label:'Business',    ids:['analytics','orders-all','reports','qb'], cls:'drw-acct'},
     {label:'System',      ids:['admin','security'], cls:'drw-sys'},
@@ -1975,7 +1976,7 @@ function sw(id){
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,trace:rTrace,lab:rLab,cordyceps:rCordyceps,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,trace:rTrace,lab:rLab,cordyceps:rCordyceps,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -6869,6 +6870,132 @@ function dlTraceCSV(){
     rows.push(['Order / Customer',o.week?fDate(o.week):'',(o.usedLots||[]).join('; '),'','','',`${o.day||''} delivery`,o.client||'',o.orderRef||'',o.qbInvoiceNum||'',`$${eRev(o).toFixed(2)}`,o.status||'']);
   });
   _traceCSV(rows);
+}
+
+// ── CLEANING & CONTAINER FLIP — deep clean, container cycle, spent-block removal ──
+const CLEAN_TYPES=['Deep Clean','Quick Flip','Sanitize'];
+function rCleaning(el){
+  const activeC=getActiveContainers();
+  const flips=[...(DB.containerFlips||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
+  const conOpts=activeC.map(c=>`<option value="${c.code}">${c.code} · ${c.farm} (${c.facility})</option>`).join('');
+  const histRows=flips.length?flips.map(f=>`<tr>
+    <td class="mn">${fDate(f.date)}</td><td>${f.container||''}</td><td>${f.cleanType||''}</td>
+    <td class="mn" style="color:${(f.spentBlocks||0)>0?'var(--rust)':'var(--text3)'};font-weight:700;">${f.spentBlocks||0}</td>
+    <td style="font-size:11px;">${(f.spentLots||[]).join(', ')||'—'}</td>
+    <td style="font-size:11px;color:var(--text3);">${(f.crew||[]).map(c=>c.emp+' '+c.min+'m').join(', ')||'—'}</td>
+    <td style="font-size:11px;color:var(--text3);">${f.notes||''}</td>
+    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFlip('${f.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delFlip('${f.id}')">✕</button>`:''}</td>`:''}
+  </tr>`).join(''):`<tr><td colspan="${canEdit()?8:7}" class="empty">No container flips logged yet.</td></tr>`;
+  el.innerHTML=`
+    <div class="ph"><div class="ph-t">🧽 Cleaning &amp; Container Flip</div><div class="ph-s">Deep clean · container cycle · remove spent blocks from inventory</div></div>
+    ${canEdit()?`<div class="card">
+      <div class="card-t">Log a Container Flip / Clean</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px;">Records the clean, removes spent blocks from inventory (as waste), and requires crew + time. Pick the container to see its active lots to flip out.</div>
+      <div class="fg2">
+        <div class="fgl"><label>Date</label><input class="fi" type="date" id="cf-date" value="${tday()}"></div>
+        <div class="fgl"><label>Container</label><select class="fs" id="cf-con" onchange="onFlipContainer()"><option value="">Select container…</option>${conOpts}</select></div>
+        <div class="fgl"><label>Clean Type</label><select class="fs" id="cf-type">${CLEAN_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>
+      </div>
+      <div id="cf-lots-wrap" style="margin-top:12px;"></div>
+      <div class="fg2" style="margin-top:12px;">
+        <div class="fgl"><label>Extra spent blocks removed <span style="color:var(--text3);font-size:9px;">(not tied to a lot)</span></label><input class="fi" type="number" min="0" id="cf-extra" placeholder="0"></div>
+        <div class="fgl"><label>Reason for spent removal</label><input class="fi" id="cf-reason" list="cf-reasonl" placeholder="spent / contaminated / end of cycle"><datalist id="cf-reasonl"><option value="spent"><option value="contaminated"><option value="end of cycle"></datalist></div>
+      </div>
+      <div class="fgl" style="margin-top:12px;"><label>Notes / Condition</label><textarea class="fta" id="cf-notes" placeholder="Observations, chemicals used, issues…"></textarea></div>
+      <div class="form-acts" style="margin-top:14px;">
+        <button class="btn b-m b-lg" onclick="saveContainerFlip()">Log Flip &amp; Clean</button>
+        <button class="btn b-g" onclick="rCleaning(document.getElementById('main-views'))">Clear</button>
+      </div>
+      <div class="toast" id="cf-t">✓ Flip logged</div>
+    </div>`:''}
+    <div class="sh" style="margin-top:24px;"><span>Flip &amp; Clean History</span><span class="bdg bc">${flips.length}</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Date</th><th>Container</th><th>Type</th><th>Spent Blks</th><th>Lots</th><th>Crew</th><th>Notes</th>${canEdit()?'<th>Actions</th>':''}</tr></thead>
+      <tbody>${histRows}</tbody>
+    </table></div>`;
+}
+function onFlipContainer(){
+  const con=document.getElementById('cf-con')?.value;
+  const wrap=document.getElementById('cf-lots-wrap'); if(!wrap) return;
+  const lots=DB.fruitings.filter(f=>f.containerID===con && f.status==='fruiting');
+  if(!con||!lots.length){ wrap.innerHTML=con?`<div style="font-size:11px;color:var(--text3);">No active fruiting lots in ${con} — use the spent-block count below if flipping leftovers.</div>`:''; return; }
+  wrap.innerHTML=`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px;">FLIP OUT SPENT LOTS IN ${con} — check to remove from inventory</div>
+    <div style="display:flex;flex-direction:column;gap:6px;">${lots.map(f=>`
+      <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:12px;">
+        <input type="checkbox" class="cf-lot-chk" value="${f.id}" data-lot="${(f.lotNumber||'').replace(/"/g,'&quot;')}" data-var="${(f.variety||'').replace(/"/g,'&quot;')}" data-blocks="${f.blockCount||0}">
+        <span><strong>${f.variety}</strong> · Lot ${f.lotNumber} · ${f.blockCount||0} blocks</span>
+      </label>`).join('')}</div>`;
+}
+function saveContainerFlip(){
+  const con=document.getElementById('cf-con')?.value;
+  const date=document.getElementById('cf-date')?.value||tday();
+  const cleanType=document.getElementById('cf-type')?.value||'Deep Clean';
+  if(!con){ alert('Select a container.'); return; }
+  const checked=[...document.querySelectorAll('.cf-lot-chk:checked')];
+  const extra=parseInt(document.getElementById('cf-extra')?.value)||0;
+  const reason=(document.getElementById('cf-reason')?.value||'').trim()||'spent';
+  const notes=(document.getElementById('cf-notes')?.value||'').trim();
+  const lotBlocks=checked.reduce((s,c)=>s+(parseInt(c.getAttribute('data-blocks'))||0),0);
+  const flipData={con,date,cleanType,reason,notes,extra,spentBlocks:lotBlocks+extra,
+    lots:checked.map(c=>({fruitingId:c.value,lotNumber:c.getAttribute('data-lot'),variety:c.getAttribute('data-var'),blocks:parseInt(c.getAttribute('data-blocks'))||0}))};
+  // hard-block: crew + time required, then commit
+  openSessionLaborGate('flip', con, date, 'Cleaning', (crew)=>_doFlipCommit(flipData, crew));
+}
+async function _doFlipCommit(d, crew){
+  const c=CONTAINERS.find(x=>x.code===d.con);
+  const spentLots=[];
+  for(const lot of d.lots){
+    const dData={date:d.date,stage:'spent',container:d.con,cookLot:lot.lotNumber||'',labBatchId:'',variety:lot.variety,source:'',supplier:'',blockCount:lot.blocks,reason:d.reason,notes:`Flipped out of ${d.con} — ${d.cleanType}${d.notes?(' · '+d.notes):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+    const did=await FS.add('blockDisposals',dData); dData.id=did; DB.blockDisposals.push(dData);
+    if(lot.lotNumber) spentLots.push(lot.lotNumber);
+    const fr=DB.fruitings.find(x=>x.id===lot.fruitingId);
+    if(fr){ fr.status='removed'; fr.removedAt=d.date; try{ await FS.update('fruitings',fr.id,{status:'removed',removedAt:d.date}); }catch(e){} }
+  }
+  if(d.extra>0){
+    const dData={date:d.date,stage:'spent',container:d.con,cookLot:'',labBatchId:'',variety:'',source:'',supplier:'',blockCount:d.extra,reason:d.reason,notes:`Spent blocks flipped from ${d.con} — ${d.cleanType}${d.notes?(' · '+d.notes):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+    const did=await FS.add('blockDisposals',dData); dData.id=did; DB.blockDisposals.push(dData);
+  }
+  const flip={date:d.date,container:d.con,facility:c?.facility||'',cleanType:d.cleanType,spentBlocks:d.spentBlocks,spentLots,extra:d.extra,reason:d.reason,notes:d.notes,crew:crew||[],loggedBy:S.name||S.role,createdAt:new Date().toISOString()};
+  const fid=await FS.add('containerFlips',flip); flip.id=fid; (DB.containerFlips=DB.containerFlips||[]).push(flip);
+  logAudit('container_flip',`Flip/clean ${d.con} — ${d.cleanType} — ${d.spentBlocks} spent block(s)${spentLots.length?(' · lots '+spentLots.join(', ')):''}`);
+  toast('cf-t','✓ Flip & clean logged');
+  renderC();
+}
+function openEditFlip(id){
+  const f=(DB.containerFlips||[]).find(x=>x.id===id); if(!f) return;
+  document.getElementById('em-title').textContent='Edit Flip — '+(f.container||'')+' · '+fDate(f.date);
+  document.getElementById('em-body').innerHTML=`
+    <div class="fg2">
+      <div class="fgl"><label>Date</label><input class="fi" type="date" id="efl-date" value="${attrEsc(f.date)}"></div>
+      <div class="fgl"><label>Container</label><input class="fi" id="efl-con" value="${attrEsc(f.container)}"></div>
+      <div class="fgl"><label>Clean Type</label><select class="fs" id="efl-type">${CLEAN_TYPES.map(t=>`<option ${f.cleanType===t?'selected':''}>${t}</option>`).join('')}</select></div>
+    </div>
+    <div class="fgl" style="margin-top:10px;"><label>Spent blocks <span style="color:var(--text3);font-size:9px;">(display total — existing disposal records aren't changed)</span></label><input class="fi" type="number" min="0" id="efl-spent" value="${f.spentBlocks||0}"></div>
+    <div class="fgl" style="margin-top:10px;"><label>Notes / Condition</label><textarea class="fta" id="efl-notes">${f.notes||''}</textarea></div>
+    <div class="form-acts" style="margin-top:14px;">
+      <button class="btn b-m b-lg" onclick="saveFlipEdit('${id}')">Save Changes</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="efl-t">✓ Flip updated</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+async function saveFlipEdit(id){
+  const f=(DB.containerFlips||[]).find(x=>x.id===id); if(!f) return;
+  const val=i=>(document.getElementById(i)?.value||'').trim();
+  const upd={date:val('efl-date')||f.date, container:val('efl-con'), cleanType:document.getElementById('efl-type')?.value||f.cleanType, spentBlocks:parseInt(document.getElementById('efl-spent')?.value)||0, notes:val('efl-notes')};
+  Object.assign(f,upd);
+  try{ await FS.update('containerFlips',id,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  logAudit('container_flip_edited',`Edited flip ${upd.container} ${fDate(upd.date)}`);
+  toast('efl-t','✓ Flip updated');
+  setTimeout(()=>{ closeModal(); rCleaning(document.getElementById('main-views')); },800);
+}
+function delFlip(id){
+  const f=(DB.containerFlips||[]).find(x=>x.id===id); if(!f) return;
+  if(!confirm(`Delete this flip log (${f.container||''} · ${fDate(f.date)})? The spent-block disposal records it created are NOT auto-removed.`)) return;
+  DB.containerFlips=(DB.containerFlips||[]).filter(x=>x.id!==id);
+  FS.del('containerFlips',id);
+  logAudit('container_flip_deleted',`Deleted flip ${f.container||''} ${fDate(f.date)}`);
+  rCleaning(document.getElementById('main-views'));
 }
 
 function rTrace(el){
