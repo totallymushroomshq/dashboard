@@ -3153,9 +3153,40 @@ function varietyOptHTML(selected){
     .concat(['<option value="__add__">➕ Add new variety…</option>']).join('');
 }
 // Add a new variety on the fly and persist it so it populates in future sessions.
+// ── VARIETY STANDARDIZATION — one canonical spelling/casing per variety ──
+// Normalized match key ignores case, spaces, and punctuation so "lions mane",
+// "Lion's Mane", and "LIONS MANE" all collapse to the same variety.
+function varietyKey(n){ return (n||'').toString().toLowerCase().replace(/[^a-z0-9]/g,''); }
+function titleCaseVariety(name){ return (name||'').trim().replace(/\s+/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
+// Snap a typed name to its existing canonical spelling; new names get Title Case.
+function canonicalVariety(name){
+  const k=varietyKey(name); if(!k) return (name||'').trim();
+  const m=VARIETIES.find(v=>varietyKey(v)===k);
+  return m || titleCaseVariety(name);
+}
+function isNewVariety(name){ const k=varietyKey(name); return !!k && !VARIETIES.some(v=>varietyKey(v)===k); }
+// Normalize each row's .variety to canonical; warn+confirm on genuinely new ones.
+// Returns false if the user cancels (so the caller aborts the save).
+function normalizeRowVarieties(rows){
+  const news=[];
+  for(const r of rows){
+    if(!r.variety) continue;
+    const wasNew=isNewVariety(r.variety);
+    r.variety=canonicalVariety(r.variety);
+    if(wasNew && !news.includes(r.variety)) news.push(r.variety);
+  }
+  if(news.length){
+    const msg='⚠️  HEY — '+(news.length>1?'THESE ARE NEW VARIETIES':'THIS IS A NEW VARIETY')+':\n\n     '+news.join('\n     ')+'\n\nTYPE THE NAME CLEARLY AND WITH PROPER CAPITALIZATION AND SPELLING, PLEASE.\n\nClick OK to add '+(news.length>1?'them':'it')+' exactly as shown above, or Cancel to go back and fix the spelling.';
+    if(!confirm(msg)) return false;
+  }
+  return true;
+}
+
 async function addVariety(name){
   name=(name||'').trim(); if(!name) return;
-  if(VARIETIES.some(v=>v.toLowerCase()===name.toLowerCase())) return;
+  const canon=canonicalVariety(name);
+  if(!isNewVariety(canon)) return; // already known under a canonical spelling — don't create a variant
+  name=canon; // store the Title-Cased canonical form
   VARIETIES.push(name);
   if(!customVarieties.includes(name)) customVarieties.push(name);
   if(!VARIETY_TURNAROUND[name]) VARIETY_TURNAROUND[name]={min:7,max:14,yieldPct:0.18};
@@ -3375,9 +3406,10 @@ async function logReceiving(){
   if(!variety){ alert('Variety is required.'); return }
   if(!lotNumber){ alert('Lot / block number is required.'); return }
   if(blockCount<1){ alert('Block count must be at least 1.'); return }
-  if(variety) addVariety(variety); // persist any typed-in variety
+  const _vg={variety}; if(!normalizeRowVarieties([_vg])) return; const vCanon=_vg.variety; // standardize variety + warn on new
+  addVariety(vCanon);
   if(source!=='internal' && vendor) addSupplier(vendor); // remember the supplier
-  const rData={date,facility:'Hydes Ferry',source,vendor,variety,lotNumber,blockCount,blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,status:'on-hand',createdAt:new Date().toISOString()};
+  const rData={date,facility:'Hydes Ferry',source,vendor,variety:vCanon,lotNumber,blockCount,blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,status:'on-hand',createdAt:new Date().toISOString()};
   const rId=await FS.add('receivings',rData);
   DB.receivings.push({id:rId,...rData});
   logAudit('blocks_received',`Received ${blockCount} ${variety} blocks — Lot ${lotNumber} from ${vendor||source} @ Hydes Ferry`);
@@ -3490,7 +3522,7 @@ async function saveReceivingEdit(id){
     blockWeightLb:parseFloat(document.getElementById('er-bw')?.value)||0, receivedBy:val('er-by'),
     poNum:val('er-po'), cost:isNaN(cost)?null:cost, notes:val('er-notes'),
     status: (placed>=bc) ? 'placed' : 'on-hand' };
-  if(upd.variety) addVariety(upd.variety);
+  if(upd.variety){ if(!normalizeRowVarieties([upd])) return; addVariety(upd.variety); }
   Object.assign(r,upd);
   try{ await FS.update('receivings',id,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
   logAudit('receiving_edited',`Edited receiving Lot ${upd.lotNumber} — ${upd.variety} (${bc} blocks)`);
@@ -3736,6 +3768,7 @@ async function subFruiting(){
   const cur=_readFruitingRow();
   if(cur.lotNumber||cur.variety||cur.blockCount){ if(!_validFruitingRow(cur)) return; rows.push(cur); }
   if(!rows.length){ alert('Enter at least one lot to place.'); return; }
+  if(!normalizeRowVarieties(rows)) return; // standardize varieties + warn on new ones
   // Hard-block: must log who worked + how long before the session saves
   const primeCon=(rows.find(r=>r.containerID)||{}).containerID||'';
   const primeDate=(rows[0]||{}).date||tday();
@@ -3841,7 +3874,7 @@ async function saveFruitingEdit(id){
     blockWeightLb:parseFloat(document.getElementById('ef-bw')?.value)||0,
     rateLbPerBlock:parseFloat(document.getElementById('ef-rate')?.value)||LBSPERBLOCK, notes:val('ef-n') };
   if(upd.status==='harvested' && !f.harvestedAt) upd.harvestedAt=tday();
-  if(upd.variety) addVariety(upd.variety);
+  if(upd.variety){ if(!normalizeRowVarieties([upd])) return; addVariety(upd.variety); }
   if(upd.source==='supplier' && upd.vendor) addSupplier(upd.vendor);
   Object.assign(f,upd);
   try{ await FS.update('fruitings',id,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
@@ -4183,6 +4216,7 @@ async function logHarv(){
   // include the in-progress form row if it's been started
   if(cur.lotNumber||cur.variety||cur.weight){ if(!_validHarvestRow(cur)) return; rows.push(cur); }
   if(!rows.length){ alert('Enter at least one harvest lot.'); return; }
+  if(!normalizeRowVarieties(rows)) return; // standardize varieties + warn on new ones
   // Hard-block: must log who worked + how long before the session saves
   const primeCon=(rows.find(r=>r.container)||{}).container||'';
   const primeDate=(rows[0]||{}).date||tday();
@@ -4239,7 +4273,7 @@ async function saveHarvestEdit(id){
     weight:parseFloat(document.getElementById('eh-w')?.value)||0, notes:val('eh-n') };
   if(!upd.lotNumber||!upd.variety||!upd.grade){ alert('Lot number, variety and grade are required.'); return; }
   if(!upd.weight||upd.weight<=0){ alert('Harvested weight must be greater than 0.'); return; }
-  if(upd.variety) addVariety(upd.variety); // persist any typed-in variety
+  if(upd.variety){ if(!normalizeRowVarieties([upd])) return; addVariety(upd.variety); } // persist any typed-in variety
   const used=(h.usedWeight||0)+(h.sampleWeight||0)+(h.preservedWeight||0);
   if(upd.weight<used && !confirm(`This lot already has ${used.toFixed(1)} lb used/sampled/preserved, which is more than the new ${upd.weight} lb. Save anyway?`)) return;
   Object.assign(h,upd);
