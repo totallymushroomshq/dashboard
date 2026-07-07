@@ -506,6 +506,7 @@ const DB = {
   emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false}
 };
 let packDaySelected = {}; // harvestId -> pull weight, persists across renders
+let packExpanded = {}; // variety -> expanded (breakout) in pack pull view
 let _yieldPeriod = 'week';   // week | month | 30d | year | custom
 let _yieldCustomFrom = '';
 let _yieldCustomTo = '';
@@ -2331,7 +2332,7 @@ function buildPackDaySection(openSessions, availLots, snapCards){
   const PACK_OPEN_BLOCK = openBlock;
   const needSummary=snapCards.filter(x=>x.neededLbs>0).map(x=>`<span style="font-family:'Syne Mono',monospace;font-size:10px;background:rgba(58,96,48,.1);color:var(--fern);padding:3px 8px;border-radius:4px;">${x.label}: ${x.neededLbs.toFixed(1)} lb</span>`).join(' ');
   const totalSel=Object.values(packDaySelected).reduce((s,w)=>s+w,0);
-  const lotCards=availLots.map(h=>{
+  const packLotCard=(h)=>{
     const sel=packDaySelected.hasOwnProperty(h.id);
     const pullWt=(packDaySelected[h.id]||h.onHand);
     return `<div class="pack-lot${sel?' pack-lot-sel':''}" onclick="togglePackLot('${h.id}',${h.onHand})" id="plt-${h.id}">
@@ -2340,12 +2341,31 @@ function buildPackDaySection(openSessions, availLots, snapCards){
       <div class="pack-lot-wt">${h.onHand.toFixed(1)} lb</div>
       ${sel?`<div class="pack-lot-inp" onclick="event.stopPropagation()">Pull: <input type="number" step="0.1" min="0.1" max="${h.onHand}" value="${pullWt.toFixed(1)}" style="width:72px;font-size:14px;padding:4px 6px;border:1px solid var(--sage);border-radius:4px;text-align:center;" onchange="updatePackWeight('${h.id}',parseFloat(this.value)||0)" oninput="updatePackWeight('${h.id}',parseFloat(this.value)||0)"> lb<div id="left-${h.id}" style="font-family:'Syne Mono',monospace;font-size:10px;color:${(h.onHand-pullWt)<=0.05?'var(--rust)':'var(--text3)'};margin-top:4px;">${Math.max(0,h.onHand-pullWt).toFixed(1)} lb left in lot${(h.onHand-pullWt)<=0.05?' · fully pulled':''}</div></div>`:''}
     </div>`;
+  };
+  // Group available lots by variety → collapsible "breakout" menus (compact by default; expand to see lots in the cooler)
+  const byVar={}; availLots.forEach(h=>{ (byVar[h.variety||'—']=byVar[h.variety||'—']||[]).push(h); });
+  const varSections=Object.keys(byVar).sort((a,b)=>a.localeCompare(b)).map(v=>{
+    const lots=byVar[v].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(a.lotNumber||'').localeCompare(b.lotNumber||''));
+    const varOnHand=lots.reduce((s,h)=>s+h.onHand,0);
+    const selInVar=lots.filter(h=>packDaySelected.hasOwnProperty(h.id));
+    const selLb=selInVar.reduce((s,h)=>s+(packDaySelected[h.id]||0),0);
+    const expanded=packExpanded[v]||selInVar.length>0;
+    const vEsc=v.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    return `<div style="border:1px solid var(--border);border-radius:8px;margin-bottom:10px;overflow:hidden;">
+      <div onclick="togglePackVar('${vEsc}')" style="display:flex;align-items:center;gap:10px;padding:12px 16px;cursor:pointer;background:${expanded?'rgba(58,96,48,.06)':'var(--white)'};user-select:none;">
+        <span style="font-size:11px;color:var(--text3);width:12px;display:inline-block;">${expanded?'▾':'▸'}</span>
+        <span style="font-weight:700;font-size:15px;flex:1;">${v}</span>
+        <span style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);">${lots.length} lot${lots.length!==1?'s':''} · ${varOnHand.toFixed(1)} lb on hand</span>
+        ${selInVar.length?`<span style="font-family:'Syne Mono',monospace;font-size:10px;background:rgba(58,96,48,.14);color:var(--fern);padding:2px 8px;border-radius:4px;font-weight:700;">${selInVar.length} sel · ${selLb.toFixed(1)} lb</span>`:''}
+      </div>
+      ${expanded?`<div style="padding:12px 14px;background:rgba(0,0,0,.02);"><div class="pack-lots-grid">${lots.map(packLotCard).join('')}</div></div>`:''}
+    </div>`;
   }).join('');
   const nSel=Object.keys(packDaySelected).length;
   return PACK_OPEN_BLOCK + `<div class="sh"><span>📦 Pack Day — Pull Inventory${openSessions.length?' (new session)':''}</span><span id="pack-total" style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--fern);">${totalSel>0?totalSel.toFixed(1)+' LB SELECTED':''}</span></div>
   <div style="margin-bottom:24px;">
     ${needSummary?`<div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.9;">Today needs: ${needSummary}</div>`:'<div style="font-size:11px;color:var(--text3);margin-bottom:12px;">No confirmed orders today — you can still pull stock.</div>'}
-    <div class="pack-lots-grid">${lotCards}</div>
+    ${varSections}
     ${nSel>0?`<div style="margin-top:16px;padding:14px 18px;background:rgba(58,96,48,.08);border-radius:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
       <div style="font-size:13px;font-weight:700;color:var(--fern);">${nSel} lot${nSel!==1?'s':''} · ${totalSel.toFixed(1)} lb total</div>
       <button class="btn b-m" onclick="confirmPackPull()" style="padding:10px 24px;font-size:13px;">Confirm Pull →</button>
@@ -2353,6 +2373,10 @@ function buildPackDaySection(openSessions, availLots, snapCards){
   </div>`;
 }
 
+function togglePackVar(v){
+  packExpanded[v]=!packExpanded[v];
+  renderC();
+}
 function togglePackLot(id, onHand){
   if(packDaySelected.hasOwnProperty(id)){ delete packDaySelected[id]; }
   else { packDaySelected[id]=onHand; }
