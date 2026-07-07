@@ -1979,6 +1979,7 @@ function renderC(){ const el=document.getElementById('main-views'); el.innerHTML
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
+  return; // Standing orders retired — packing now generates orders via SO# (kept as no-op for safe callers)
   const week = wkStart();
   const templates = DB.orders.filter(o => o.isStanding);
   for(const so of templates){
@@ -2874,9 +2875,9 @@ function rNewOrd(el){
           <label>Week Starting</label>
           <input class="fi" type="date" id="no-w" value="${wkStart()}">
         </div>
-        <div class="fgl" id="no-stand-row">
+        <div class="fgl" id="no-stand-row" style="display:none;">
           <label>Standing Order?</label>
-          <select class="fs" id="no-s"><option value="0">One-time</option><option value="1">Standing (weekly)</option></select>
+          <select class="fs" id="no-s"><option value="0">One-time</option></select>
         </div>
         <div class="fgl" id="no-sampdate-row" style="display:none;">
           <label>Sample Date</label>
