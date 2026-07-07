@@ -1198,6 +1198,58 @@ function submitStartTimer(){
   startContainerTimer(c, a, e);
 }
 
+// ── MANDATORY session labor gate — blocks fruiting/harvest save until crew + time entered ──
+let _pendingSessionCommit = null;
+let _laborGateRows = 0;
+function openSessionLaborGate(kind, container, date, activity, doCommit){
+  _pendingSessionCommit = doCommit;
+  _laborGateRows = 0;
+  const label = kind==='fruiting' ? 'Fruiting' : 'Harvest';
+  document.getElementById('em-title').textContent = '🧑‍🌾 Log Crew — '+label+' Session';
+  document.getElementById('em-body').innerHTML = `
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Required before this ${label.toLowerCase()} session saves. Enter <strong>who worked</strong> and <strong>how long</strong>. Add a row per person.</div>
+    <div id="lg-rows"></div>
+    <button class="btn b-g b-sm" onclick="addLaborGateRow()" style="margin:2px 0 16px;">+ Add another person</button>
+    <input type="hidden" id="lg-con" value="${(container||'').replace(/"/g,'&quot;')}">
+    <input type="hidden" id="lg-date" value="${date||tday()}">
+    <input type="hidden" id="lg-act" value="${activity||'Harvesting'}">
+    <div class="form-acts">
+      <button class="btn b-m b-lg" onclick="confirmSessionLabor()">Save Crew &amp; Log Session</button>
+      <button class="btn b-g" onclick="cancelSessionLabor()">Cancel</button>
+    </div>`;
+  document.getElementById('edit-modal').classList.add('open');
+  addLaborGateRow();
+}
+function addLaborGateRow(){
+  const i=_laborGateRows++;
+  const wrap=document.getElementById('lg-rows'); if(!wrap) return;
+  const div=document.createElement('div');
+  div.style.cssText='display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;';
+  div.innerHTML=`<div style="flex:1;"><label style="font-size:9px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:1px;">STAFF</label>${staffInput('lg-emp-'+i,'')}</div>
+    <div style="width:110px;"><label style="font-size:9px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:1px;">MINUTES</label><input class="fi" type="number" min="1" id="lg-min-${i}" placeholder="e.g. 60"></div>`;
+  wrap.appendChild(div);
+}
+async function confirmSessionLabor(){
+  const con=document.getElementById('lg-con')?.value||'';
+  const date=document.getElementById('lg-date')?.value||tday();
+  const act=document.getElementById('lg-act')?.value||'Harvesting';
+  const crew=[];
+  for(let i=0;i<_laborGateRows;i++){
+    const empEl=document.getElementById('lg-emp-'+i), minEl=document.getElementById('lg-min-'+i);
+    if(!empEl&&!minEl) continue;
+    const emp=(empEl?.value||'').trim();
+    const min=parseInt(minEl?.value)||0;
+    if(emp && min>0){ crew.push({emp,min}); }
+    else if(emp || min>0){ alert('Each person needs BOTH a name and minutes (or clear the row).'); return; }
+  }
+  if(!crew.length){ alert('Enter at least one person and how long they worked — this is required to save the session.'); return; }
+  for(const c of crew){ await logManualTime(con, act, c.min, date, act+' session', c.emp); }
+  const commit=_pendingSessionCommit; _pendingSessionCommit=null;
+  closeModal();
+  if(commit) await commit();
+}
+function cancelSessionLabor(){ _pendingSessionCommit=null; closeModal(); }
+
 function buildContainerSessionPanel(defaultActivity){
   const today=tday();
   const todayS=DB.containerSessions.filter(s=>s.date===today);
@@ -3622,6 +3674,12 @@ async function subFruiting(){
   const cur=_readFruitingRow();
   if(cur.lotNumber||cur.variety||cur.blockCount){ if(!_validFruitingRow(cur)) return; rows.push(cur); }
   if(!rows.length){ alert('Enter at least one lot to place.'); return; }
+  // Hard-block: must log who worked + how long before the session saves
+  const primeCon=(rows.find(r=>r.containerID)||{}).containerID||'';
+  const primeDate=(rows[0]||{}).date||tday();
+  openSessionLaborGate('fruiting', primeCon, primeDate, 'Fruiting', ()=>_doFruitingCommit(rows));
+}
+async function _doFruitingCommit(rows){
   let n=0;
   for(const r of rows){
     let rec=null;
@@ -4063,6 +4121,12 @@ async function logHarv(){
   // include the in-progress form row if it's been started
   if(cur.lotNumber||cur.variety||cur.weight){ if(!_validHarvestRow(cur)) return; rows.push(cur); }
   if(!rows.length){ alert('Enter at least one harvest lot.'); return; }
+  // Hard-block: must log who worked + how long before the session saves
+  const primeCon=(rows.find(r=>r.container)||{}).container||'';
+  const primeDate=(rows[0]||{}).date||tday();
+  openSessionLaborGate('harvest', primeCon, primeDate, 'Harvesting', ()=>_doHarvestCommit(rows));
+}
+async function _doHarvestCommit(rows){
   let n=0;
   for(const r of rows){
     if(r.variety) addVariety(r.variety); // persist any typed-in variety
