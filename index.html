@@ -2486,6 +2486,7 @@ async function closePackSession(sessionId){
   const sess=DB.packSessions.find(s=>s.id===sessionId); if(!sess) return;
   const updates=[];
   let totalUsedByVariety={};
+  const deductions=[]; // per-lot record so a reopen/delete can revert inventory precisely
   for(const p of sess.pulled){
     const inp=document.getElementById('ret-'+sessionId+'-'+p.harvestId);
     const returned=inp?Math.max(0,Math.min(parseFloat(inp.value)||0,p.pulledWeight)):0;
@@ -2497,14 +2498,103 @@ async function closePackSession(sessionId){
         h.usedWeight=newUsed;
         updates.push(FS.update('harvests',p.harvestId,{usedWeight:newUsed}));
         totalUsedByVariety[p.variety]=(totalUsedByVariety[p.variety]||0)+used;
+        deductions.push({harvestId:p.harvestId,used});
       }
     }
   }
-  sess.status='closed'; sess.closedAt=new Date().toISOString(); sess.totalUsedByVariety=totalUsedByVariety;
-  updates.push(FS.update('packSessions',sessionId,{status:'closed',closedAt:sess.closedAt,totalUsedByVariety}));
+  sess.status='closed'; sess.closedAt=new Date().toISOString(); sess.totalUsedByVariety=totalUsedByVariety; sess.deductions=deductions;
+  updates.push(FS.update('packSessions',sessionId,{status:'closed',closedAt:sess.closedAt,totalUsedByVariety,deductions}));
   await Promise.all(updates);
   const usedSummary=Object.entries(totalUsedByVariety).map(([v,w])=>`${w}lb ${v}`).join(', ')||'no deductions';
   logAudit('pack_session_closed',`Closed pack session — ${usedSummary}`);
+  renderC();
+}
+
+// ── ADMIN: edit / reopen / delete ANY pack session ──
+function packSessionSummary(s){ return (s.pulled||[]).map(p=>`${p.variety} L${p.lotNumber} ${(p.pulledWeight||0).toFixed(1)}lb`).join(' · '); }
+function buildPackSessionsAdmin(){
+  if(!canEdit()) return '';
+  const sess=[...DB.packSessions].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
+  if(!sess.length) return '';
+  const rows=sess.map(s=>{
+    const t=s.createdAt?new Date(s.createdAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'';
+    const tot=(s.pulled||[]).reduce((a,p)=>a+(p.pulledWeight||0),0);
+    return `<tr>
+      <td class="mn">${fDate(s.date)}${t?' · '+t:''}</td>
+      <td><span class="bdg ${s.status==='open'?'bpk':'bc'}">${(s.status||'').toUpperCase()}</span></td>
+      <td class="mn">${(s.pulled||[]).length}</td>
+      <td class="mn">${tot.toFixed(1)} lb</td>
+      <td style="font-size:11px;color:var(--text3);">${packSessionSummary(s)}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditPackSession('${s.id}')">✎ Edit</button>
+        ${s.status==='closed'?`<button class="btn b-g b-sm" onclick="reopenPackSession('${s.id}')">Reopen</button>`:''}
+        ${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delPackSession('${s.id}')">✕</button>`:''}
+      </td>
+    </tr>`;
+  }).join('');
+  return `<div class="sh" style="margin-top:24px;"><span>📦 All Pack Sessions <span style="font-size:9px;color:var(--text3);">admin</span></span><span class="bdg bc">${sess.length}</span></div>
+    <div class="tw" style="margin-bottom:24px;"><table>
+      <thead><tr><th>When</th><th>Status</th><th>Lots</th><th>Pulled</th><th>Detail</th><th>Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+function openEditPackSession(id){
+  const s=DB.packSessions.find(x=>x.id===id); if(!s) return;
+  document.getElementById('em-title').textContent='Edit Pack Session — '+fDate(s.date);
+  const rows=(s.pulled||[]).map((p,i)=>`
+    <div id="eps-row-${i}" class="pack-ret-row" style="align-items:center;">
+      <div style="flex:1;min-width:140px;"><div style="font-size:13px;font-weight:700;">${p.variety}</div><div style="font-size:11px;color:var(--text3);">Lot ${p.lotNumber} · ${p.container||''}</div></div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <label style="font-size:11px;color:var(--text3);">Pulled:</label>
+        <input class="pack-ret-inp" type="number" step="0.1" min="0" id="eps-w-${i}" value="${(p.pulledWeight||0).toFixed(1)}"> <span style="font-size:12px;color:var(--text3);">lb</span>
+        <button class="btn b-r b-sm" onclick="document.getElementById('eps-row-${i}').remove()" title="Remove lot">✕</button>
+      </div>
+    </div>`).join('');
+  document.getElementById('em-body').innerHTML=`
+    ${s.status==='closed'?`<div style="background:rgba(184,130,10,.06);border:1px solid rgba(184,130,10,.2);border-radius:4px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:var(--text3);">This session is CLOSED — editing pulled weights here does NOT re-adjust the inventory already deducted. Use <strong>Reopen</strong> first if you need deductions recalculated.</div>`:''}
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">Adjust the pulled weight per lot, or remove a lot with ✕.</div>
+    ${rows||'<div class="empty">No lots in this session.</div>'}
+    <div class="form-acts" style="margin-top:16px;">
+      <button class="btn b-m b-lg" onclick="savePackSessionEdit('${id}')">Save Changes</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="eps-t">✓ Session updated</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+async function savePackSessionEdit(id){
+  const s=DB.packSessions.find(x=>x.id===id); if(!s) return;
+  const newPulled=[];
+  (s.pulled||[]).forEach((p,i)=>{
+    const row=document.getElementById('eps-row-'+i); if(!row) return;
+    const w=parseFloat(document.getElementById('eps-w-'+i)?.value); if(isNaN(w)||w<0) return;
+    newPulled.push({...p,pulledWeight:w});
+  });
+  s.pulled=newPulled;
+  try{ await FS.update('packSessions',id,{pulled:newPulled}); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  logAudit('pack_session_edited',`Edited pack session ${fDate(s.date)} — ${newPulled.length} lot(s)`);
+  toast('eps-t','✓ Session updated');
+  setTimeout(()=>{ closeModal(); renderC(); },800);
+}
+async function reopenPackSession(id){
+  const s=DB.packSessions.find(x=>x.id===id); if(!s||s.status!=='closed') return;
+  if(!confirm('Reopen this session? The inventory deducted at close will be added back so you can re-close it.')) return;
+  const updates=[];
+  (s.deductions||[]).forEach(d=>{ const h=DB.harvests.find(x=>x.id===d.harvestId); if(h){ h.usedWeight=Math.max(0,(h.usedWeight||0)-(d.used||0)); updates.push(FS.update('harvests',h.id,{usedWeight:h.usedWeight})); } });
+  s.status='open'; s.deductions=[]; s.totalUsedByVariety={};
+  updates.push(FS.update('packSessions',id,{status:'open',deductions:[],totalUsedByVariety:{}}));
+  await Promise.all(updates);
+  logAudit('pack_session_reopened',`Reopened pack session ${fDate(s.date)}`);
+  renderC();
+}
+async function delPackSession(id){
+  const s=DB.packSessions.find(x=>x.id===id); if(!s) return;
+  if(!confirm(`Delete pack session ${fDate(s.date)}? ${s.status==='closed'?'Inventory deducted at close will be added back. ':''}This can't be undone.`)) return;
+  const updates=[];
+  if(s.status==='closed'){ (s.deductions||[]).forEach(d=>{ const h=DB.harvests.find(x=>x.id===d.harvestId); if(h){ h.usedWeight=Math.max(0,(h.usedWeight||0)-(d.used||0)); updates.push(FS.update('harvests',h.id,{usedWeight:h.usedWeight})); } }); }
+  DB.packSessions=DB.packSessions.filter(x=>x.id!==id);
+  updates.push(FS.del('packSessions',id));
+  await Promise.all(updates);
+  logAudit('pack_session_deleted',`Deleted pack session ${fDate(s.date)}`);
   renderC();
 }
 
@@ -4666,6 +4756,8 @@ function rInventory(el){
     ${_fac!=='all'?`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:16px;padding:8px 12px;background:rgba(184,130,10,.05);border:1px solid rgba(184,130,10,.15);border-radius:3px;">📍 FILTERED: ${_fac} — showing stock at this facility only</div>`:''}
 
     ${returnBanner}
+
+    ${buildPackSessionsAdmin()}
 
     ${lowStock.length>0?`
     <div style="background:rgba(184,76,32,.05);border:1px solid rgba(184,76,32,.2);border-radius:var(--r);padding:16px 20px;margin-bottom:24px;">
