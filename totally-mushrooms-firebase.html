@@ -7372,7 +7372,7 @@ function onSubstrateSearch(v){ _substrateQ=v; clearTimeout(window._subST); windo
 
 function setLabSub(s){ _labSub=s; rLab(document.getElementById('main-views')); }
 function rLab(el){
-  const tabs=[['substrate','🧱 Substrate (Blocks)'],['spawn','🌾 Spawn'],['cultures','🧬 Cultures']];
+  const tabs=[['substrate','🧱 Substrate (Blocks)'],['spawn','🌾 Spawn'],['cultures','🧬 Cultures'],['waste','🗑️ Waste (pre-Hydes)']];
   el.innerHTML=`
     <div class="ph"><div class="ph-t">🧫 Lab — Carthage</div><div class="ph-s">Cultures → Spawn → Substrate (blocks) · production pipeline</div></div>
     <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">${tabs.map(([k,lbl])=>`<button class="btn ${_labSub===k?'b-m':'b-g'} b-sm" onclick="setLabSub('${k}')">${lbl}</button>`).join('')}</div>
@@ -7380,7 +7380,110 @@ function rLab(el){
   const sub=document.getElementById('lab-sub');
   if(_labSub==='cultures') rLabCultures(sub);
   else if(_labSub==='spawn') rLabSpawn(sub);
+  else if(_labSub==='waste') rLabWaste(sub);
   else rLabSubstrate(sub);
+}
+
+// ── CARTHAGE PRE-HYDES WASTE — block loss before shipping to Hyde's Ferry ──
+const CARTHAGE_WASTE_REASONS=['Contaminated — mold/bacteria','Failed to colonize','Soured','Died — no growth','Dropped / damaged','Other'];
+function rLabWaste(el){
+  const carthageCons=getActiveContainers().filter(c=>c.facility==='Carthage');
+  const waste=[...(DB.blockDisposals||[])].filter(d=>(d.stage||'')==='pre-hydes').sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.timestamp||'').localeCompare(a.timestamp||''));
+  const totalLost=waste.reduce((s,d)=>s+(parseInt(d.blockCount)||0),0);
+  const cookLots=[...new Set((DB.labBatches||[]).map(b=>b.cookLot||b.batchNumber||b.lot).filter(Boolean))];
+  const histRows=waste.length?waste.map(d=>`<tr>
+    <td class="mn">${fDate(d.date)}</td><td>${d.variety||'—'}</td><td class="mn">${d.cookLot||'—'}</td>
+    <td class="mn" style="color:var(--rust);font-weight:700;">${d.blockCount||0}</td><td>${d.reason||''}</td>
+    <td>${d.container||'—'}</td><td style="font-size:11px;color:var(--text3);">${d.notes||''}</td>
+    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditCarthageWaste('${d.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delCarthageWaste('${d.id}')">✕</button>`:''}</td>`:''}
+  </tr>`).join(''):`<tr><td colspan="${canEdit()?8:7}" class="empty">No pre-Hydes waste logged yet.</td></tr>`;
+  el.innerHTML=`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.6;">Log block loss at <strong>Carthage</strong> — contamination, failed colonization, souring, or damage that happens <strong>before blocks ship to Hyde's Ferry</strong>. Keeps production yield + waste analytics honest.</div>
+    <div class="stats" style="margin-bottom:20px;">
+      <div class="sc r"><div class="sc-l">Pre-Hydes Blocks Lost</div><div class="sc-v">${totalLost}</div><div class="sc-n">all-time at Carthage</div></div>
+      <div class="sc"><div class="sc-l">Loss Events</div><div class="sc-v">${waste.length}</div><div class="sc-n">logged</div></div>
+    </div>
+    ${canEdit()?`<div class="card">
+      <div class="card-t">Log Carthage Block Loss</div>
+      <datalist id="cw-lotl">${cookLots.map(l=>`<option value="${attrEsc(l)}">`).join('')}</datalist>
+      <datalist id="cw-vdl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist>
+      <div class="fg2">
+        <div class="fgl"><label>Date</label><input class="fi" type="date" id="cw-date" value="${tday()}"></div>
+        <div class="fgl"><label>Cook Lot / Batch <span style="color:var(--text3);font-size:9px;">optional</span></label><input class="fi" id="cw-lot" list="cw-lotl" placeholder="production batch / cook lot"></div>
+        <div class="fgl"><label>Variety</label><input class="fi" id="cw-variety" list="cw-vdl" placeholder="Type or pick…" autocomplete="off"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Blocks Lost</label><input class="fi" type="number" min="1" id="cw-cnt" placeholder="e.g. 12"></div>
+        <div class="fgl"><label>Reason</label><select class="fs" id="cw-reason">${CARTHAGE_WASTE_REASONS.map(r=>`<option value="${r}">${r}</option>`).join('')}</select></div>
+        <div class="fgl"><label>Carthage Container <span style="color:var(--text3);font-size:9px;">optional</span></label><select class="fs" id="cw-con"><option value="">—</option>${carthageCons.map(c=>`<option value="${c.code}">${c.code} · ${c.farm}</option>`).join('')}</select></div>
+      </div>
+      <div class="fgl" style="margin-top:4px;"><label>Notes</label><input class="fi" id="cw-notes" placeholder="What happened…"></div>
+      <div class="form-acts"><button class="btn b-r b-lg" onclick="logCarthageWaste()">Log Loss</button></div>
+      <div class="toast" id="cw-t">✓ Loss logged</div>
+    </div>`:''}
+    <div class="sh" style="margin-top:24px;"><span>Pre-Hydes Waste History</span><span class="bdg bc">${waste.length}</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Date</th><th>Variety</th><th>Cook Lot</th><th>Blocks</th><th>Reason</th><th>Container</th><th>Notes</th>${canEdit()?'<th>Actions</th>':''}</tr></thead>
+      <tbody>${histRows}</tbody>
+    </table></div>`;
+}
+async function logCarthageWaste(){
+  const date=document.getElementById('cw-date')?.value||tday();
+  const cookLot=(document.getElementById('cw-lot')?.value||'').trim();
+  let variety=(document.getElementById('cw-variety')?.value||'').trim();
+  const cnt=parseInt(document.getElementById('cw-cnt')?.value)||0;
+  const reason=document.getElementById('cw-reason')?.value||'Other';
+  const con=document.getElementById('cw-con')?.value||'';
+  const notes=(document.getElementById('cw-notes')?.value||'').trim();
+  if(cnt<1){ alert('Enter how many blocks were lost.'); return; }
+  if(variety){ const vg={variety}; if(!normalizeRowVarieties([vg])) return; variety=vg.variety; addVariety(variety); }
+  const data={date,stage:'pre-hydes',facility:'Carthage',container:con,cookLot,labBatchId:'',variety,source:'internal',supplier:'In-house',blockCount:cnt,reason,notes:notes||('Carthage pre-Hydes loss'+(cookLot?' — lot '+cookLot:'')),loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+  const id=await FS.add('blockDisposals',data); data.id=id; DB.blockDisposals.push(data);
+  logAudit('blocks_removed',`Carthage pre-Hydes loss — ${cnt} blocks ${variety||''} (${reason})${cookLot?' · lot '+cookLot:''}`);
+  toast('cw-t','✓ Loss logged');
+  rLab(document.getElementById('main-views'));
+}
+function openEditCarthageWaste(id){
+  const d=(DB.blockDisposals||[]).find(x=>x.id===id); if(!d) return;
+  document.getElementById('em-title').textContent='Edit Carthage Loss — '+fDate(d.date);
+  document.getElementById('em-body').innerHTML=`
+    <div class="fg2">
+      <div class="fgl"><label>Date</label><input class="fi" type="date" id="ecw-date" value="${attrEsc(d.date)}"></div>
+      <div class="fgl"><label>Variety</label><input class="fi" id="ecw-variety" list="ecw-vdl" value="${attrEsc(d.variety)}"><datalist id="ecw-vdl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+      <div class="fgl"><label>Cook Lot</label><input class="fi" id="ecw-lot" value="${attrEsc(d.cookLot)}"></div>
+    </div>
+    <div class="fg2">
+      <div class="fgl"><label>Blocks Lost</label><input class="fi" type="number" min="1" id="ecw-cnt" value="${d.blockCount||0}"></div>
+      <div class="fgl"><label>Reason</label><select class="fs" id="ecw-reason">${CARTHAGE_WASTE_REASONS.map(r=>`<option ${d.reason===r?'selected':''}>${r}</option>`).join('')}${(d.reason&&!CARTHAGE_WASTE_REASONS.includes(d.reason))?`<option selected>${d.reason}</option>`:''}</select></div>
+    </div>
+    <div class="fgl" style="margin-top:10px;"><label>Notes</label><input class="fi" id="ecw-notes" value="${attrEsc(d.notes)}"></div>
+    <div class="form-acts" style="margin-top:14px;">
+      <button class="btn b-m b-lg" onclick="saveCarthageWasteEdit('${id}')">Save Changes</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="ecw-t">✓ Updated</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+async function saveCarthageWasteEdit(id){
+  const d=(DB.blockDisposals||[]).find(x=>x.id===id); if(!d) return;
+  const val=i=>(document.getElementById(i)?.value||'').trim();
+  let variety=val('ecw-variety'); if(variety){ const vg={variety}; if(!normalizeRowVarieties([vg])) return; variety=vg.variety; addVariety(variety); }
+  const cnt=parseInt(document.getElementById('ecw-cnt')?.value)||0;
+  if(cnt<1){ alert('Blocks lost must be at least 1.'); return; }
+  const upd={date:val('ecw-date')||d.date, variety, cookLot:val('ecw-lot'), blockCount:cnt, reason:document.getElementById('ecw-reason')?.value||d.reason, notes:val('ecw-notes')};
+  Object.assign(d,upd);
+  try{ await FS.update('blockDisposals',id,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  logAudit('blocks_removed',`Edited Carthage loss ${fDate(upd.date)} — ${upd.blockCount} blocks`);
+  toast('ecw-t','✓ Updated');
+  setTimeout(()=>{ closeModal(); rLab(document.getElementById('main-views')); },800);
+}
+function delCarthageWaste(id){
+  const d=(DB.blockDisposals||[]).find(x=>x.id===id); if(!d) return;
+  if(!confirm(`Delete this Carthage loss record (${d.blockCount||0} blocks ${d.variety||''})?`)) return;
+  DB.blockDisposals=(DB.blockDisposals||[]).filter(x=>x.id!==id);
+  FS.del('blockDisposals',id);
+  logAudit('blocks_removed',`Deleted Carthage loss ${fDate(d.date)} — ${d.blockCount||0} blocks`);
+  rLab(document.getElementById('main-views'));
 }
 
 // ── CULTURES (full library + genealogy) ──
