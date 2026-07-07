@@ -2467,7 +2467,7 @@ function updateReturnCalc(sessId, harvestId, pulledWeight){
   if(!inp||!used) return;
   const ret=parseFloat(inp.value)||0;
   const usedLbs=Math.max(0,pulledWeight-ret);
-  used.innerHTML=`Used: <strong>${usedLbs.toFixed(1)} lb</strong>`;
+  used.innerHTML=`Deducting: <strong>${usedLbs.toFixed(1)} lb</strong>`;
   // auto status: how much remains in the lot after this session, or cashed out
   const h=DB.harvests.find(x=>x.id===harvestId);
   const st=document.getElementById('status-'+sessId+'-'+harvestId);
@@ -2475,7 +2475,7 @@ function updateReturnCalc(sessId, harvestId, pulledWeight){
     const raw=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0));
     const left=Math.max(0,raw-usedLbs);
     const cashed=left<=0.05;
-    st.textContent=cashed?'✓ Lot cashed out':left.toFixed(1)+' lb will remain';
+    st.textContent=cashed?'✓ Lot cashed out':left.toFixed(1)+' lb stays on hand';
     st.style.color=cashed?'var(--rust)':'var(--fern)';
   }
 }
@@ -4420,14 +4420,14 @@ function rInventory(el){
             <div style="font-size:11px;color:var(--text3);">Lot ${p.lotNumber} · ${p.container||''} · Pulled <strong>${p.pulledWeight.toFixed(1)} lb</strong></div>
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
-            <label style="font-size:11px;color:var(--text3);">Return:</label>
-            <input class="pack-ret-inp" type="number" step="0.1" min="0" max="${p.pulledWeight}" value="0"
+            <label style="font-size:11px;color:var(--text3);">Leftover back <span style="font-size:9px;">(optional)</span>:</label>
+            <input class="pack-ret-inp" type="number" step="0.1" min="0" max="${p.pulledWeight}" value="0" placeholder="0"
               id="ret-${openSess.id}-${p.harvestId}" oninput="updateReturnCalc('${openSess.id}','${p.harvestId}',${p.pulledWeight})">
             <span style="font-size:12px;color:var(--text3);">lb</span>
           </div>
-          <div style="min-width:150px;text-align:right;">
-            <div style="font-size:12px;color:var(--warm);" id="used-${openSess.id}-${p.harvestId}">Used: <strong>${p.pulledWeight.toFixed(1)} lb</strong></div>
-            <div style="font-size:11px;font-weight:700;color:${cashed?'var(--rust)':'var(--fern)'};" id="status-${openSess.id}-${p.harvestId}">${cashed?'✓ Lot cashed out':initLeft.toFixed(1)+' lb will remain'}</div>
+          <div style="min-width:160px;text-align:right;">
+            <div style="font-size:12px;color:var(--warm);" id="used-${openSess.id}-${p.harvestId}">Deducting: <strong>${p.pulledWeight.toFixed(1)} lb</strong></div>
+            <div style="font-size:11px;font-weight:700;color:${cashed?'var(--rust)':'var(--fern)'};" id="status-${openSess.id}-${p.harvestId}">${cashed?'✓ Lot cashed out':initLeft.toFixed(1)+' lb stays on hand'}</div>
           </div>
         </div>`;
       }).join('');
@@ -4437,11 +4437,11 @@ function rInventory(el){
             <span style="color:var(--fern);">📦 Close Pack Session ${si+1}${t?' · opened '+t:''}</span>
             <span class="bdg bpk">${openSess.pulled.length} LOTS PULLED</span>
           </div>
-          <div style="font-size:12px;color:var(--text3);margin-bottom:14px;">Weigh what's left after packing. Enter each amount below — the system will calculate what was used and update inventory.</div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Closing <strong>deducts what you pulled</strong> and leaves the remainder on hand automatically — no re-weighing needed. Only type a <strong>leftover</strong> if some product came back to the cooler; otherwise just close. You can always adjust a lot later from Inventory.</div>
           ${retRows}
           <div style="margin-top:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-            <button class="btn b-m" onclick="closePackSession('${openSess.id}')" style="padding:12px 28px;font-size:14px;">✓ Close Session &amp; Update Inventory</button>
-            <div style="font-size:11px;color:var(--text3);">Lots with 0 returned = fully used</div>
+            <button class="btn b-m" onclick="closePackSession('${openSess.id}')" style="padding:12px 28px;font-size:14px;">✓ Close Session &amp; Deduct Pulls</button>
+            <div style="font-size:11px;color:var(--text3);">Blank leftover = full pull used; remainder stays in inventory</div>
           </div>
         </div>`;
     }).join('');
