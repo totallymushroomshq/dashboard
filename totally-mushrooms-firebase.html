@@ -501,7 +501,7 @@ const DB = {
   cultures:[], spawnRuns:[], cordyceps:[], revisions:[],
   users:[], loginHistory:[], transfers:[], productMovements:[], auditLog:[], containerSessions:[],
   preservationBatches:[],
-  labBatches:[], blockDisposals:[],
+  labBatches:[], blockDisposals:[], containerFlips:[], shipments:[],
   facilities:[], containerOverrides:{},
   emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false}
 };
@@ -618,16 +618,16 @@ const FS = {
 // ── LOAD ALL DATA FROM FIRESTORE ──
 async function loadDB(){
   try {
-    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog,containerSessions,preservationBatches,labBatches,blockDisposals,receivings,cultures,spawnRuns,cordyceps,revisions,containerFlips] = await Promise.all([
+    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog,containerSessions,preservationBatches,labBatches,blockDisposals,receivings,cultures,spawnRuns,cordyceps,revisions,containerFlips,shipments] = await Promise.all([
       FS.getAll('orders'), FS.getAll('clients'), FS.getAll('harvests'),
       FS.getAll('samples'), FS.getAll('fruitings'), FS.getAll('preservation'),
       FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('packSessions'),
       FS.getAll('users'), FS.getAll('loginHistory'), FS.getAll('transfers'), FS.getAll('productMovements'),
       FS.getAll('auditLog'), FS.getAll('containerSessions'), FS.getAll('preservationBatches'),
       FS.getAll('labBatches'), FS.getAll('blockDisposals'), FS.getAll('receivings'),
-      FS.getAll('cultures'), FS.getAll('spawnRuns'), FS.getAll('cordyceps'), FS.getAll('revisions'), FS.getAll('containerFlips')
+      FS.getAll('cultures'), FS.getAll('spawnRuns'), FS.getAll('cordyceps'), FS.getAll('revisions'), FS.getAll('containerFlips'), FS.getAll('shipments')
     ]);
-    DB.receivings=receivings; DB.cultures=cultures; DB.spawnRuns=spawnRuns; DB.cordyceps=cordyceps; DB.revisions=revisions; DB.containerFlips=containerFlips||[];
+    DB.receivings=receivings; DB.cultures=cultures; DB.spawnRuns=spawnRuns; DB.cordyceps=cordyceps; DB.revisions=revisions; DB.containerFlips=containerFlips||[]; DB.shipments=shipments||[];
     DB.orders=orders; DB.clients=clients; DB.harvests=harvests;
     DB.samples=samples; DB.fruitings=fruitings; DB.preservation=preservation;
     // ── ONE-TIME MIGRATION: drop o.chestnut (legacy ungraded field) since chestnut is now CH01/CH02 only.
@@ -3516,6 +3516,21 @@ async function logReceiving(){
 }
 function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); const v=document.getElementById('rc-variety'); if(v) v.value=''; }
 
+function buildIncomingShipments(){
+  const inc=(DB.shipments||[]).filter(s=>s.status==='in-transit').sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+  if(!inc.length) return '';
+  const rows=inc.map(s=>`<tr>
+    <td class="mn">${fDate(s.date)}</td><td>${s.variety||'—'}</td><td class="mn">${s.cookLot||'—'}</td>
+    <td class="mn">${s.blockCount||0}</td><td class="mn">${s.blockWeightLb?s.blockWeightLb+' lb':'—'}</td>
+    <td style="font-size:11px;color:var(--text3);">${s.carrier||''}</td>
+    <td>${canEdit()?`<button class="btn b-m b-sm" onclick="receiveShipment('${s.id}')">✓ Receive</button>`:'—'}</td>
+  </tr>`).join('');
+  return `<div class="sh" style="margin-top:8px;"><span>📨 Incoming from Carthage — Awaiting Receipt</span><span class="bdg bpk">${inc.length}</span></div>
+    <div class="tw" style="margin-bottom:24px;"><table>
+      <thead><tr><th>Shipped</th><th>Variety</th><th>Cook Lot</th><th>Blocks</th><th>Blk Wt</th><th>Carrier</th><th>Action</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
 function rReceiving(el){
   const onHand=onHandReceivings();
   const history=[...DB.receivings].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
@@ -3563,6 +3578,7 @@ function rReceiving(el){
       </div>
       <div class="toast" id="rc-t">✓ Blocks received</div>
     </div>`:''}
+    ${buildIncomingShipments()}
     <div class="sh" style="margin-top:24px;"><span>On Hand · Awaiting Placement</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:${totalOnHand>0?'var(--fern)':'var(--text3)'};">${totalOnHand} BLOCKS</span></div>
     <div class="tw" style="margin-bottom:24px;"><table>
       <thead><tr><th>Received</th><th>Source</th><th>Variety</th><th>Lot #</th><th>Received</th><th>Placed</th><th>Remaining</th></tr></thead>
@@ -7372,7 +7388,7 @@ function onSubstrateSearch(v){ _substrateQ=v; clearTimeout(window._subST); windo
 
 function setLabSub(s){ _labSub=s; rLab(document.getElementById('main-views')); }
 function rLab(el){
-  const tabs=[['substrate','🧱 Substrate (Blocks)'],['spawn','🌾 Spawn'],['cultures','🧬 Cultures'],['waste','🗑️ Waste (pre-Hydes)']];
+  const tabs=[['substrate','🧱 Substrate (Blocks)'],['spawn','🌾 Spawn'],['cultures','🧬 Cultures'],['send','📤 Send to Hydes'],['waste','🗑️ Waste (pre-Hydes)']];
   el.innerHTML=`
     <div class="ph"><div class="ph-t">🧫 Lab — Carthage</div><div class="ph-s">Cultures → Spawn → Substrate (blocks) · production pipeline</div></div>
     <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">${tabs.map(([k,lbl])=>`<button class="btn ${_labSub===k?'b-m':'b-g'} b-sm" onclick="setLabSub('${k}')">${lbl}</button>`).join('')}</div>
@@ -7381,7 +7397,152 @@ function rLab(el){
   if(_labSub==='cultures') rLabCultures(sub);
   else if(_labSub==='spawn') rLabSpawn(sub);
   else if(_labSub==='waste') rLabWaste(sub);
+  else if(_labSub==='send') rLabSend(sub);
   else rLabSubstrate(sub);
+}
+
+// ── SEND TO HYDES — Carthage ships blocks; Hyde's Ferry confirms receipt (two-step) ──
+function rLabSend(el){
+  const cookLots=[...new Set((DB.labBatches||[]).map(b=>b.cookLot||b.batchNumber||b.lot).filter(Boolean))];
+  const ships=[...(DB.shipments||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
+  const inTransit=ships.filter(s=>s.status==='in-transit');
+  const stBadge=s=>s.status==='received'?`<span class="bdg bc">RECEIVED</span>`:`<span class="bdg bpk">IN TRANSIT</span>`;
+  const rows=ships.length?ships.map(s=>`<tr>
+    <td class="mn">${fDate(s.date)}</td><td>${s.variety||'—'}</td><td class="mn">${s.cookLot||'—'}</td>
+    <td class="mn">${s.blockCount||0}</td><td class="mn">${s.blockWeightLb?s.blockWeightLb+' lb':'—'}</td>
+    <td>${stBadge(s)}${s.status==='received'?`<div style="font-size:10px;color:var(--text3);">${s.receivedCount!=null?s.receivedCount+' recv':''} ${s.receivedAt?fDate(s.receivedAt):''}</div>`:''}</td>
+    <td style="font-size:11px;color:var(--text3);">${s.carrier||''}${s.carrier&&s.notes?' · ':''}${s.notes||''}</td>
+    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditShipment('${s.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delShipment('${s.id}')">✕</button>`:''}</td>`:''}
+  </tr>`).join(''):`<tr><td colspan="${canEdit()?8:7}" class="empty">No shipments logged yet.</td></tr>`;
+  el.innerHTML=`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.6;">Log blocks shipped from <strong>Carthage → Hyde's Ferry</strong>. Each shipment shows at Hydes as <strong>awaiting receipt</strong> until someone confirms it in the 📥 Receiving tab (they can adjust the count on arrival). Received shipments land in the Hydes placement pool.</div>
+    <div class="stats" style="margin-bottom:20px;">
+      <div class="sc g"><div class="sc-l">In Transit → Hydes</div><div class="sc-v">${inTransit.reduce((a,s)=>a+(s.blockCount||0),0)}</div><div class="sc-n">${inTransit.length} shipment${inTransit.length!==1?'s':''} awaiting receipt</div></div>
+      <div class="sc"><div class="sc-l">Shipments Logged</div><div class="sc-v">${ships.length}</div><div class="sc-n">all-time</div></div>
+    </div>
+    ${canEdit()?`<div class="card">
+      <div class="card-t">Ship Blocks to Hyde's Ferry</div>
+      <datalist id="sh-lotl">${cookLots.map(l=>`<option value="${attrEsc(l)}">`).join('')}</datalist>
+      <datalist id="sh-vdl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist>
+      <div class="fg2">
+        <div class="fgl"><label>Ship Date</label><input class="fi" type="date" id="sh-date" value="${tday()}"></div>
+        <div class="fgl"><label>Cook Lot / Batch</label><input class="fi" id="sh-lot" list="sh-lotl" placeholder="production batch / cook lot"></div>
+        <div class="fgl"><label>Variety</label><input class="fi" id="sh-variety" list="sh-vdl" placeholder="Type or pick…" autocomplete="off"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label># of Blocks</label><input class="fi" type="number" min="1" id="sh-cnt" placeholder="blocks shipped"></div>
+        <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="sh-bw" placeholder="e.g. 5.5"></div>
+        <div class="fgl"><label>Truck / Carrier</label><input class="fi" id="sh-carrier" placeholder="who's hauling"></div>
+      </div>
+      <div class="fgl" style="margin-top:4px;"><label>Notes</label><input class="fi" id="sh-notes" placeholder="Condition, count discrepancies, etc."></div>
+      <div class="form-acts"><button class="btn b-m b-lg" onclick="logShipment()">📤 Log Shipment</button></div>
+      <div class="toast" id="sh-t">✓ Shipment logged</div>
+    </div>`:''}
+    <div class="sh" style="margin-top:24px;"><span>Shipment Log</span><span class="bdg bc">${ships.length}</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Ship Date</th><th>Variety</th><th>Cook Lot</th><th>Blocks</th><th>Blk Wt</th><th>Status</th><th>Carrier / Notes</th>${canEdit()?'<th>Actions</th>':''}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+async function logShipment(){
+  const date=document.getElementById('sh-date')?.value||tday();
+  const cookLot=(document.getElementById('sh-lot')?.value||'').trim();
+  let variety=(document.getElementById('sh-variety')?.value||'').trim();
+  const cnt=parseInt(document.getElementById('sh-cnt')?.value)||0;
+  const bw=parseFloat(document.getElementById('sh-bw')?.value)||0;
+  const carrier=(document.getElementById('sh-carrier')?.value||'').trim();
+  const notes=(document.getElementById('sh-notes')?.value||'').trim();
+  if(cnt<1){ alert('Enter how many blocks are shipping.'); return; }
+  if(!variety){ alert('Variety is required.'); return; }
+  { const vg={variety}; if(!normalizeRowVarieties([vg])) return; variety=vg.variety; addVariety(variety); }
+  const data={date,from:'Carthage',to:"Hyde's Ferry Pike",cookLot,labBatchId:'',variety,blockCount:cnt,blockWeightLb:bw||null,carrier,notes,status:'in-transit',sentBy:S.name||S.role,createdAt:new Date().toISOString()};
+  const id=await FS.add('shipments',data); data.id=id; (DB.shipments=DB.shipments||[]).push(data);
+  logAudit('shipment_sent',`Shipped ${cnt} blocks ${variety} to Hyde's Ferry${cookLot?' · lot '+cookLot:''}`);
+  toast('sh-t','✓ Shipment logged — awaiting receipt at Hydes');
+  rLab(document.getElementById('main-views'));
+}
+function openEditShipment(id){
+  const s=(DB.shipments||[]).find(x=>x.id===id); if(!s) return;
+  document.getElementById('em-title').textContent='Edit Shipment — '+fDate(s.date);
+  document.getElementById('em-body').innerHTML=`
+    ${s.status==='received'?`<div style="background:rgba(58,96,48,.06);border:1px solid rgba(58,96,48,.2);border-radius:4px;padding:8px 12px;margin-bottom:12px;font-size:11px;color:var(--text3);">Already RECEIVED at Hydes — editing here does not change the receiving record it created.</div>`:''}
+    <div class="fg2">
+      <div class="fgl"><label>Ship Date</label><input class="fi" type="date" id="esh-date" value="${attrEsc(s.date)}"></div>
+      <div class="fgl"><label>Variety</label><input class="fi" id="esh-variety" list="esh-vdl" value="${attrEsc(s.variety)}"><datalist id="esh-vdl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+      <div class="fgl"><label>Cook Lot</label><input class="fi" id="esh-lot" value="${attrEsc(s.cookLot)}"></div>
+    </div>
+    <div class="fg2">
+      <div class="fgl"><label># of Blocks</label><input class="fi" type="number" min="1" id="esh-cnt" value="${s.blockCount||0}"></div>
+      <div class="fgl"><label>Block Weight (lb)</label><input class="fi" type="number" min="0" step="0.1" id="esh-bw" value="${s.blockWeightLb||''}"></div>
+      <div class="fgl"><label>Carrier</label><input class="fi" id="esh-carrier" value="${attrEsc(s.carrier)}"></div>
+    </div>
+    <div class="fgl" style="margin-top:10px;"><label>Notes</label><input class="fi" id="esh-notes" value="${attrEsc(s.notes)}"></div>
+    <div class="form-acts" style="margin-top:14px;">
+      <button class="btn b-m b-lg" onclick="saveShipmentEdit('${id}')">Save Changes</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="esh-t">✓ Updated</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+async function saveShipmentEdit(id){
+  const s=(DB.shipments||[]).find(x=>x.id===id); if(!s) return;
+  const val=i=>(document.getElementById(i)?.value||'').trim();
+  let variety=val('esh-variety'); if(variety){ const vg={variety}; if(!normalizeRowVarieties([vg])) return; variety=vg.variety; addVariety(variety); }
+  const cnt=parseInt(document.getElementById('esh-cnt')?.value)||0; if(cnt<1){ alert('Block count must be at least 1.'); return; }
+  const upd={date:val('esh-date')||s.date, variety, cookLot:val('esh-lot'), blockCount:cnt, blockWeightLb:parseFloat(document.getElementById('esh-bw')?.value)||null, carrier:val('esh-carrier'), notes:val('esh-notes')};
+  Object.assign(s,upd);
+  try{ await FS.update('shipments',id,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  logAudit('shipment_edited',`Edited shipment ${fDate(upd.date)} — ${upd.blockCount} blocks ${variety}`);
+  toast('esh-t','✓ Updated');
+  setTimeout(()=>{ closeModal(); rLab(document.getElementById('main-views')); },800);
+}
+function delShipment(id){
+  const s=(DB.shipments||[]).find(x=>x.id===id); if(!s) return;
+  if(s.status==='received'){ alert('This shipment was already received at Hydes — delete the receiving record instead if needed.'); return; }
+  if(!confirm(`Delete this shipment (${s.blockCount||0} blocks ${s.variety||''} · ${fDate(s.date)})?`)) return;
+  DB.shipments=(DB.shipments||[]).filter(x=>x.id!==id);
+  FS.del('shipments',id);
+  logAudit('shipment_deleted',`Deleted shipment ${fDate(s.date)} — ${s.blockCount||0} blocks`);
+  rLab(document.getElementById('main-views'));
+}
+// Hyde's Ferry confirms a shipment → creates a receiving in the placement pool
+function receiveShipment(id){
+  const s=(DB.shipments||[]).find(x=>x.id===id); if(!s||s.status==='received') return;
+  document.getElementById('em-title').textContent='Receive Shipment — '+(s.variety||'')+' · Lot '+(s.cookLot||'');
+  document.getElementById('em-body').innerHTML=`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">From <strong>Carthage</strong>, shipped ${fDate(s.date)}: <strong>${s.blockCount||0}</strong> blocks of <strong>${s.variety||''}</strong>${s.cookLot?` (Lot ${s.cookLot})`:''}. Confirm what actually arrived — adjust the count if it differs.</div>
+    <div class="fg2">
+      <div class="fgl"><label>Receive Date</label><input class="fi" type="date" id="rs-date" value="${tday()}"></div>
+      <div class="fgl"><label>Blocks Arrived</label><input class="fi" type="number" min="0" id="rs-cnt" value="${s.blockCount||0}"></div>
+      <div class="fgl"><label>Lot / Block #</label><input class="fi" id="rs-lot" value="${attrEsc(s.cookLot||'')}" placeholder="lot number for Hydes"></div>
+    </div>
+    <div class="fgl" style="margin-top:10px;"><label>Received By</label><input class="fi" id="rs-by" value="${attrEsc(S.name||'')}"></div>
+    <div class="fgl" style="margin-top:10px;"><label>Notes <span style="color:var(--text3);font-size:9px;">(discrepancies, condition)</span></label><input class="fi" id="rs-notes" placeholder="Optional"></div>
+    <div class="form-acts" style="margin-top:14px;">
+      <button class="btn b-m b-lg" onclick="confirmReceiveShipment('${id}')">✓ Confirm Receipt</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="rs-t">✓ Received</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+async function confirmReceiveShipment(id){
+  const s=(DB.shipments||[]).find(x=>x.id===id); if(!s) return;
+  const date=document.getElementById('rs-date')?.value||tday();
+  const cnt=parseInt(document.getElementById('rs-cnt')?.value); if(isNaN(cnt)||cnt<0){ alert('Enter how many blocks arrived.'); return; }
+  const lot=(document.getElementById('rs-lot')?.value||s.cookLot||'').trim();
+  const by=(document.getElementById('rs-by')?.value||S.name||'').trim();
+  const notes=(document.getElementById('rs-notes')?.value||'').trim();
+  if(!lot){ alert('A lot / block number is required for the receiving record.'); return; }
+  const rData={date,facility:'Hydes Ferry',source:'internal',vendor:'In-house Production',variety:s.variety,lotNumber:lot,blockCount:cnt,blockWeightLb:s.blockWeightLb||0,placedCount:0,receivedBy:by,poNum:'',cost:null,notes:notes?('From Carthage shipment · '+notes):('From Carthage shipment '+fDate(s.date)),status:'on-hand',shipmentId:id,createdAt:new Date().toISOString()};
+  let rid;
+  try{ rid=await FS.add('receivings',rData); rData.id=rid; DB.receivings.push(rData); }
+  catch(e){ alert('Receive failed: '+(e.message||e)); return; }
+  const upd={status:'received',receivedCount:cnt,receivedAt:date,receivedBy:by,receivingId:rid};
+  Object.assign(s,upd);
+  try{ await FS.update('shipments',id,upd); }catch(e){}
+  logAudit('shipment_received',`Received Carthage shipment — ${cnt} blocks ${s.variety} (Lot ${lot})${cnt!==s.blockCount?` [shipped ${s.blockCount}]`:''}`);
+  toast('rs-t','✓ Received into Hydes pool');
+  setTimeout(()=>{ closeModal(); renderC(); },800);
 }
 
 // ── CARTHAGE PRE-HYDES WASTE — block loss before shipping to Hyde's Ferry ──
