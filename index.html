@@ -6399,11 +6399,11 @@ function rSampCardHTML(s, showActions){
   let acts='';
   if(showActions){
     if(s.status==='pending'){
-      acts=`<button class="btn b-sm" style="background:rgba(90,42,130,.1);color:#6a3a9a;border:1px solid rgba(90,42,130,.25);" onclick="markSampleSent('${s.id}')">✓ Mark Sent</button>`;
+      acts=`<button class="btn b-sm" style="background:rgba(90,42,130,.1);color:#6a3a9a;border:1px solid rgba(90,42,130,.25);" onclick="openPackSample('${s.id}')">📦 Pack &amp; Send</button>`;
       if(S.role==='admin') acts+=` <button class="btn b-r b-sm" onclick="delSample('${s.id}')">Delete</button>`;
     } else if(s.status==='sent'){
-      acts=`<span style="font-family:'Syne Mono',monospace;font-size:9px;color:#3a6030;letter-spacing:1px;">✓ SENT${s.sentAt?' · '+fDate(s.sentAt):''}</span>`;
-      if(S.role==='admin') acts+=` <button class="btn b-r b-sm" style="margin-left:8px;" onclick="delSample('${s.id}')">Delete</button>`;
+      acts=`<span style="font-family:'Syne Mono',monospace;font-size:9px;color:#3a6030;letter-spacing:1px;">✓ SENT${s.sentAt?' · '+fDate(s.sentAt):''}</span> <button class="btn b-g b-sm" onclick="showSampleSlip('${s.id}')">🧾 Slip</button>`;
+      if(S.role==='admin') acts+=` <button class="btn b-r b-sm" onclick="delSample('${s.id}')">Delete</button>`;
     }
   }
   return `<div class="samp-card ${s.status}">
@@ -6414,6 +6414,7 @@ function rSampCardHTML(s, showActions){
     <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:12px;">${(s.recipientType||'sample').toUpperCase()}${s.contact?' · '+s.contact.toUpperCase():''}${s.date?' · '+fDate(s.date):''}</div>
     ${itemRows||'<div style="font-size:12px;color:var(--text3);">No items logged</div>'}
     <div style="font-family:'Syne Mono',monospace;font-size:10px;color:#6a3a9a;margin-top:8px;font-weight:700;">${totalLb.toFixed(2)} lb total</div>
+    ${(s.usedLots&&s.usedLots.length)?`<div style="font-size:10px;color:var(--text3);margin-top:6px;font-family:'Syne Mono',monospace;">LOTS: ${s.usedLots.join(', ')}</div>`:''}
     ${s.notes?`<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:8px;padding:8px;background:var(--paper);border-radius:3px;">${s.notes}</div>`:''}
     ${acts?`<div style="display:flex;gap:8px;margin-top:12px;align-items:center;">${acts}</div>`:''}
   </div>`;
@@ -6427,6 +6428,96 @@ function markSampleSent(id){
   FS.update('samples',id,{status:'sent',sentAt:s.sentAt});
   deductSampleInventory(s);
   renderC();
+}
+
+// ── TRACEABLE SAMPLE PACKING — capture the exact lots drawn, like a regular order ──
+function sampleLotPlan(s){
+  const plan=[]; const shortfall=[];
+  ALL_PRODS.forEach(p=>{
+    const count=s[p.dataKey]||0; if(!count) return;
+    let need=count*p.unitLb;
+    const lots=DB.harvests.filter(h=>p.varieties.includes(h.variety))
+      .map(h=>({h,avail:Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0))}))
+      .filter(x=>x.avail>0.01).sort((a,b)=>(a.h.date||'').localeCompare(b.h.date||''));
+    for(const {h,avail} of lots){ if(need<=0.001) break; const d=Math.min(avail,need); plan.push({harvestId:h.id,lotNumber:h.lotNumber,variety:h.variety,container:h.container,grade:h.grade,lbs:d,code:p.code}); need-=d; }
+    if(need>0.01) shortfall.push({name:p.name,lbs:need});
+  });
+  return {plan,shortfall};
+}
+function openPackSample(id){
+  const s=DB.samples.find(x=>x.id===id); if(!s) return;
+  const {plan,shortfall}=sampleLotPlan(s);
+  document.getElementById('em-title').textContent='Pack & Send Sample — '+(s.recipient||'');
+  const byLot={};
+  plan.forEach(p=>{ if(!byLot[p.harvestId]) byLot[p.harvestId]={variety:p.variety,lot:p.lotNumber,container:p.container,lbs:0}; byLot[p.harvestId].lbs+=p.lbs; });
+  const rows=Object.values(byLot).map(l=>`<tr><td style="padding:6px 8px;">${l.variety}</td><td style="padding:6px 8px;font-family:'Syne Mono',monospace;">${l.lot}</td><td style="padding:6px 8px;">${l.container||''}</td><td style="padding:6px 8px;text-align:right;">${l.lbs.toFixed(2)} lb</td></tr>`).join('');
+  document.getElementById('em-body').innerHTML=`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.6;">These harvest lots will be drawn for this sample (oldest first) and <strong>recorded for traceability</strong>. Confirming deducts the weight and marks the sample sent — just like packing an order.</div>
+    ${plan.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid var(--border);">
+      <thead><tr style="background:var(--paper);"><th style="padding:6px 8px;text-align:left;">Variety</th><th style="padding:6px 8px;text-align:left;">Lot #</th><th style="padding:6px 8px;text-align:left;">Container</th><th style="padding:6px 8px;text-align:right;">Draw</th></tr></thead>
+      <tbody>${rows}</tbody></table>`:'<div class="empty">No product items on this sample to pack.</div>'}
+    ${shortfall.length?`<div style="margin-top:12px;background:rgba(184,76,32,.08);border:1px solid rgba(184,76,32,.25);border-radius:4px;padding:8px 12px;font-size:11px;color:var(--rust);">⚠️ Not enough on-hand for: ${shortfall.map(x=>x.name+' ('+x.lbs.toFixed(1)+' lb short)').join(', ')}. You can still send — only available stock is deducted & recorded.</div>`:''}
+    <div class="form-acts" style="margin-top:16px;">
+      <button class="btn b-m b-lg" onclick="confirmPackSample('${id}')" ${plan.length?'':'disabled'}>✓ Pack &amp; Send</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>
+    <div class="toast" id="ps-t">✓ Sample packed</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+async function confirmPackSample(id){
+  const s=DB.samples.find(x=>x.id===id); if(!s) return;
+  const {plan}=sampleLotPlan(s);
+  const byLot={};
+  plan.forEach(p=>{ byLot[p.harvestId]=(byLot[p.harvestId]||0)+p.lbs; });
+  const updates=[];
+  Object.entries(byLot).forEach(([hid,lbs])=>{ const h=DB.harvests.find(x=>x.id===hid); if(h){ h.sampleWeight=(h.sampleWeight||0)+lbs; updates.push(FS.update('harvests',hid,{sampleWeight:h.sampleWeight})); } });
+  s.status='sent'; s.sentAt=tday();
+  s.usedHarvests=[...new Set(plan.map(p=>p.harvestId))];
+  s.usedLots=[...new Set(plan.map(p=>p.lotNumber))];
+  s.lotDraw=plan.map(p=>({harvestId:p.harvestId,lotNumber:p.lotNumber,variety:p.variety,container:p.container,grade:p.grade,lbs:p.lbs}));
+  updates.push(FS.update('samples',id,{status:'sent',sentAt:s.sentAt,usedHarvests:s.usedHarvests,usedLots:s.usedLots,lotDraw:s.lotDraw}));
+  await Promise.all(updates);
+  logAudit('sample_sent',`Packed & sent sample to ${s.recipient} — lots ${s.usedLots.join(', ')||'none'}`);
+  toast('ps-t','✓ Sample packed & sent');
+  setTimeout(()=>{ closeModal(); renderC(); },700);
+}
+function showSampleSlip(id){
+  const s=DB.samples.find(x=>x.id===id); if(!s) return;
+  const cell='border:1px solid #000;padding:5px 9px;font-size:12px;vertical-align:top;';
+  const cellC=cell+'text-align:center;';
+  const shipDate=s.sentAt?new Date(s.sentAt+'T12:00:00').toLocaleDateString('en-US'):new Date().toLocaleDateString('en-US');
+  let itemRows=ALL_PRODS.filter(p=>(s[p.dataKey]||0)>0).map(p=>`<tr><td style="${cell}">${p.code} - ${p.name}</td><td style="${cell}">${p.desc||''}</td><td style="${cellC}">${s[p.dataKey]}</td></tr>`).join('');
+  if(!itemRows) itemRows=`<tr><td style="${cell}" colspan="3">See notes</td></tr>`;
+  const lots=(s.lotDraw&&s.lotDraw.length)?s.lotDraw:((s.usedHarvests||[]).map(hid=>{const h=DB.harvests.find(x=>x.id===hid);return h?{variety:h.variety,container:h.container,lotNumber:h.lotNumber,grade:h.grade}:null;}).filter(Boolean));
+  const lotRows=lots.length?lots.map(l=>`<tr><td style="${cell}">${l.variety||''}</td><td style="${cell}">${l.container||''}</td><td style="${cell}font-family:monospace;font-weight:700;">${l.lotNumber||''}</td><td style="${cellC}">${l.grade||''}</td></tr>`).join('')
+    :`<tr><td style="${cell}" colspan="4"><span style="color:#999;font-style:italic;">No lots recorded — Pack &amp; Send the sample to attach lots.</span></td></tr>`;
+  document.getElementById('print-area').innerHTML=`
+    <div style="font-family:Arial,Helvetica,sans-serif;color:#000;max-width:760px;margin:0 auto;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">
+        <div style="font-size:13px;line-height:1.5;"><div style="font-weight:700;font-size:15px;">${COMPANY.legal}</div><div style="margin-top:10px;">${COMPANY.careOf.join('<br>')}</div></div>
+        <div style="text-align:right;"><div style="font-size:30px;font-weight:700;">Sample Slip</div><div style="font-size:12px;margin-top:8px;">Date: ${shipDate}</div></div>
+      </div>
+      <div style="margin-bottom:18px;width:55%;margin-left:auto;">
+        <div style="border:1px solid #000;border-bottom:none;padding:5px 9px;font-size:12px;font-weight:600;">Sample To</div>
+        <div style="border:1px solid #000;padding:9px;font-size:13px;line-height:1.5;min-height:54px;"><div style="font-weight:600;">${s.recipient||''}</div><div>${(s.recipientType||'')}</div>${s.contact?`<div>${s.contact}</div>`:''}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;">
+        <tr><td style="${cellC}font-weight:600;width:30%;">Item</td><td style="${cellC}font-weight:600;">Description</td><td style="${cellC}font-weight:600;width:14%;">Qty</td></tr>
+        ${itemRows}
+      </table>
+      ${s.notes?`<div style="margin-top:12px;font-size:12px;"><strong>Notes:</strong> ${s.notes}</div>`:''}
+      <div style="margin-top:20px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;">Lot / Container Traceability</div>
+      <table style="width:100%;border-collapse:collapse;margin-top:4px;">
+        <tr><td style="${cellC}font-weight:600;">Variety</td><td style="${cellC}font-weight:600;">Container</td><td style="${cellC}font-weight:600;">Lot #</td><td style="${cellC}font-weight:600;width:12%;">Grade</td></tr>
+        ${lotRows}
+      </table>
+      <div style="margin-top:36px;display:grid;grid-template-columns:1fr 1fr;gap:40px;">
+        <div><div style="border-bottom:1px solid #000;height:34px;"></div><div style="font-size:11px;margin-top:4px;">Packed By</div></div>
+        <div><div style="border-bottom:1px solid #000;height:34px;"></div><div style="font-size:11px;margin-top:4px;">Received By &amp; Date</div></div>
+      </div>
+    </div>`;
+  document.getElementById('slip-acts').innerHTML=`<button class="btn b-m" onclick="window.print()">Print</button><button class="btn b-g" onclick="closeSlip()">Close</button>`;
+  document.getElementById('slip-modal').classList.add('open');
 }
 
 function deductSampleInventory(sample){
