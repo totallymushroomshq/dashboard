@@ -6399,7 +6399,7 @@ function rSampCardHTML(s, showActions){
   let acts='';
   if(showActions){
     if(s.status==='pending'){
-      acts=`<button class="btn b-sm" style="background:rgba(90,42,130,.1);color:#6a3a9a;border:1px solid rgba(90,42,130,.25);" onclick="openPackSample('${s.id}')">📦 Pack &amp; Send</button>`;
+      acts=`<button class="btn b-sm" style="background:rgba(90,42,130,.1);color:#6a3a9a;border:1px solid rgba(90,42,130,.25);" onclick="printSampleSlip('${s.id}')">📦 Pack &amp; Send</button>`;
       if(S.role==='admin') acts+=` <button class="btn b-r b-sm" onclick="delSample('${s.id}')">Delete</button>`;
     } else if(s.status==='sent'){
       acts=`<span style="font-family:'Syne Mono',monospace;font-size:9px;color:#3a6030;letter-spacing:1px;">✓ SENT${s.sentAt?' · '+fDate(s.sentAt):''}</span> <button class="btn b-g b-sm" onclick="showSampleSlip('${s.id}')">🧾 Slip</button>`;
@@ -6430,56 +6430,56 @@ function markSampleSent(id){
   renderC();
 }
 
-// ── TRACEABLE SAMPLE PACKING — capture the exact lots drawn, like a regular order ──
-function sampleLotPlan(s){
-  const plan=[]; const shortfall=[];
-  ALL_PRODS.forEach(p=>{
-    const count=s[p.dataKey]||0; if(!count) return;
-    let need=count*p.unitLb;
-    const lots=DB.harvests.filter(h=>p.varieties.includes(h.variety))
-      .map(h=>({h,avail:Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0))}))
-      .filter(x=>x.avail>0.01).sort((a,b)=>(a.h.date||'').localeCompare(b.h.date||''));
-    for(const {h,avail} of lots){ if(need<=0.001) break; const d=Math.min(avail,need); plan.push({harvestId:h.id,lotNumber:h.lotNumber,variety:h.variety,container:h.container,grade:h.grade,lbs:d,code:p.code}); need-=d; }
-    if(need>0.01) shortfall.push({name:p.name,lbs:need});
-  });
-  return {plan,shortfall};
-}
-function openPackSample(id){
+// ── TRACEABLE SAMPLE PACKING — identical flow to packing a regular order (manual lot picker → slip) ──
+function printSampleSlip(id){
   const s=DB.samples.find(x=>x.id===id); if(!s) return;
-  const {plan,shortfall}=sampleLotPlan(s);
-  document.getElementById('em-title').textContent='Pack & Send Sample — '+(s.recipient||'');
-  const byLot={};
-  plan.forEach(p=>{ if(!byLot[p.harvestId]) byLot[p.harvestId]={variety:p.variety,lot:p.lotNumber,container:p.container,lbs:0}; byLot[p.harvestId].lbs+=p.lbs; });
-  const rows=Object.values(byLot).map(l=>`<tr><td style="padding:6px 8px;">${l.variety}</td><td style="padding:6px 8px;font-family:'Syne Mono',monospace;">${l.lot}</td><td style="padding:6px 8px;">${l.container||''}</td><td style="padding:6px 8px;text-align:right;">${l.lbs.toFixed(2)} lb</td></tr>`).join('');
-  document.getElementById('em-body').innerHTML=`
-    <div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.6;">These harvest lots will be drawn for this sample (oldest first) and <strong>recorded for traceability</strong>. Confirming deducts the weight and marks the sample sent — just like packing an order.</div>
-    ${plan.length?`<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid var(--border);">
-      <thead><tr style="background:var(--paper);"><th style="padding:6px 8px;text-align:left;">Variety</th><th style="padding:6px 8px;text-align:left;">Lot #</th><th style="padding:6px 8px;text-align:left;">Container</th><th style="padding:6px 8px;text-align:right;">Draw</th></tr></thead>
-      <tbody>${rows}</tbody></table>`:'<div class="empty">No product items on this sample to pack.</div>'}
-    ${shortfall.length?`<div style="margin-top:12px;background:rgba(184,76,32,.08);border:1px solid rgba(184,76,32,.25);border-radius:4px;padding:8px 12px;font-size:11px;color:var(--rust);">⚠️ Not enough on-hand for: ${shortfall.map(x=>x.name+' ('+x.lbs.toFixed(1)+' lb short)').join(', ')}. You can still send — only available stock is deducted & recorded.</div>`:''}
-    <div class="form-acts" style="margin-top:16px;">
-      <button class="btn b-m b-lg" onclick="confirmPackSample('${id}')" ${plan.length?'':'disabled'}>✓ Pack &amp; Send</button>
-      <button class="btn b-g" onclick="closeModal()">Cancel</button>
-    </div>
-    <div class="toast" id="ps-t">✓ Sample packed</div>`;
-  document.getElementById('edit-modal').classList.add('open');
+  if(!slipLots[id]) slipLots[id]=(s.usedHarvests||[]).slice();
+  const avail=DB.harvests.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const sel=slipLots[id];
+  const lotRows=avail.map(h=>{
+    const checked=sel.includes(h.id)?'checked':'';
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:8px 12px;"><label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <input type="checkbox" ${checked} style="width:15px;height:15px;accent-color:var(--gold);" onchange="toggleLot('${id}','${h.id}')">
+        <span style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:var(--gold);">${h.lotNumber}</span></label></td>
+      <td style="padding:8px 12px;font-size:12px;color:var(--text2);">${h.variety}</td>
+      <td style="padding:8px 12px;font-size:12px;color:var(--text2);">${h.container}</td>
+      <td style="padding:8px 12px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);">${fDate(h.date)}</td>
+      <td style="padding:8px 12px;"><span class="bdg ${h.grade==='A'?'bc':h.grade==='B'?'bad':'bp'}">${h.grade||''}</span></td>
+    </tr>`;
+  }).join('');
+  document.getElementById('print-area').innerHTML=`
+    <div style="font-family:'Syne',sans-serif;">
+      <div style="font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:700;color:var(--black);margin-bottom:4px;">Sample — ${s.recipient||''}</div>
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;margin-bottom:20px;">SAMPLE · ${(s.recipientType||'').toUpperCase()}${s.date?' · '+fDate(s.date).toUpperCase():''}</div>
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border);">Select Harvest Lots Used</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Tick every lot you pulled from for this sample. They'll appear on the printed slip and be recorded for traceability.</div>
+      ${avail.length===0?`<div style="padding:20px;text-align:center;font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">No harvest lots logged yet — add some in the Harvest tab first.</div>`:`<div style="border:1px solid var(--border);border-radius:4px;overflow:hidden;margin-bottom:16px;"><table style="width:100%;border-collapse:collapse;"><thead><tr style="background:var(--gold-lt);"><th style="padding:8px 12px;text-align:left;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);">Lot #</th><th style="padding:8px 12px;text-align:left;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);">Variety</th><th style="padding:8px 12px;text-align:left;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);">Container</th><th style="padding:8px 12px;text-align:left;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);">Date</th><th style="padding:8px 12px;text-align:left;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);">Grade</th></tr></thead><tbody>${lotRows}</tbody></table></div>`}
+      <div id="slip-sel-summary" style="min-height:32px;"></div>
+    </div>`;
+  updateSlipSummary(id);
+  document.getElementById('slip-acts').innerHTML=`
+    <button class="btn b-m" onclick="finalizeSampleSlip('${id}')">Preview &amp; Print →</button>
+    <button class="btn b-g" onclick="closeSlip()">Cancel</button>`;
+  document.getElementById('slip-modal').classList.add('open');
 }
-async function confirmPackSample(id){
+async function finalizeSampleSlip(id){
   const s=DB.samples.find(x=>x.id===id); if(!s) return;
-  const {plan}=sampleLotPlan(s);
-  const byLot={};
-  plan.forEach(p=>{ byLot[p.harvestId]=(byLot[p.harvestId]||0)+p.lbs; });
+  const sel=(slipLots[id]||[]).slice();
+  s.usedHarvests=sel;
+  s.usedLots=sel.map(hid=>{const h=DB.harvests.find(x=>x.id===hid);return h?h.lotNumber:null;}).filter(Boolean);
   const updates=[];
-  Object.entries(byLot).forEach(([hid,lbs])=>{ const h=DB.harvests.find(x=>x.id===hid); if(h){ h.sampleWeight=(h.sampleWeight||0)+lbs; updates.push(FS.update('harvests',hid,{sampleWeight:h.sampleWeight})); } });
-  s.status='sent'; s.sentAt=tday();
-  s.usedHarvests=[...new Set(plan.map(p=>p.harvestId))];
-  s.usedLots=[...new Set(plan.map(p=>p.lotNumber))];
-  s.lotDraw=plan.map(p=>({harvestId:p.harvestId,lotNumber:p.lotNumber,variety:p.variety,container:p.container,grade:p.grade,lbs:p.lbs}));
-  updates.push(FS.update('samples',id,{status:'sent',sentAt:s.sentAt,usedHarvests:s.usedHarvests,usedLots:s.usedLots,lotDraw:s.lotDraw}));
-  await Promise.all(updates);
-  logAudit('sample_sent',`Packed & sent sample to ${s.recipient} — lots ${s.usedLots.join(', ')||'none'}`);
-  toast('ps-t','✓ Sample packed & sent');
-  setTimeout(()=>{ closeModal(); renderC(); },700);
+  if(s.status!=='sent'){
+    // deduct the sample's total lbs across the selected lots (oldest first)
+    let need=ALL_PRODS.reduce((t,p)=>t+((s[p.dataKey]||0)*p.unitLb),0);
+    const lots=sel.map(hid=>DB.harvests.find(h=>h.id===hid)).filter(Boolean).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
+    for(const h of lots){ if(need<=0.001) break; const avail=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); const d=Math.min(avail,need); if(d>0){ h.sampleWeight=(h.sampleWeight||0)+d; updates.push(FS.update('harvests',h.id,{sampleWeight:h.sampleWeight})); need-=d; } }
+    s.status='sent'; s.sentAt=tday();
+    logAudit('sample_sent',`Packed & sent sample to ${s.recipient} — lots ${s.usedLots.join(', ')||'none'}`);
+  }
+  updates.push(FS.update('samples',id,{status:s.status,sentAt:s.sentAt||null,usedHarvests:s.usedHarvests,usedLots:s.usedLots}));
+  try{ await Promise.all(updates); }catch(e){ console.warn('finalizeSampleSlip:',e); }
+  showSampleSlip(id);
 }
 function showSampleSlip(id){
   const s=DB.samples.find(x=>x.id===id); if(!s) return;
@@ -6516,7 +6516,7 @@ function showSampleSlip(id){
         <div><div style="border-bottom:1px solid #000;height:34px;"></div><div style="font-size:11px;margin-top:4px;">Received By &amp; Date</div></div>
       </div>
     </div>`;
-  document.getElementById('slip-acts').innerHTML=`<button class="btn b-m" onclick="window.print()">Print</button><button class="btn b-g" onclick="closeSlip()">Close</button>`;
+  document.getElementById('slip-acts').innerHTML=`<button class="btn b-g b-sm" onclick="printSampleSlip('${id}')">← Back to lots</button><button class="btn b-m" onclick="window.print()">Print</button><button class="btn b-g" onclick="closeSlip()">Close</button>`;
   document.getElementById('slip-modal').classList.add('open');
 }
 
