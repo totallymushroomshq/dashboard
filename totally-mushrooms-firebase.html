@@ -2122,6 +2122,85 @@ function rToday(el){
 }
 
 // ── WEEK ──
+// ── WEEKLY DASHBOARD — KPI tiles + variety/lot week-over-week (WoW · YoY · trend · forecast) ──
+let _weekDashExpanded = {};
+function toggleWeekVar(v){ _weekDashExpanded[v]=!_weekDashExpanded[v]; rWeek(document.getElementById('main-views')); }
+function wkMonday(dateStr){
+  if(!dateStr) return '';
+  const d=new Date(dateStr+'T12:00:00'); if(isNaN(d)) return '';
+  const day=d.getDay(); d.setDate(d.getDate()-(day===0?6:day-1));
+  return d.toISOString().split('T')[0];
+}
+function wkShift(iso,days){ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+days); return d.toISOString().split('T')[0]; }
+function miniSpark(vals,color){
+  color=color||'var(--fern)'; const n=vals.length; if(!n) return '';
+  const max=Math.max(...vals,0.001), w=58,h=16;
+  const pts=vals.map((v,i)=>`${(i/(n-1||1))*w},${(h-(v/max)*h).toFixed(1)}`).join(' ');
+  const lx=w, ly=(h-(vals[n-1]/max)*h).toFixed(1);
+  return `<svg width="${w}" height="${h}" style="vertical-align:middle;overflow:visible;"><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/><circle cx="${lx}" cy="${ly}" r="2" fill="${color}"/></svg>`;
+}
+function pctDelta(cur,prev){
+  if(prev<=0.001) return cur>0.001?{txt:'new',arrow:'▲',col:'var(--fern)'}:{txt:'—',arrow:'',col:'var(--text3)'};
+  const p=((cur-prev)/prev)*100;
+  if(Math.abs(p)<0.5) return {txt:'flat',arrow:'▬',col:'var(--text3)'};
+  return p>0?{txt:'+'+p.toFixed(0)+'%',arrow:'▲',col:'var(--fern)'}:{txt:p.toFixed(0)+'%',arrow:'▼',col:'var(--rust)'};
+}
+function buildWeeklyDashboard(){
+  const now=new Date(), d0=new Date(now); d0.setDate(now.getDate()-(now.getDay()===0?6:now.getDay()-1));
+  const cur=d0.toISOString().split('T')[0], prev=wkShift(cur,-7), yoy=wkShift(cur,-364);
+  const trendWeeks=[wkShift(cur,-21),wkShift(cur,-14),wkShift(cur,-7),cur];
+  // harvest lb by week -> variety -> lot
+  const H={};
+  DB.harvests.forEach(h=>{ const wk=wkMonday(h.date); if(!wk) return; const v=h.variety||'—', lot=h.lotNumber||'—';
+    ((H[wk]=H[wk]||{})[v]=H[wk][v]||{}); H[wk][v][lot]=(H[wk][v][lot]||0)+(h.weight||0); });
+  const wkVar=(wk,v)=>Object.values((H[wk]||{})[v]||{}).reduce((s,x)=>s+x,0);
+  const wkTot=(wk)=>Object.values(H[wk]||{}).reduce((s,vv)=>s+Object.values(vv).reduce((a,b)=>a+b,0),0);
+  // on-hand by variety -> lot
+  const oh={}; DB.harvests.forEach(h=>{ const on=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); if(on<=0.05) return; const v=h.variety||'—', lot=h.lotNumber||'—'; (oh[v]=oh[v]||{}); oh[v][lot]=(oh[v][lot]||0)+on; });
+  const ohVar=v=>Object.values(oh[v]||{}).reduce((s,x)=>s+x,0);
+  const varieties=[...new Set([...Object.keys(H[cur]||{}),...Object.keys(H[prev]||{}),...Object.keys(oh)])].sort();
+  // sales / waste / forecast
+  const ordFor=wk=>DB.orders.filter(o=>o.week===wk&&!o.isStanding);
+  const boxesFor=wk=>ordFor(wk).reduce((s,o)=>s+bxs(o),0);
+  const revFor=wk=>ordFor(wk).filter(o=>['confirmed','packed','invoiced'].includes(o.status)).reduce((s,o)=>s+eRev(o),0);
+  const wasteFor=wk=>(DB.blockDisposals||[]).filter(x=>wkMonday(x.date)===wk).reduce((s,x)=>s+(parseInt(x.blockCount)||0),0);
+  const yld=varietyYield(); const nextWk=wkShift(cur,7); let fcNext=0;
+  DB.fruitings.filter(f=>f.status==='fruiting').forEach(f=>{ const td=VARIETY_TURNAROUND[f.variety]||{min:7,max:14}; const st=new Date(f.date+'T12:00:00'); const hm=new Date(st); hm.setDate(hm.getDate()+td.min); if(wkMonday(hm.toISOString().split('T')[0])===nextWk){ fcNext+=(f.blockCount||0)*(yld[f.variety]?yld[f.variety].rate:(f.rateLbPerBlock||LBSPERBLOCK)); } });
+  // tiles
+  const curY=wkTot(cur), prevY=wkTot(prev), yoyY=wkTot(yoy), trend=trendWeeks.map(wkTot);
+  const ohTot=Object.keys(oh).reduce((s,v)=>s+ohVar(v),0);
+  const dstr=d=>`<span style="color:${d.col};font-weight:700;">${d.arrow} ${d.txt}</span>`;
+  const tile=(cls,label,val,sub,spark)=>`<div class="sc ${cls}" style="min-width:150px;"><div class="sc-l">${label}</div><div class="sc-v">${val}</div><div class="sc-n">${sub||''}</div>${spark?`<div style="margin-top:4px;">${spark}</div>`:''}</div>`;
+  const tiles=`<div class="stats" style="margin-bottom:6px;">
+    ${tile('g','Harvest Yield',curY.toFixed(1)+' lb','WoW '+dstr(pctDelta(curY,prevY))+' · YoY '+(yoyY>0?pctDelta(curY,yoyY).txt:'—'),miniSpark(trend))}
+    ${tile('','Boxes Sold',boxesFor(cur),'WoW '+dstr(pctDelta(boxesFor(cur),boxesFor(prev))))}
+    ${tile('m','Revenue','$'+revFor(cur).toFixed(0),'WoW '+dstr(pctDelta(revFor(cur),revFor(prev))))}
+    ${tile('b','On Hand',ohTot.toFixed(1)+' lb',Object.keys(oh).length+' lots')}
+    ${tile(wasteFor(cur)>0?'r':'','Waste (blocks)',wasteFor(cur),'disposed this wk')}
+    ${tile('','Forecast · Next Wk',fcNext.toFixed(0)+' lb','projected harvest')}
+  </div>`;
+  // table
+  const rows=varieties.map(v=>{
+    const c=wkVar(cur,v), p=wkVar(prev,v), y=wkVar(yoy,v), on=ohVar(v);
+    if(c<0.05&&p<0.05&&on<0.05) return '';
+    const exp=_weekDashExpanded[v]; const vEsc=v.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    const lots=[...new Set([...Object.keys((H[cur]||{})[v]||{}),...Object.keys((H[prev]||{})[v]||{}),...Object.keys(oh[v]||{})])].sort();
+    let out=`<tr style="cursor:pointer;border-top:1px solid var(--border);" onclick="toggleWeekVar('${vEsc}')">
+      <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${exp?'▾':'▸'}</span> ${v}</td>
+      <td class="mn" style="font-weight:700;color:var(--fern);">${c.toFixed(1)}</td>
+      <td class="mn" style="color:var(--text3);">${p.toFixed(1)}</td>
+      <td class="mn">${dstr(pctDelta(c,p))}</td>
+      <td class="mn" style="color:var(--text3);">${y>0?y.toFixed(1):'—'}</td>
+      <td>${miniSpark(trendWeeks.map(wk=>wkVar(wk,v)))}</td>
+      <td class="mn" style="font-weight:700;color:var(--gold);">${on.toFixed(1)}</td></tr>`;
+    if(exp) out+=lots.map(lot=>{ const lc=((H[cur]||{})[v]||{})[lot]||0, lp=((H[prev]||{})[v]||{})[lot]||0, lo=(oh[v]||{})[lot]||0;
+      return `<tr style="background:rgba(0,0,0,.02);font-size:12px;"><td style="padding-left:26px;font-family:'Syne Mono',monospace;color:var(--text3);">${lot}</td><td class="mn">${lc.toFixed(1)}</td><td class="mn" style="color:var(--text3);">${lp.toFixed(1)}</td><td class="mn" style="color:${pctDelta(lc,lp).col};">${pctDelta(lc,lp).arrow||''}</td><td class="mn">—</td><td></td><td class="mn" style="color:var(--gold);">${lo.toFixed(1)}</td></tr>`; }).join('');
+    return out;
+  }).join('');
+  const table=`<div class="sh" style="margin-top:18px;"><span>Harvest by Variety — Week over Week</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">TAP A VARIETY FOR LOTS</span></div>
+    <div class="tw" style="margin-bottom:22px;overflow-x:auto;"><table><thead><tr><th>Variety / Lot</th><th>This Wk</th><th>Last Wk</th><th>Δ</th><th>Yr Ago</th><th>4-wk</th><th>On Hand</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="empty">No harvest data yet.</td></tr>'}</tbody></table></div>`;
+  return `<div class="sh" style="margin-bottom:8px;"><span>📊 Weekly Dashboard</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">WoW live · YoY fills in as history builds</span></div>${tiles}${table}`;
+}
 function rWeek(el){
   const wo=wkOrds(), tB=wo.reduce((s,o)=>s+bxs(o),0), rev=wo.filter(o=>['confirmed','packed','invoiced'].includes(o.status)).reduce((s,o)=>s+eRev(o),0);
   const now=new Date(), mon=new Date(now); mon.setDate(now.getDate()-(now.getDay()===0?6:now.getDay()-1));
@@ -2186,6 +2265,8 @@ function rWeek(el){
 
   el.innerHTML=`
     <div class="ph"><div class="ph-t">This Week</div><div class="ph-s">${mon.toLocaleDateString('en-GB',{month:'short',day:'numeric'})} — ${sun.toLocaleDateString('en-GB',{month:'short',day:'numeric',year:'numeric'})}</div></div>
+    ${buildWeeklyDashboard()}
+    <div class="sh" style="margin-top:4px;"><span>Order Summary</span></div>
     <div class="stats">
       <div class="sc"><div class="sc-l">Total Orders</div><div class="sc-v">${wo.length}</div></div>
       <div class="sc g"><div class="sc-l">Total Boxes</div><div class="sc-v">${tB}</div></div>
