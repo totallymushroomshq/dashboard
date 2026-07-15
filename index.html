@@ -3886,12 +3886,30 @@ function renderFruitingQueue(){
   if(btn) btn.textContent = _fruitingQueue.length ? `Log All (${n})` : 'Log Block';
 }
 
+// Fruiting blocks should come from LIVE INVENTORY (received-blocks pool). If a typed lot
+// isn't there, demand an explanation (saved to the record) — soft gate for the beta phase.
+function validateFruitingLots(rows){
+  for(const r of rows){
+    if(!r.lotNumber) continue;
+    if(r.receivingId) continue; // placed from a received batch = already in inventory
+    const L=(r.lotNumber||'').trim().toLowerCase();
+    const inInv=(DB.receivings||[]).some(rc=>(rc.lotNumber||'').trim().toLowerCase()===L && receivingOnHand(rc)>0.001);
+    if(inInv) continue;
+    const why=prompt('⚠️  HEY! Lot "'+r.lotNumber+'" is NOT in live inventory (received-blocks pool).\n\nAs a rule, fruiting blocks should be pulled from live inventory so we keep traceability. If this is correct for now (test phase), type WHY it isn\'t in inventory — this note is saved to the record. Cancel to go fix the lot.');
+    if(why===null) return false; // cancelled
+    if(!why.trim()){ alert('An explanation is required to place a lot that isn\'t in inventory (or Cancel and fix the lot).'); return false; }
+    r.notes=(r.notes?r.notes+' · ':'')+'[NOT IN INVENTORY — '+why.trim()+']';
+    r.lotNotInInventory=true; r.lotExplanation=why.trim();
+  }
+  return true;
+}
 async function subFruiting(){
   const rows=[..._fruitingQueue];
   const cur=_readFruitingRow();
   if(cur.lotNumber||cur.variety||cur.blockCount){ if(!_validFruitingRow(cur)) return; rows.push(cur); }
   if(!rows.length){ alert('Enter at least one lot to place.'); return; }
   if(!normalizeRowVarieties(rows)) return; // standardize varieties + warn on new ones
+  if(!validateFruitingLots(rows)) return; // lot must be in live inventory, or explain why (beta phase)
   // Hard-block: must log who worked + how long before the session saves
   const primeCon=(rows.find(r=>r.containerID)||{}).containerID||'';
   const primeDate=(rows[0]||{}).date||tday();
@@ -3905,6 +3923,7 @@ async function _doFruitingCommit(rows){
     if(r.variety) addVariety(r.variety);
     if(r.source==='supplier' && r.vendor) addSupplier(r.vendor); // remember the supplier
     const fData={date:r.date,containerID:r.containerID,lotNumber:r.lotNumber,source:r.source,vendor:r.vendor,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,rateLbPerBlock:r.rateLbPerBlock,notes:r.notes,status:'fruiting',createdAt:new Date().toISOString()};
+    if(r.lotNotInInventory){ fData.lotNotInInventory=true; fData.lotExplanation=r.lotExplanation||''; }
     if(r.receivingId) fData.receivingId=r.receivingId;
     const fId=await FS.add('fruitings',fData);
     DB.fruitings.push({id:fId,...fData});
