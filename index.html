@@ -3639,6 +3639,22 @@ function onLotInput(){
   if(srcEl && info && info.vendor!=='Unknown') srcEl.value = info.vendor==='In-house' ? 'internal' : 'supplier';
   if(info?.variety && vEl){ vEl.value=info.variety; onVarietyInput(); }
   if(info?.blockWeightLb && bwEl) bwEl.value=info.blockWeightLb;
+  // exact match against blocks ON HAND → pull real inventory data + link the batch so placement draws it down
+  const typed=lot.trim().toLowerCase();
+  const match=typed?onHandReceivings().find(r=>(r.lotNumber||'').trim().toLowerCase()===typed):null;
+  const hint=document.getElementById('fr-lot-hint');
+  if(match){
+    if(vEl && match.variety){ vEl.value=match.variety; if(typeof onVarietyInput==='function') onVarietyInput(); }
+    if(vendorEl && match.vendor) vendorEl.value=match.vendor;
+    if(srcEl) srcEl.value=(match.source==='internal')?'internal':'supplier';
+    if(bwEl && match.blockWeightLb) bwEl.value=match.blockWeightLb;
+    const batch=document.getElementById('fr-batch'); if(batch) batch.value=match.id;
+    const bc=document.getElementById('fr-bc'); if(bc){ bc.max=receivingOnHand(match); if(!bc.value) bc.value=receivingOnHand(match); }
+    if(hint){ hint.style.color='var(--fern)'; hint.textContent=`✓ ${match.variety} · ${receivingOnHand(match)} blocks on hand · draws down on placement`; }
+  } else if(hint){
+    hint.style.color='var(--text3)';
+    hint.textContent = typed ? '⚠ NOT IN INVENTORY — will prompt for an explanation on submit' : 'TYPE TO MATCH BLOCKS ON HAND';
+  }
   updateFruitingPreview();
 }
 
@@ -3977,9 +3993,10 @@ function rFruiting(el){
         <datalist id="fr-cidl">${activeCons.map(c=>`<option value="${c.code}">${c.code} · ${c.farm} (${c.facility})</option>`).join('')}${legacyCons.map(c=>`<option value="${c}">${c} (legacy)</option>`).join('')}</datalist>
       </div>
       <div class="fgl">
-        <label>Lot Number</label>
-        <input class="fi" id="fr-lot" placeholder="e.g. WSY00Y or 10162" oninput="onLotInput()">
-        <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:1px;">WS CODES AUTO-FILL · ALL DIGITS = IN-HOUSE</div>
+        <label>Lot Number <span style="color:var(--text3);font-size:9px;">type to match blocks on hand</span></label>
+        <input class="fi" id="fr-lot" list="fr-lotl" placeholder="Type to search inventory… e.g. WSY00Y or 10162" autocomplete="off" oninput="onLotInput()">
+        <datalist id="fr-lotl">${onHand.map(r=>`<option value="${(r.lotNumber||'').replace(/"/g,'&quot;')}">${r.variety} · ${receivingOnHand(r)} blocks on hand · ${r.vendor||(r.source==='internal'?'Internal':'Vendor')}</option>`).join('')}</datalist>
+        <div id="fr-lot-hint" style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:1px;">${onHand.length?onHand.length+' LOT(S) ON HAND · TYPE TO MATCH':'NO BLOCKS ON HAND — LOG A RECEIVING FIRST'}</div>
       </div>
       <div class="fgl">
         <label>Source</label>
