@@ -2199,7 +2199,75 @@ function buildWeeklyDashboard(){
   }).join('');
   const table=`<div class="sh" style="margin-top:18px;"><span>Harvest by Variety — Week over Week</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">TAP A VARIETY FOR LOTS</span></div>
     <div class="tw" style="margin-bottom:22px;overflow-x:auto;"><table><thead><tr><th>Variety / Lot</th><th>This Wk</th><th>Last Wk</th><th>Δ</th><th>Yr Ago</th><th>4-wk</th><th>On Hand</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="empty">No harvest data yet.</td></tr>'}</tbody></table></div>`;
-  return `<div class="sh" style="margin-bottom:8px;"><span>📊 Weekly Dashboard</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">WoW live · YoY fills in as history builds</span></div>${tiles}${table}`;
+  return `<div class="sh" style="margin-bottom:8px;"><span>📊 Weekly Dashboard</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">WoW live · YoY fills in as history builds</span></div>${tiles}${table}${buildYieldAnalysis()}`;
+}
+// ── YIELD PER BLOCK — supplier/internal performance vs quoted targets (species → lot → container) ──
+let _yieldExpanded = {};
+function toggleYield(k){ _yieldExpanded[k]=!_yieldExpanded[k]; rWeek(document.getElementById('main-views')); }
+function daysBetween(a,b){ if(!a||!b) return null; const d1=new Date(a+'T12:00:00'),d2=new Date(b+'T12:00:00'); if(isNaN(d1)||isNaN(d2)) return null; return Math.round((d2-d1)/86400000); }
+// Quoted targets: Wild Spore = 1.0 lb/block; internal blocks 1.25–1.5 across two flushes.
+function lotBench(lot){
+  const L=(lot||'').trim();
+  const f=DB.fruitings.find(x=>x.lotNumber===lot);
+  const vendor=(f&&f.vendor)||'';
+  if(/^ws/i.test(L)||/wild\s*spore/i.test(vendor)) return {label:'Wild Spore',target:1.0};
+  return {label:'Internal',target:1.25,goal:1.5};
+}
+function yieldColor(ypb,bench){
+  const t=bench.target;
+  if(bench.goal){ if(ypb>=bench.goal) return 'var(--fern)'; if(ypb>=t) return 'var(--moss)'; if(ypb>=t*0.85) return 'var(--amber)'; return 'var(--rust)'; }
+  if(ypb>=t) return 'var(--fern)'; if(ypb>=t*0.85) return 'var(--amber)'; return 'var(--rust)';
+}
+function buildYieldAnalysis(){
+  const data={}; // lot -> {variety, containers:{con:{blocks,harv,placed:[],hd:{date:lb}}}}
+  DB.fruitings.forEach(f=>{ const lot=f.lotNumber; if(!lot||!f.blockCount) return;
+    const D=data[lot]||(data[lot]={variety:f.variety||'—',containers:{}}); if(f.variety) D.variety=f.variety;
+    const con=f.containerID||'—'; const C=D.containers[con]||(D.containers[con]={blocks:0,harv:0,placed:[],hd:{}});
+    C.blocks+=parseInt(f.blockCount)||0; if(f.date) C.placed.push(f.date); });
+  DB.harvests.forEach(h=>{ const lot=h.lotNumber; if(!lot||!data[lot]) return;
+    const con=h.container||'—'; const D=data[lot]; const C=D.containers[con]||(D.containers[con]={blocks:0,harv:0,placed:[],hd:{}});
+    C.harv+=(h.weight||0); if(h.date) C.hd[h.date]=(C.hd[h.date]||0)+(h.weight||0); });
+  const bySpecies={};
+  Object.entries(data).forEach(([lot,D])=>{
+    const bench=lotBench(lot); let blocks=0,harv=0; const cons=[];
+    Object.entries(D.containers).forEach(([con,C])=>{
+      blocks+=C.blocks; harv+=C.harv;
+      const pMin=C.placed.length?C.placed.slice().sort()[0]:null;
+      const hd=Object.keys(C.hd).sort(); const hMax=hd.length?hd[hd.length-1]:null;
+      cons.push({con,blocks:C.blocks,harv:C.harv,ypb:C.blocks>0?C.harv/C.blocks:0,days:daysBetween(pMin,hMax),flushes:hd.length});
+    });
+    (bySpecies[D.variety]=bySpecies[D.variety]||[]).push({lot,variety:D.variety,bench,blocks,harv,ypb:blocks>0?harv/blocks:0,cons});
+  });
+  const rows=Object.keys(bySpecies).sort().map(sp=>{
+    const lots=bySpecies[sp].filter(l=>l.blocks>0); if(!lots.length) return '';
+    const tB=lots.reduce((s,l)=>s+l.blocks,0), tH=lots.reduce((s,l)=>s+l.harv,0), avg=tB>0?tH/tB:0;
+    const spExp=_yieldExpanded['sp:'+sp]; const spEsc=sp.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+    let out=`<tr style="cursor:pointer;border-top:2px solid var(--border);background:rgba(0,0,0,.02);" onclick="toggleYield('sp:${spEsc}')">
+      <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${spExp?'▾':'▸'}</span> ${sp}</td>
+      <td class="mn">${tB}</td><td class="mn">${tH.toFixed(1)}</td><td class="mn" style="font-weight:700;">${avg.toFixed(2)}</td><td></td><td></td><td></td></tr>`;
+    if(spExp) lots.sort((a,b)=>b.ypb-a.ypb).forEach(l=>{
+      const col=yieldColor(l.ypb,l.bench); const meets=l.ypb>=l.bench.target;
+      const lotExp=_yieldExpanded['lot:'+l.lot]; const lotEsc=l.lot.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const bT=l.bench.goal?`${l.bench.target}–${l.bench.goal}`:l.bench.target.toFixed(2);
+      const dMax=(()=>{const ds=l.cons.map(c=>c.days).filter(x=>x!=null);return ds.length?Math.max(...ds):null;})();
+      const fl=l.cons.reduce((s,c)=>s+(c.flushes||0),0);
+      out+=`<tr style="cursor:pointer;" onclick="toggleYield('lot:${lotEsc}')">
+        <td style="padding-left:20px;font-family:'Syne Mono',monospace;font-size:12px;"><span style="color:var(--text3);">${lotExp?'▾':'▸'}</span> ${l.lot} <span class="bdg ${l.bench.label==='Wild Spore'?'bp':'bc'}" style="font-size:8px;">${l.bench.label}</span></td>
+        <td class="mn">${l.blocks}</td><td class="mn">${l.harv.toFixed(1)}</td>
+        <td class="mn" style="font-weight:700;color:${col};">${l.ypb.toFixed(2)} ${meets?'✓':'✗'}</td>
+        <td class="mn" style="font-size:10px;color:var(--text3);">vs ${bT}</td>
+        <td class="mn" style="font-size:11px;">${fl} fl</td><td class="mn" style="font-size:11px;">${dMax!=null?dMax+'d':'—'}</td></tr>`;
+      if(lotExp) l.cons.sort((a,b)=>b.ypb-a.ypb).forEach(c=>{
+        out+=`<tr style="background:rgba(0,0,0,.03);font-size:11px;"><td style="padding-left:40px;color:var(--text3);">${c.con}</td>
+          <td class="mn">${c.blocks}</td><td class="mn">${c.harv.toFixed(1)}</td>
+          <td class="mn" style="font-weight:700;color:${yieldColor(c.ypb,l.bench)};">${c.ypb.toFixed(2)}</td>
+          <td></td><td class="mn">${c.flushes} fl</td><td class="mn">${c.days!=null?c.days+'d':'—'}</td></tr>`;
+      });
+    });
+    return out;
+  }).join('');
+  return `<div class="sh" style="margin-top:18px;"><span>🎯 Yield per Block — Supplier & Internal Performance</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">WS TARGET 1.0 · INTERNAL 1.25–1.5 lb/block · TAP TO DRILL</span></div>
+    <div class="tw" style="margin-bottom:22px;overflow-x:auto;"><table><thead><tr><th>Species / Lot / Container</th><th>Blocks</th><th>Harv lb</th><th>lb/block</th><th>Target</th><th>Flushes</th><th>Days in</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="empty">No placed-lot yield data yet.</td></tr>'}</tbody></table></div>`;
 }
 function rWeek(el){
   const wo=wkOrds(), tB=wo.reduce((s,o)=>s+bxs(o),0), rev=wo.filter(o=>['confirmed','packed','invoiced'].includes(o.status)).reduce((s,o)=>s+eRev(o),0);
