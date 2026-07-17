@@ -4400,7 +4400,15 @@ const NOTIFY_TO = {
 };
 function notifyRecips(kind){ return (DB.notify.to&&DB.notify.to[kind]&&DB.notify.to[kind].length)?DB.notify.to[kind]:(NOTIFY_TO[kind]||[]); }
 // ── subject-line formatters ──
-function _locCode(facility){ return String(facility||'').trim().split(/\s+/).map(w=>(w[0]||'').toUpperCase()).join(''); }
+// facility → location code (edit here to add facilities)
+const FACILITY_CODES={'hydes ferry pike':'OHF','hydes ferry':'OHF','opryland':'OPRY'};
+function _locCode(facility){
+  const k=String(facility||'').toLowerCase().replace(/['`’]/g,'').replace(/\s+/g,' ').trim();
+  if(FACILITY_CODES[k]) return FACILITY_CODES[k];
+  return k.split(' ').map(w=>(w[0]||'').toUpperCase()).join(''); // fallback: initials
+}
+// make a subject line safe as a filename
+function _safeFile(s){ return String(s||'sheet').replace(/[\/\\:*?"<>|]+/g,'-').replace(/\s+/g,' ').trim()||'sheet'; }
 function _mmddyy(iso){ const m=String(iso||'').match(/(\d{4})-(\d{2})-(\d{2})/); return m?`${m[2]}${m[3]}${m[1].slice(2)}`:''; }
 function _mm_dd_yy(iso){ const m=String(iso||'').match(/(\d{4})-(\d{2})-(\d{2})/); return m?`${m[2]}-${m[3]}-${m[1].slice(2)}`:''; }
 function notifySubject(kind, r){
@@ -4527,21 +4535,29 @@ function _jpegToPdfB64(jb64, iw, ih){
   pdf+=`trailer\n<< /Size ${objs.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
   return btoa(pdf);
 }
-// full pipeline: enhance → PDF → send (enhanced img to AI, PDF to archive) → parsed data + links
+// draw an image onto a canvas, scaled to fit maxDim (re-encodes HEIC/any → canvas)
+function _fitCanvas(img, maxDim){
+  let w=img.width, h=img.height; const m=maxDim||2000;
+  if(w>m||h>m){ const s=m/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+  const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(img,0,0,w,h); return c;
+}
+// full pipeline: the AI reads a FAITHFUL re-encode of the original (converts HEIC, keeps
+// full detail/colour for the best read); the cleaned high-contrast version is used ONLY
+// for the PDF archive + email attachment.
 async function processScan(file, kind){
   const img=await _loadImg(file);
-  const canvas=_enhanceDoc(img);
-  const jpg=_canvasToJpeg(canvas, 260000);
-  const pdfB64=_jpegToPdfB64(jpg.b64, jpg.w, jpg.h);
+  const aiJpg=_canvasToJpeg(_fitCanvas(img, 2000), 900000);   // faithful → to the AI
+  const enh=_canvasToJpeg(_enhanceDoc(img), 260000);          // cleaned → to the PDF
+  const pdfB64=_jpegToPdfB64(enh.b64, enh.w, enh.h);
   const pdfBytes=Math.ceil(pdfB64.length*3/4);
   const user=firebase.auth().currentUser; if(!user) throw new Error('Not signed in — reload and log in.');
   const tok=await user.getIdToken();
   const resp=await fetch(PARSE_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
-    body:JSON.stringify({image:jpg.b64,mime:'image/jpeg',kind,archiveB64:pdfB64,archiveMime:'application/pdf',archiveExt:'pdf'})});
+    body:JSON.stringify({image:aiJpg.b64,mime:'image/jpeg',kind,archiveB64:pdfB64,archiveMime:'application/pdf',archiveExt:'pdf'})});
   let j={}; try{ j=await resp.json(); }catch(e){}
   if(!resp.ok) throw new Error(j.error||('Server error '+resp.status));
-  if(!j.ok) throw new Error(j.parseError?'Could not read the sheet clearly — retake with better light.':(j.error||'Parse failed.'));
-  return {data:j.data||{}, imageUrl:j.imageUrl||'', pdfB64, pdfBytes, thumb:jpg.dataUrl};
+  if(!j.ok) throw new Error(j.parseError?'Could not read the sheet clearly — retake with better light / flatter angle.':(j.error||'Parse failed.'));
+  return {data:j.data||{}, imageUrl:j.imageUrl||'', pdfB64, pdfBytes, thumb:enh.dataUrl};
 }
 let _lastSnap=null; // {kind, b64(pdf), dataUrl(thumb), mime, name, url, bytes} — cleaned PDF of the last scanned sheet
 // ── the pick-recipients / send modal, shown on submit (and on Resend) ──
@@ -4617,7 +4633,8 @@ async function sendNotify(subject, toList, report, image){
   try{
     const params={ email_subject:subject, message:report||subject, to_email:toList.join(','), from_name:'Totally Mushrooms HQ' };
     // EmailJS variable attachment (only delivers on plans that support attachments)
-    if(image&&image.b64){ params.attachment=image.b64; params.attachment_name=image.name||'sheet.jpg'; }
+    // filename mirrors the subject line, e.g. "OHF GH-01-01 071726.pdf"
+    if(image&&image.b64){ params.attachment=image.b64; params.attachment_name=_safeFile(subject)+((image.mime==='application/pdf')?'.pdf':'.jpg'); }
     await emailjs.send(DB.emailjs.serviceId, DB.notify.templateId, params);
     try{ logAudit('notify_sent', subject+' → '+toList.join(', ')+(image?' [+photo]':'')); }catch(e){}
     return true;
