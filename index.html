@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-17 #16</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-17 #17</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4665,21 +4665,34 @@ async function dispSend(){
   const image=(attachEl&&attachEl.checked&&_dispatch&&_dispatch.image)?_dispatch.image:null;
   const btn=document.getElementById('disp-send'); if(btn){ btn.disabled=true; btn.textContent='Sending…'; }
   const ok=await sendNotify(subj,to,report,image);
-  if(ok){ toast('disp-t','✓ Sent to '+to.length+' recipient'+(to.length>1?'s':'')); setTimeout(closeModal,900); }
-  else { alert('Send failed — check Admin → Email (template ID + master toggle). If you enabled the photo attachment, your EmailJS plan may not support attachments.'); if(btn){ btn.disabled=false; btn.textContent='✉ Send now'; } }
+  if(ok==='link-only'){ toast('disp-t','✓ Sent to '+to.length+' — file is the download link in the body (attachment not accepted)'); setTimeout(closeModal,1400); }
+  else if(ok){ toast('disp-t','✓ Sent to '+to.length+' recipient'+(to.length>1?'s':'')); setTimeout(closeModal,900); }
+  else { alert('Send failed — check Admin → Email (Notification Template ID + master toggle).'); if(btn){ btn.disabled=false; btn.textContent='✉ Send now'; } }
 }
 async function sendNotify(subject, toList, report, image){
   if(DB.notify.enabled===false){ console.warn('notify disabled — skipped'); return false; }
   if(!DB.emailjs.serviceId||!DB.notify.templateId||!DB.emailjs.publicKey){ console.warn('notify not configured — skipped'); return false; }
+  const base={ email_subject:subject, message:report||subject, to_email:toList.join(','), from_name:'Totally Mushrooms HQ' };
+  // base64 length is what EmailJS counts against its 500kb cap → ~365kb decoded
+  const wantAttach = image && image.b64 && (!image.bytes || image.bytes<=365000);
   try{
-    const params={ email_subject:subject, message:report||subject, to_email:toList.join(','), from_name:'Totally Mushrooms HQ' };
-    // EmailJS variable attachment (only delivers on plans that support attachments; 500kb cap)
-    // filename mirrors the subject line, e.g. "OHF GH-01-01 071726.pdf"
-    if(image&&image.b64&&(!image.bytes||image.bytes<=480000)){ params.attachment=image.b64; params.attachment_name=_safeFile(subject)+((image.mime==='application/pdf')?'.pdf':'.jpg'); }
+    const params={...base};
+    if(wantAttach){ params.attachment=image.b64; params.attachment_name=_safeFile(subject)+((image.mime==='application/pdf')?'.pdf':'.jpg'); }
     await emailjs.send(DB.emailjs.serviceId, DB.notify.templateId, params);
-    try{ logAudit('notify_sent', subject+' → '+toList.join(', ')+(image?' [+photo]':'')); }catch(e){}
+    try{ logAudit('notify_sent', subject+' → '+toList.join(', ')+(wantAttach?' [+file]':'')); }catch(e){}
     return true;
-  }catch(e){ console.error('notify send failed',e); return false; }
+  }catch(e){
+    console.error('notify send failed',e);
+    // the file is ALSO linked in the body — if the attachment was the problem, resend without it
+    if(wantAttach){
+      try{
+        await emailjs.send(DB.emailjs.serviceId, DB.notify.templateId, base);
+        try{ logAudit('notify_sent', subject+' → '+toList.join(', ')+' [attachment skipped — link in body]'); }catch(e2){}
+        return 'link-only';
+      }catch(e2){ console.error('notify retry (no attach) also failed',e2); return false; }
+    }
+    return false;
+  }
 }
 // Snap → parse a fruiting sheet → prefill the form + labor gate (labor logged even though fruiting isn't emailed)
 async function snapFruiting(input){
