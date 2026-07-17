@@ -4388,21 +4388,29 @@ async function snapHarvest(input){
   try{
     const r=await processScan(file,'harvest'); const d=r.data;
     _lastSnap={kind:'harvest',url:r.imageUrl,name:'harvest-sheet.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
+    // shared header
     if(d.container){ const c=document.getElementById('hl-c'); if(c){ c.value=d.container; onContainerSelect(d.container); } }
-    if(d.strain){ const v=document.getElementById('hl-v'); if(v) v.value=d.strain; }
-    if(d.lot){ const l=document.getElementById('hl-lot'); if(l){ l.value=d.lot; onHarvestLot(); } }
-    const rows=Array.isArray(d.rows)?d.rows:[];
-    if(rows[0]){
-      const iso=_toISO(rows[0].date); if(iso){ const dt=document.getElementById('hl-dt'); if(dt) dt.value=iso; }
-      if(rows[0].weight){ const w=document.getElementById('hl-w'); if(w) w.value=rows[0].weight; }
-    }
-    // crew parsed off the sheet → pre-fills the mandatory labor gate at submit
+    const iso=_toISO(d.date); if(iso){ const dt=document.getElementById('hl-dt'); if(dt) dt.value=iso; }
+    // crew → pre-fills the mandatory labor gate at submit
     _scanLabor=Array.isArray(d.crew)?d.crew.map(c=>({emp:(c.name||'').trim(),min:parseInt(c.minutes)||0})).filter(c=>c.emp||c.min):null;
-    let extra='';
-    if(rows.length>1) extra+=` <span style="color:var(--gold)">· extra flush(es): ${rows.slice(1).map(r=>`${r.date||'?'} = ${r.weight}lb`).join(', ')} — add as separate rows</span>`;
-    if(_scanLabor&&_scanLabor.length) extra+=` <span style="color:var(--fern)">· crew: ${_scanLabor.map(c=>`${c.emp||'?'} ${c.min}m`).join(', ')} (auto-fills at Log)</span>`;
-    show(`✓ Read <b>${d.lot||'?'}</b> / ${d.strain||'?'} @ ${d.container||'?'} — <b>verify below &amp; set the Grade</b>, then Log.${extra}`);
+    // one row per lot on the sheet: first fills the form, the rest are staged (grade defaults to A — adjust)
+    const rows=(Array.isArray(d.rows)?d.rows:[]).filter(x=>x&&(x.lot||x.strain||x.harvested));
+    if(rows[0]){
+      const l=document.getElementById('hl-lot'); if(l){ l.value=rows[0].lot||''; onHarvestLot(); }
+      const v=document.getElementById('hl-v'); if(v) v.value=rows[0].strain||'';
+      const w=document.getElementById('hl-w'); if(w && (rows[0].harvested||rows[0].harvested===0)) w.value=rows[0].harvested||'';
+    }
+    const con=document.getElementById('hl-c')?.value||'', fac=document.getElementById('hl-fac')?.value||'', dt2=document.getElementById('hl-dt')?.value||tday();
+    let staged=0;
+    for(let i=1;i<rows.length;i++){ const rr=rows[i]; if(!(rr.lot||rr.strain)) continue;
+      _harvestQueue.push({date:dt2,container:con,facility:fac,lotNumber:(rr.lot||'').trim(),variety:(rr.strain||'').trim(),grade:'A',weight:parseFloat(rr.harvested)||0,notes:'from scan'});
+      staged++;
+    }
     renderHarvestQueue();
+    let extra='';
+    if(staged) extra+=` <span style="color:var(--gold)">· ${staged} more lot(s) staged below (grade defaulted to A — adjust)</span>`;
+    if(_scanLabor&&_scanLabor.length) extra+=` <span style="color:var(--fern)">· crew: ${_scanLabor.map(c=>`${c.emp||'?'} ${c.min}m`).join(', ')} (auto-fills at Log)</span>`;
+    show(`✓ Read <b>${rows.length} lot(s)</b> @ ${d.container||'?'}${d.location?' ('+d.location+')':''} — <b>verify &amp; set the Grade</b>, then Log.${extra}`);
   }catch(e){ show('⚠ '+e.message); }
   finally{ input.value=''; }
 }
@@ -4577,8 +4585,11 @@ async function processScan(file, kind){
   }
   const user=firebase.auth().currentUser; if(!user) throw new Error('Not signed in — reload and log in.');
   const tok=await user.getIdToken();
+  // PDFs: the image IS the pdf, so let the function archive it directly (don't send it twice)
+  const payload={image:sendImage,mime:sendMime,kind};
+  if(!isPdf){ payload.archiveB64=pdfB64; payload.archiveMime='application/pdf'; payload.archiveExt='pdf'; }
   const resp=await fetch(PARSE_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
-    body:JSON.stringify({image:sendImage,mime:sendMime,kind,archiveB64:pdfB64,archiveMime:'application/pdf',archiveExt:'pdf'})});
+    body:JSON.stringify(payload)});
   let j={}; try{ j=await resp.json(); }catch(e){}
   if(!resp.ok) throw new Error(j.error||('Server error '+resp.status));
   if(!j.ok) throw new Error(j.parseError?'Could not read the sheet clearly — retake with better light / flatter angle.':(j.error||'Parse failed.'));
