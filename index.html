@@ -2420,6 +2420,10 @@ function rOC(o,container,showApprove){
     if(['pending','confirmed','packed'].includes(o.status)){
       actHTML = `<button class="btn b-g b-sm" onclick="openEditOrder('${o.id}')">✎ Edit</button>` + actHTML;
     }
+    // Re-send the packing-slip notification email
+    if(['packed','invoiced'].includes(o.status)){
+      actHTML = `<button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send packing-slip email" onclick="resendSlip('${o.id}')">✉</button>` + actHTML;
+    }
   }
 
   // Batch checkbox (admin/staff only)
@@ -2792,7 +2796,14 @@ function buildPackOrderCard(){
   return `
     <div class="card" style="margin-bottom:24px;border:2px solid var(--gold);">
       <div class="card-t">📦 Pack → Log Order (from SO#)</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Enter the <strong>S.O. number from the packing slip</strong>, the client, what you packed, and <strong>check the lots that went into this pack</strong>. Generates the order (marked <strong>packed</strong>) with those lots tied for traceability.</div>
+      <div style="background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.3);border-radius:6px;padding:12px 14px;margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:600;color:var(--fern);margin-bottom:8px;">📸 Snap / Upload the packing slip — AI fills this whole form</div>
+        <label class="btn b-g" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
+          <input type="file" accept="image/*" style="display:none;" onchange="snapSlip(this)">
+        </label>
+        <div id="po-snap-status" style="display:none;margin-top:10px;font-size:12px;padding:8px 12px;background:var(--white);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Or enter manually: the <strong>S.O. number from the packing slip</strong>, the client, what you packed, and <strong>check the lots that went into this pack</strong>. Generates the order (marked <strong>packed</strong>) with those lots tied for traceability.</div>
       <div class="fg2">
         <div class="fgl"><label>S.O. # <span style="color:var(--text3);font-size:9px;">optional — add later</span></label><input class="fi" id="po-so" placeholder="from Accounting's slip (or blank)"></div>
         <div class="fgl"><label>Client <span style="color:var(--rust);">*</span></label><input class="fi" id="po-client" list="po-clientl" placeholder="Type or pick client…" autocomplete="off"><datalist id="po-clientl">${clientNames.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('')}</datalist></div>
@@ -2823,15 +2834,23 @@ async function savePackOrder(){
   const checked=[...document.querySelectorAll('.po-lot-chk:checked')];
   const usedLots=[...new Set(checked.map(c=>c.value).filter(Boolean))];
   const usedHarvests=[...new Set(checked.map(c=>c.getAttribute('data-hid')).filter(Boolean))];
+  const snapUrl=(_lastSnap&&_lastSnap.kind==='slip')?_lastSnap.url:'';
+  const slipShip=(_lastSnap&&_lastSnap.kind==='slip')?_lastSnap.shipDate:'';
   const o={ clientId:cr?.id||null, client, day, status:'packed', receivedAt:new Date().toISOString(), packedAt:new Date().toISOString(),
     ...qtys, notes:(document.getElementById('po-notes')?.value||'').trim(),
     orderRef:nextHQOrderNum(), soNum:so, custom:false, isStanding:false, week:wkStart(),
-    usedHarvests, usedLots, source:'pack' };
+    usedHarvests, usedLots, scanUrl:snapUrl, source:'pack' };
   try{ const oId=await FS.add('orders',o); o.id=oId; DB.orders.push(o); }
   catch(e){ alert('Save failed: '+(e.message||e)); return; }
   logAudit('order_created',`Packed order${so?' SO#'+so:''} for ${client} — ${usedLots.length} lot(s) tied`);
   toast('po-t','✓ Packed order for '+client+(so?' (SO#'+so+')':' — add SO# later')+' created');
+  // build the email report from what was packed
+  const items=ALL_PRODS.filter(p=>qtys[p.dataKey]>0).map(p=>({code:p.code,name:p.name,qty:qtys[p.dataKey]}));
+  const shipIso=_toISO(slipShip)||_toISO(o.packedAt.slice(0,10))||o.packedAt.slice(0,10);
+  const snapImg=(_lastSnap&&_lastSnap.kind==='slip'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
   clrPackOrder(); renderC();
+  openEmailDispatch('slip', notifySubject('slip',{client,soNum:so,shipDate:shipIso}), {label:'Packing Slip '+(so?'SO '+so:client),
+    data:{client,soNum:so,poNum:(o.notes.match(/PO\s*(\S+)/i)||[])[1]||'',shipDate:shipIso,items,lots:usedLots,imageUrl:snapUrl}, image:snapImg});
 }
 function clrPackOrder(){
   ['po-so','po-client','po-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
@@ -3690,11 +3709,15 @@ async function logReceiving(){
   const _vg={variety}; if(!normalizeRowVarieties([_vg])) return; const vCanon=_vg.variety; // standardize variety + warn on new
   addVariety(vCanon);
   if(source!=='internal' && vendor) addSupplier(vendor); // remember the supplier
-  const rData={date,facility:'Hydes Ferry',source,vendor,variety:vCanon,lotNumber,blockCount,blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,status:'on-hand',createdAt:new Date().toISOString()};
+  const snapUrl=(_lastSnap&&_lastSnap.kind==='receiving')?_lastSnap.url:'';
+  const rData={date,facility:'Hydes Ferry',source,vendor,variety:vCanon,lotNumber,blockCount,blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,scanUrl:snapUrl,status:'on-hand',createdAt:new Date().toISOString()};
   const rId=await FS.add('receivings',rData);
   DB.receivings.push({id:rId,...rData});
   logAudit('blocks_received',`Received ${blockCount} ${variety} blocks — Lot ${lotNumber} from ${vendor||source} @ Hydes Ferry`);
   toast('rc-t'); clrReceiving(); renderC();
+  const snapImg=(_lastSnap&&_lastSnap.kind==='receiving'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
+  openEmailDispatch('receiving', notifySubject('receiving',{vendor,source,lot:lotNumber,date}), {label:'Receiving '+lotNumber,
+    data:{date,vendor,source,variety:vCanon,lot:lotNumber,blockCount,blockWeightLb,poNum,imageUrl:snapUrl}, image:snapImg});
 }
 function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); const v=document.getElementById('rc-variety'); if(v) v.value=''; }
 
@@ -3728,7 +3751,7 @@ function rReceiving(el){
     <td class="mn" style="color:var(--gold);">${r.lotNumber}</td><td class="mn">${r.blockCount}</td><td class="mn">${r.placedCount||0}</td>
     <td class="mn">${receivingOnHand(r)}</td><td class="mn" style="font-size:10px;color:var(--text3);">${r.poNum||''}${r.cost?` · $${r.cost}`:''}</td>
     <td style="font-size:11px;color:var(--text3);">${r.receivedBy||''}</td>
-    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditReceiving('${r.id}')">✎ Edit</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
+    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditReceiving('${r.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendReceiving('${r.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
   </tr>`).join('') : `<tr><td colspan="${canEdit()?10:9}" class="empty">No receivings logged yet.</td></tr>`;
   el.innerHTML=`
     <div class="ph"><div class="ph-t">📥 Receiving</div><div class="ph-s">Blocks into Hydes Ferry · internal production or vendors → placed into fruiting</div></div>
@@ -3736,6 +3759,14 @@ function rReceiving(el){
       <div class="sc g"><div class="sc-l">Blocks Awaiting Placement</div><div class="sc-v">${totalOnHand}</div><div class="sc-n">${onHand.length} batch${onHand.length===1?'':'es'} on hand</div></div>
       <div class="sc"><div class="sc-l">Receivings Logged</div><div class="sc-v">${history.length}</div><div class="sc-n">all-time intake records</div></div>
     </div>
+    ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
+      <div class="card-t">📸 Snap / Upload Receiving Sheet</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the delivery/receiving sheet — AI fills the form below. You verify, then Log.</div>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
+        <input type="file" accept="image/*" style="display:none;" onchange="snapReceiving(this)">
+      </label>
+      <div id="rc-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+    </div>`:''}
     ${canEdit()?`<div class="card"><div class="card-t">Log Received Blocks</div>
       <div class="fg2">
         <div class="fgl"><label>Date Received</label><input class="fi" type="date" id="rc-date" value="${tday()}"></div>
@@ -4406,6 +4437,21 @@ function notifyReport(kind, subject, data){
     let tot=0;
     rows.forEach(r=>{ tot+=(parseInt(r.blockCount)||0); L.push(` • ${r.lotNumber||r.lot||''} — ${r.variety||''} — ${r.blockCount||0} blocks`); });
     L.push(''); L.push('TOTAL: '+tot+' blocks across '+rows.length+' lot'+(rows.length!==1?'s':''));
+  } else if(kind==='slip'){
+    L.push('Client:    '+(data.client||''));
+    L.push('S.O. #:    '+(data.soNum||'—'));
+    if(data.poNum) L.push('P.O. #:    '+data.poNum);
+    if(data.shipDate) L.push('Ship date: '+(_mm_dd_yy(data.shipDate)||data.shipDate));
+    L.push(''); L.push('PACKED');
+    (data.items||[]).forEach(it=>L.push(` • ${it.code||''} ${it.name||''} × ${it.qty}`));
+    if((data.lots||[]).length){ L.push(''); L.push('LOTS TIED FOR TRACEABILITY'); L.push(' • '+data.lots.join(', ')); }
+  } else if(kind==='receiving'){
+    L.push('Date:    '+(_mm_dd_yy(data.date)||data.date||''));
+    L.push('Source:  '+((data.source==='internal'?'Internal':'Vendor')+(data.vendor?' — '+data.vendor:'')));
+    L.push('Variety: '+(data.variety||''));
+    L.push('Lot:     '+(data.lot||data.lotNumber||''));
+    L.push('Blocks:  '+(data.blockCount||0)+(data.blockWeightLb?' @ '+data.blockWeightLb+' lb/block':''));
+    if(data.poNum) L.push('PO #:    '+data.poNum);
   } else if(data.lines){ data.lines.forEach(l=>L.push(l)); }
   if(data.imageUrl){ L.push(''); L.push('📎 Scanned sheet (click to view/download):'); L.push(data.imageUrl); }
   L.push(''); L.push('— Auto-generated by TM HQ from a scanned sheet.');
@@ -4535,6 +4581,69 @@ async function snapFruiting(input){
 }
 // Resend the notification for an already-logged record
 function resendHarvest(id){ const h=DB.harvests.find(x=>x.id===id); if(!h) return; openEmailDispatch('harvest', notifySubject('harvest',h), {label:'Harvest '+(h.lotNumber||''), resend:true, data:{prime:h, rows:[h], crew:[], imageUrl:h.scanUrl||''}}); }
+
+// ── RECEIVING snap → parse → prefill form ──
+async function snapReceiving(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('rc-snap-status');
+  const show=(h)=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Reading the sheet with AI…');
+  try{
+    const d=await parseSheetImage(file,'receiving');
+    _lastSnap={kind:'receiving',url:d._imageUrl||'',name:'receiving-sheet.jpg'};
+    try{ const dn=await _downscaleImage(file); if(dn){ _lastSnap.b64=dn.b64; _lastSnap.dataUrl=dn.dataUrl; _lastSnap.mime=dn.mime; } }catch(e){}
+    const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null&&v!=='') e.value=v; };
+    const iso=_toISO(d.date); if(iso) set('rc-date',iso);
+    if(d.source){ const s=document.getElementById('rc-source'); if(s){ s.value=(d.source==='internal'?'internal':'vendor'); if(typeof onRecSourceChange==='function') onRecSourceChange(); } }
+    set('rc-vendor',d.vendor); set('rc-variety',d.variety); set('rc-lot',d.lot);
+    if(d.blockCount) set('rc-bc',d.blockCount); if(d.blockWeightLb) set('rc-bw',d.blockWeightLb);
+    if(d.notes) set('rc-notes',d.notes);
+    show(`✓ Read ${d.variety||'?'} / Lot ${d.lot||'?'} (${d.blockCount||'?'} blocks) — <b>verify below</b>, then Log.`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+function resendReceiving(id){ const r=DB.receivings.find(x=>x.id===id); if(!r) return; openEmailDispatch('receiving', notifySubject('receiving',{vendor:r.vendor,source:r.source,lot:r.lotNumber,date:r.date}), {label:'Receiving '+(r.lotNumber||''), resend:true, data:{date:r.date,vendor:r.vendor,source:r.source,variety:r.variety,lot:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,poNum:r.poNum,imageUrl:r.scanUrl||''}}); }
+function resendSlip(id){ const o=DB.orders.find(x=>x.id===id); if(!o) return;
+  const items=ALL_PRODS.filter(p=>o[p.dataKey]>0).map(p=>({code:p.code,name:p.name,qty:o[p.dataKey]}));
+  const shipIso=_toISO((o.packedAt||'').slice(0,10))||(o.packedAt||'').slice(0,10);
+  openEmailDispatch('slip', notifySubject('slip',{client:o.client,soNum:o.soNum,shipDate:shipIso}), {label:'Packing Slip '+(o.soNum?'SO '+o.soNum:o.client), resend:true,
+    data:{client:o.client,soNum:o.soNum||'',poNum:(String(o.notes||'').match(/PO\s*(\S+)/i)||[])[1]||'',shipDate:shipIso,items,lots:o.usedLots||[],imageUrl:o.scanUrl||''}}); }
+
+// ── PACKING SLIP snap → parse → prefill the Pack→Order form ──
+async function snapSlip(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('po-snap-status');
+  const show=(h)=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Reading the packing slip with AI…');
+  try{
+    const d=await parseSheetImage(file,'slip');
+    _lastSnap={kind:'slip',url:d._imageUrl||'',name:'packing-slip.jpg',shipDate:d.shipDate||d.date||'',poNum:d.poNum||''};
+    try{ const dn=await _downscaleImage(file); if(dn){ _lastSnap.b64=dn.b64; _lastSnap.dataUrl=dn.dataUrl; _lastSnap.mime=dn.mime; } }catch(e){}
+    const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null&&v!=='') e.value=v; };
+    set('po-so',d.soNum); set('po-client',d.client);
+    // ship date → delivery-day dropdown
+    const iso=_toISO(d.shipDate||d.date); if(iso){ const wd=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(iso+'T12:00:00').getDay()]; const sel=document.getElementById('po-day'); if(sel&&wd) sel.value=wd; }
+    if(d.poNum){ const n=document.getElementById('po-notes'); if(n&&!n.value) n.value='PO '+d.poNum; }
+    // map slip item codes → product qty inputs
+    let matched=0, unmatched=[];
+    (d.items||[]).forEach(it=>{
+      const code=(it.code||'').trim().toUpperCase();
+      const qty=parseInt(it.shipped)||parseInt(it.ordered)||0; if(!qty) return;
+      const prod=ALL_PRODS.find(p=>p.code.toUpperCase()===code);
+      if(prod){ set('po-'+prod.dataKey,qty); matched++; } else unmatched.push(`${it.code||'?'}×${qty}`);
+    });
+    // pre-check lots that match on-hand lot checkboxes
+    const slipLots=(d.lots||[]).map(l=>(l.lot||'').trim()).filter(Boolean);
+    let lotHits=0, lotMiss=[];
+    slipLots.forEach(lot=>{ const cb=[...document.querySelectorAll('.po-lot-chk')].find(c=>c.value.toUpperCase()===lot.toUpperCase()); if(cb){ cb.checked=true; lotHits++; } else lotMiss.push(lot); });
+    let notes=`✓ Read SO ${d.soNum||'?'} · ${d.client||'?'} — ${matched} item(s) filled`;
+    if(unmatched.length) notes+=`; <span style="color:var(--gold)">unmatched code(s): ${unmatched.join(', ')} — enter manually</span>`;
+    if(lotHits) notes+=`; ${lotHits} lot(s) checked`;
+    if(lotMiss.length) notes+=`; <span style="color:var(--gold)">lot(s) not on hand: ${lotMiss.join(', ')}</span>`;
+    show(notes+`. <b>Verify, then Generate.</b>`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
 
 function rHarvest(el){
   const s=sByKey('harvest',[...DB.harvests].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')),{date:h=>h.date,container:h=>h.container,facility:h=>h.facility||'',lotNumber:h=>h.lotNumber||'',variety:h=>h.variety,grade:h=>h.grade||'',weight:h=>h.weight||0,usedWeight:h=>h.usedWeight||0});
