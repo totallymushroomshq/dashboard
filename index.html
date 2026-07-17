@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-17 #15</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-17 #16</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5029,16 +5029,23 @@ function addHarvestRow(){
   const lh=document.getElementById('hl-lot'); if(lh) lh.focus();
 }
 function removeHarvestRow(i){ _harvestQueue.splice(i,1); renderHarvestQueue(); }
+function updateHarvestRow(i, field, value){ if(_harvestQueue[i]){ _harvestQueue[i][field] = (field==='weight') ? (parseFloat(value)||0) : (value||'').trim(); } }
 function renderHarvestQueue(){
   const c=document.getElementById('hl-queue');
-  if(c) c.innerHTML = _harvestQueue.length ? `<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;">STAGED — ${_harvestQueue.length} LOT(S) READY TO LOG</div>`+
-    _harvestQueue.map((r,i)=>`<div style="display:flex;align-items:center;gap:10px;background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:7px 12px;margin-bottom:6px;font-size:12px;">
-      <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);">${r.lotNumber}</span>
-      <span style="font-weight:600;">${r.variety}</span>
-      <span class="bdg ${r.grade==='A'?'bc':r.grade==='B'?'bad':'bp'}">${r.grade}</span>
-      <span class="mn">${r.weight} lb</span>
-      <span style="color:var(--text3);font-size:11px;">${r.container}</span>
-      <button class="btn b-r b-sm" style="margin-left:auto;" onclick="removeHarvestRow(${i})">✕</button>
+  if(c) c.innerHTML = _harvestQueue.length ? `<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;">STAGED — ${_harvestQueue.length} LOT(S) · EDIT ANY FIELD BEFORE LOGGING</div>
+    <div style="display:flex;gap:6px;align-items:center;padding:0 8px 4px;font-family:'Syne Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--text3);">
+      <span style="flex:0 0 118px;">LOT #</span><span style="flex:1;">VARIETY</span><span style="flex:0 0 74px;">GRADE</span><span style="flex:0 0 82px;">WEIGHT lb</span><span style="flex:0 0 26px;"></span>
+    </div>`+
+    _harvestQueue.map((r,i)=>`<div style="display:flex;align-items:center;gap:6px;background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:6px 8px;margin-bottom:6px;">
+      <input class="fi" style="flex:0 0 118px;padding:5px 7px;font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);" value="${attrEsc(r.lotNumber)}" onchange="updateHarvestRow(${i},'lotNumber',this.value)" title="Lot number">
+      <input class="fi" list="hl-v-dl" style="flex:1;padding:5px 7px;" value="${attrEsc(r.variety)}" onchange="updateHarvestRow(${i},'variety',this.value)" title="Variety">
+      <select class="fs" style="flex:0 0 74px;padding:5px 4px;" onchange="updateHarvestRow(${i},'grade',this.value)" title="Grade">
+        <option value="A" ${r.grade==='A'?'selected':''}>A</option>
+        <option value="B" ${r.grade==='B'?'selected':''}>B</option>
+        <option value="C" ${r.grade==='C'?'selected':''}>C</option>
+      </select>
+      <input class="fi" type="number" step="0.1" min="0" style="flex:0 0 82px;padding:5px 7px;" value="${r.weight}" onchange="updateHarvestRow(${i},'weight',this.value)" title="Weight (lb)">
+      <button class="btn b-r b-sm" style="flex:0 0 26px;" onclick="removeHarvestRow(${i})" title="Remove this lot">✕</button>
     </div>`).join('') : '';
   const cur=_readHarvestRow();
   const n=_harvestQueue.length+((cur.lotNumber&&cur.variety)?1:0);
