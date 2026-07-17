@@ -4275,6 +4275,57 @@ function onContainerSelect(code){
   }
 }
 
+// ============ AI SHEET PARSING (shared) ============
+const PARSE_URL='https://us-central1-totally-mushrooms-hq.cloudfunctions.net/parseSheet';
+function _fileToB64(file){
+  return new Promise((res,rej)=>{ const r=new FileReader();
+    r.onload=()=>{ const s=String(r.result); res(s.slice(s.indexOf(',')+1)); };
+    r.onerror=()=>rej(new Error('Could not read file')); r.readAsDataURL(file); });
+}
+async function parseSheetImage(file, kind){
+  const user=firebase.auth().currentUser;
+  if(!user) throw new Error('Not signed in — reload and log in.');
+  const tok=await user.getIdToken();
+  const b64=await _fileToB64(file);
+  const resp=await fetch(PARSE_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
+    body:JSON.stringify({image:b64,mime:file.type||'image/jpeg',kind})});
+  let j={}; try{ j=await resp.json(); }catch(e){}
+  if(!resp.ok) throw new Error(j.error||('Server error '+resp.status));
+  if(!j.ok) throw new Error(j.parseError?'Could not read the sheet clearly — retake the photo with better light.':(j.error||'Parse failed.'));
+  return j.data;
+}
+// lenient date → ISO (handles 7/12, 07/12/26, 071226, 2026-07-12)
+function _toISO(s){
+  s=String(s||'').trim(); if(!s) return '';
+  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(m) return s;
+  m=s.match(/^(\d{2})(\d{2})(\d{2})$/); if(m) return `20${m[3]}-${m[1]}-${m[2]}`;
+  m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?$/);
+  if(m){ let yr=m[3]?(m[3].length===2?'20'+m[3]:m[3]):tday().slice(0,4);
+    return `${yr}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`; }
+  return '';
+}
+async function snapHarvest(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('hl-snap-status');
+  const show=(h)=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Reading the sheet with AI…');
+  try{
+    const d=await parseSheetImage(file,'harvest');
+    if(d.container){ const c=document.getElementById('hl-c'); if(c){ c.value=d.container; onContainerSelect(d.container); } }
+    if(d.strain){ const v=document.getElementById('hl-v'); if(v) v.value=d.strain; }
+    if(d.lot){ const l=document.getElementById('hl-lot'); if(l){ l.value=d.lot; onHarvestLot(); } }
+    const rows=Array.isArray(d.rows)?d.rows:[];
+    if(rows[0]){
+      const iso=_toISO(rows[0].date); if(iso){ const dt=document.getElementById('hl-dt'); if(dt) dt.value=iso; }
+      if(rows[0].weight){ const w=document.getElementById('hl-w'); if(w) w.value=rows[0].weight; }
+    }
+    let extra='';
+    if(rows.length>1) extra=` <span style="color:var(--gold)">· extra flush(es): ${rows.slice(1).map(r=>`${r.date||'?'} = ${r.weight}lb`).join(', ')} — add as separate rows</span>`;
+    show(`✓ Read <b>${d.lot||'?'}</b> / ${d.strain||'?'} @ ${d.container||'?'} — <b>verify below &amp; set the Grade</b>, then Log.${extra}`);
+    renderHarvestQueue();
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
 function rHarvest(el){
   const s=sByKey('harvest',[...DB.harvests].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')),{date:h=>h.date,container:h=>h.container,facility:h=>h.facility||'',lotNumber:h=>h.lotNumber||'',variety:h=>h.variety,grade:h=>h.grade||'',weight:h=>h.weight||0,usedWeight:h=>h.usedWeight||0});
   const activeContainers=getActiveContainers();
@@ -4294,6 +4345,14 @@ function rHarvest(el){
   ].filter(Boolean))].sort();
   el.innerHTML=`
     <div class="ph"><div class="ph-t">Harvest Log</div><div class="ph-s">Record each lot from the grow room</div></div>
+    ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
+      <div class="card-t">📸 Snap / Upload Harvest Sheet</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the handwritten tote label — AI reads it and fills the form below. You verify, set the grade, then Log.</div>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
+        <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="snapHarvest(this)">
+      </label>
+      <div id="hl-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+    </div>`:''}
     ${canEdit()?'<div class="card"><div class="card-t">Log a Harvest</div>':'<div style="display:none"><div>'}
     <div class="fg2">
       <div class="fgl"><label>Date</label><input class="fi" type="date" id="hl-dt" value="${tday()}"></div>
