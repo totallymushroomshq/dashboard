@@ -503,7 +503,8 @@ const DB = {
   preservationBatches:[],
   labBatches:[], blockDisposals:[], containerFlips:[], shipments:[],
   facilities:[], containerOverrides:{},
-  emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false}
+  emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false},
+  notify:{enabled:true,templateId:'',to:{}}
 };
 let packDaySelected = {}; // harvestId -> pull weight, persists across renders
 let packExpanded = {}; // variety -> expanded (breakout) in pack pull view
@@ -652,6 +653,11 @@ async function loadDB(){
       const cfgDoc=await fdb.collection('appConfig').doc('emailjs').get();
       if(cfgDoc.exists){ Object.assign(DB.emailjs,cfgDoc.data()); }
     }catch(e){ console.warn('EmailJS config not found'); }
+    // Load notification (auto-email) config from appConfig
+    try{
+      const nDoc=await fdb.collection('appConfig').doc('notify').get();
+      if(nDoc.exists){ Object.assign(DB.notify,nDoc.data()); }
+    }catch(e){ console.warn('notify config not found'); }
     // Load active facilities config from appConfig
     try{
       const facDoc=await fdb.collection('appConfig').doc('facilities').get();
@@ -1661,7 +1667,11 @@ async function saveEmailJSConfig(){
   DB.emailjs={serviceId:svc,templateId:tpl,alertTemplateId:atpl||'',publicKey:pk,enabled:!!en,alertMode:am};
   await fdb.collection('appConfig').doc('emailjs').set(DB.emailjs);
   emailjs.init({publicKey:pk});
-  toast('ejs-t','✓ EmailJS settings saved');
+  // auto-email notification config
+  DB.notify.templateId=document.getElementById('notify-tpl')?.value.trim()||'';
+  DB.notify.enabled=!!document.getElementById('notify-en')?.checked;
+  await fdb.collection('appConfig').doc('notify').set({templateId:DB.notify.templateId,enabled:DB.notify.enabled},{merge:true});
+  toast('ejs-t','✓ Email settings saved');
 }
 
 // ── PASSWORD RESET VIA URL PARAM ──
@@ -4326,6 +4336,94 @@ async function snapHarvest(input){
   }catch(e){ show('⚠ '+e.message); }
   finally{ input.value=''; }
 }
+
+// ============ AUTO-EMAIL NOTIFICATION DISPATCHER (shared) ============
+// Default recipients per protocol (editable at Admin → Email; overrides live in DB.notify.to)
+const NOTIFY_TO = {
+  harvest:  ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  slip:     ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  receiving:['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  lab:      ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com']
+};
+function notifyRecips(kind){ return (DB.notify.to&&DB.notify.to[kind]&&DB.notify.to[kind].length)?DB.notify.to[kind]:(NOTIFY_TO[kind]||[]); }
+// ── subject-line formatters ──
+function _locCode(facility){ return String(facility||'').trim().split(/\s+/).map(w=>(w[0]||'').toUpperCase()).join(''); }
+function _mmddyy(iso){ const m=String(iso||'').match(/(\d{4})-(\d{2})-(\d{2})/); return m?`${m[2]}${m[3]}${m[1].slice(2)}`:''; }
+function _mm_dd_yy(iso){ const m=String(iso||'').match(/(\d{4})-(\d{2})-(\d{2})/); return m?`${m[2]}-${m[3]}-${m[1].slice(2)}`:''; }
+function notifySubject(kind, r){
+  r=r||{};
+  if(kind==='harvest')  return `${_locCode(r.facility)} ${r.container||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='slip')     return `${r.client||''} Packing Slip SO ${r.soNum||''} ${_mm_dd_yy(r.shipDate||r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='receiving')return `Receiving ${r.vendor||r.source||''} ${r.lot||r.lotNumber||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='lab')      return `Lab ${r.lot||r.batch||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  return '';
+}
+// ── the pick-recipients / send modal, shown on submit (and on Resend) ──
+function openEmailDispatch(kind, subject, opts){
+  opts=opts||{};
+  const recips=notifyRecips(kind);
+  const master=DB.notify.enabled!==false;
+  const ready=master && DB.notify.templateId && DB.emailjs.serviceId && DB.emailjs.publicKey;
+  document.getElementById('em-title').textContent=(opts.resend?'Re-send Notification — ':'Send Notification — ')+(opts.label||kind);
+  document.getElementById('em-body').innerHTML=`
+    ${!ready?`<div style="background:rgba(184,76,32,.09);border:1px solid rgba(184,76,32,.3);border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--rust,#b84c20);line-height:1.5;">
+      ${!master?'📴 Email sending is <b>OFF</b> (testing mode). Flip it on below, or in Admin → Email.'
+        :'⚠ Notification template not set yet — add the EmailJS Template ID in Admin → Email to enable sending. You can still review the subject &amp; recipients here.'}
+    </div>`:''}
+    <div class="fgl"><label>Subject line <span style="color:var(--text3);font-size:9px;">edit if needed</span></label>
+      <input class="fi" id="disp-subj" value="${attrEsc(subject||'')}" style="font-family:'Syne Mono',monospace;"></div>
+    <div class="fgl" style="margin-top:12px;"><label>Send to <span style="color:var(--text3);font-size:9px;">uncheck to skip anyone</span></label>
+      <div id="disp-recips" style="display:flex;flex-direction:column;gap:6px;margin-top:5px;">
+        ${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="checkbox" class="disp-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px;"><input class="fi" id="disp-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();dispAddRecip();}"><button class="btn b-g b-sm" onclick="dispAddRecip()">+ Add</button></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:16px;color:var(--text2);padding-top:12px;border-top:1px solid var(--border);">
+      <input type="checkbox" id="disp-master" ${master?'checked':''} onchange="toggleNotifyMaster(this.checked)"> <b>Email sending enabled</b> (global — turn off during testing)
+    </label>
+    <div class="form-acts" style="margin-top:18px;">
+      <button class="btn b-m b-lg" id="disp-send" onclick="dispSend()" ${ready?'':'disabled style="opacity:.45;cursor:not-allowed;"'}>✉ Send now</button>
+      <button class="btn b-g" onclick="closeModal()">${opts.resend?'Cancel':"Skip / don't send"}</button>
+    </div>
+    <div class="toast" id="disp-t">✓ Sent</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+function dispAddRecip(){
+  const inp=document.getElementById('disp-add'); const v=(inp?.value||'').trim(); if(!v) return;
+  const box=document.getElementById('disp-recips');
+  const l=document.createElement('label'); l.style.cssText='display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;';
+  l.innerHTML=`<input type="checkbox" class="disp-r" value="${attrEsc(v)}" checked> ${v}`;
+  box.appendChild(l); inp.value=''; inp.focus();
+}
+async function toggleNotifyMaster(on){
+  DB.notify.enabled=!!on;
+  const btn=document.getElementById('disp-send');
+  const ready=DB.notify.enabled && DB.notify.templateId && DB.emailjs.serviceId && DB.emailjs.publicKey;
+  if(btn){ btn.disabled=!ready; btn.style.opacity=ready?'':'.45'; btn.style.cursor=ready?'':'not-allowed'; }
+  try{ await fdb.collection('appConfig').doc('notify').set({enabled:DB.notify.enabled},{merge:true}); }catch(e){ console.warn(e); }
+}
+async function dispSend(){
+  const subj=(document.getElementById('disp-subj')?.value||'').trim();
+  const to=[...document.querySelectorAll('.disp-r:checked')].map(c=>c.value);
+  if(!subj){ alert('Subject line is required.'); return; }
+  if(!to.length){ alert('Pick at least one recipient (or hit Skip).'); return; }
+  const btn=document.getElementById('disp-send'); if(btn){ btn.disabled=true; btn.textContent='Sending…'; }
+  const ok=await sendNotify(subj,to);
+  if(ok){ toast('disp-t','✓ Sent to '+to.length+' recipient'+(to.length>1?'s':'')); setTimeout(closeModal,900); }
+  else { alert('Send failed — check Admin → Email (template ID + master toggle).'); if(btn){ btn.disabled=false; btn.textContent='✉ Send now'; } }
+}
+async function sendNotify(subject, toList){
+  if(DB.notify.enabled===false){ console.warn('notify disabled — skipped'); return false; }
+  if(!DB.emailjs.serviceId||!DB.notify.templateId||!DB.emailjs.publicKey){ console.warn('notify not configured — skipped'); return false; }
+  try{
+    await emailjs.send(DB.emailjs.serviceId, DB.notify.templateId, { email_subject:subject, to_email:toList.join(','), from_name:'Totally Mushrooms HQ' });
+    try{ logAudit('notify_sent', subject+' → '+toList.join(', ')); }catch(e){}
+    return true;
+  }catch(e){ console.error('notify send failed',e); return false; }
+}
+// Resend the notification for an already-logged record
+function resendHarvest(id){ const h=DB.harvests.find(x=>x.id===id); if(!h) return; openEmailDispatch('harvest', notifySubject('harvest',h), {label:'Harvest '+(h.lotNumber||''), resend:true}); }
+
 function rHarvest(el){
   const s=sByKey('harvest',[...DB.harvests].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')),{date:h=>h.date,container:h=>h.container,facility:h=>h.facility||'',lotNumber:h=>h.lotNumber||'',variety:h=>h.variety,grade:h=>h.grade||'',weight:h=>h.weight||0,usedWeight:h=>h.usedWeight||0});
   const activeContainers=getActiveContainers();
@@ -4349,7 +4447,7 @@ function rHarvest(el){
       <div class="card-t">📸 Snap / Upload Harvest Sheet</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the handwritten tote label — AI reads it and fills the form below. You verify, set the grade, then Log.</div>
       <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
-        <input type="file" accept="image/*" capture="environment" style="display:none;" onchange="snapHarvest(this)">
+        <input type="file" accept="image/*" style="display:none;" onchange="snapHarvest(this)">
       </label>
       <div id="hl-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
     </div>`:''}
@@ -4409,7 +4507,7 @@ function rHarvest(el){
             <td class="mn">${h.weight?h.weight+' lb':'—'}</td>
             <td class="mn" style="font-weight:700;color:${col}">${onHand.toFixed(1)} lb</td>
             <td style="font-size:11px;color:var(--text3)">${h.notes||'—'}</td>
-            ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditHarvest('${h.id}')">✎ Edit</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delHarvest('${h.id}')">✕</button>`:''}</td>`:''}
+            ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditHarvest('${h.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendHarvest('${h.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delHarvest('${h.id}')">✕</button>`:''}</td>`:''}
           </tr>`}).join('')
       }</tbody>
     </table></div>
@@ -4624,8 +4722,12 @@ async function _doHarvestCommit(rows){
     n++;
   }
   _harvestQueue=[];
+  // capture the session's primary identity for the notification subject BEFORE re-render
+  const prime=rows.find(r=>r.container)||rows[0]||{};
   toast('hl-t', n>1?`✓ ${n} harvests recorded`:'✓ Harvest recorded');
   rHarvest(document.getElementById('main-views'));
+  // fire the auto-email dispatcher (subject = "LOC CONTAINER MMDDYY")
+  openEmailDispatch('harvest', notifySubject('harvest',prime), {label:'Harvest '+(prime.container||'')});
 }
 
 // ── EDIT / DELETE a harvest (fix mistakes) ──
@@ -9209,7 +9311,25 @@ function rAdmin(el){
         <div style="margin-top:6px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);line-height:1.8;">
           Alert email variables: <code style="color:var(--gold);">{{to_email}}</code> · <code style="color:var(--gold);">{{account_name}}</code> · <code style="color:var(--gold);">{{account_email}}</code> · <code style="color:var(--gold);">{{role}}</code> · <code style="color:var(--gold);">{{login_time}}</code> · <code style="color:var(--gold);">{{login_ip}}</code> · <code style="color:var(--gold);">{{login_location}}</code> · <code style="color:var(--gold);">{{login_browser}}</code> · <code style="color:var(--gold);">{{login_os}}</code> · <code style="color:var(--gold);">{{device_status}}</code> · <code style="color:var(--gold);">{{yes_link}}</code> · <code style="color:var(--gold);">{{no_link}}</code> · <code style="color:var(--gold);">{{from_name}}</code>
         </div>
-        <div class="tog" style="margin-top:16px;">
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin:20px 0 10px;border-top:1px solid var(--border);padding-top:16px;">📨 Auto-Email Notifications <span style="color:var(--gold);font-size:8px;">(Harvest / Packing / Receiving / Lab → Katherine)</span></div>
+        <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);line-height:1.7;margin-bottom:10px;">
+          Create ONE EmailJS template with <b>To&nbsp;Email</b> = <code style="color:var(--gold);">{{to_email}}</code> and <b>Subject</b> = <code style="color:var(--gold);">{{email_subject}}</code> (body can be anything). Paste its ID here.
+        </div>
+        <div class="fg2">
+          <div class="fgl"><label>Notification Template ID</label><input class="fi" id="notify-tpl" value="${DB.notify.templateId||''}" placeholder="e.g. template_xxxxxxx"></div>
+        </div>
+        <div class="tog" style="margin-top:12px;">
+          <label class="tsw"><input type="checkbox" id="notify-en" ${DB.notify.enabled!==false?'checked':''}><div class="ttr"></div></label>
+          <label for="notify-en" style="font-size:13px;color:var(--text2);">Send auto-emails on submit <span style="color:var(--text3);font-size:11px;">(turn OFF during testing — you'll still get the recipient picker, just no send)</span></label>
+        </div>
+        <div style="margin-top:10px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);line-height:1.9;background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:10px 12px;">
+          Default recipients &amp; subject formats:<br>
+          • <b style="color:var(--fern);">Harvest / Packing / Receiving</b> → orders@ · Allen@ · Mat@ · Ashley@<br>
+          • <b style="color:var(--fern);">Lab (spawn/block)</b> → orders@ · joel@ · Mat@ · Allen@ · Ashley@<br>
+          <span style="color:var(--text2);">Harvest subj:</span> <code style="color:var(--gold);">OHF GH-01-01 071726</code> &nbsp; <span style="color:var(--text2);">Slip subj:</span> <code style="color:var(--gold);">Fungus Ranch Packing Slip SO 382 07-08-26</code><br>
+          <span style="color:var(--text3);">You confirm/edit subject &amp; who-to-send on every submit, and can ✉ Re-send from any logged row.</span>
+        </div>
+        <div class="tog" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
           <label class="tsw"><input type="checkbox" id="ejs-en" ${DB.emailjs.enabled?'checked':''}><div class="ttr"></div></label>
           <label for="ejs-en" style="font-size:13px;color:var(--text2);">Enable EmailJS (welcome + login alert emails)</label>
         </div>
