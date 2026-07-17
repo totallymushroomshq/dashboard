@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Totally Mushrooms</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Syne:wght@400;500;600;700&family=Syne+Mono&display=swap" rel="stylesheet">
 <style>
@@ -350,6 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-17 #15</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4396,9 +4400,9 @@ async function snapHarvest(input){
     // one row per lot on the sheet: first fills the form, the rest are staged (grade defaults to A — adjust)
     const rows=(Array.isArray(d.rows)?d.rows:[]).filter(x=>x&&(x.lot||x.strain||x.harvested));
     if(rows[0]){
-      const l=document.getElementById('hl-lot'); if(l){ l.value=rows[0].lot||''; onHarvestLot(); }
-      const v=document.getElementById('hl-v'); if(v) v.value=rows[0].strain||'';
-      const w=document.getElementById('hl-w'); if(w && (rows[0].harvested||rows[0].harvested===0)) w.value=rows[0].harvested||'';
+      const l=document.getElementById('hl-lot'); if(l && rows[0].lot){ l.value=rows[0].lot; onHarvestLot(); }
+      const v=document.getElementById('hl-v'); if(v && rows[0].strain) v.value=rows[0].strain;
+      const w=document.getElementById('hl-w'); if(w && rows[0].harvested) w.value=rows[0].harvested;
     }
     const con=document.getElementById('hl-c')?.value||'', fac=document.getElementById('hl-fac')?.value||'', dt2=document.getElementById('hl-dt')?.value||tday();
     let staged=0;
