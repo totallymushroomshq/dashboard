@@ -1225,15 +1225,24 @@ function openSessionLaborGate(kind, container, date, activity, doCommit){
       <button class="btn b-g" onclick="cancelSessionLabor()">Cancel</button>
     </div>`;
   document.getElementById('edit-modal').classList.add('open');
-  addLaborGateRow();
+  // pre-fill crew from a scanned sheet (harvest/fruiting snap), else one blank row
+  if(_scanLabor && _scanLabor.length){
+    _scanLabor.forEach(c=>addLaborGateRow(c.emp,c.min));
+    const note=document.createElement('div');
+    note.style.cssText='font-size:11px;color:var(--fern);margin:-6px 0 12px;font-family:\'Syne Mono\',monospace;';
+    note.textContent='✓ Crew pre-filled from the scanned sheet — verify before saving.';
+    const rows=document.getElementById('lg-rows'); if(rows&&rows.parentNode) rows.parentNode.insertBefore(note, rows.nextSibling);
+    _scanLabor=null;
+  } else { addLaborGateRow(); }
 }
-function addLaborGateRow(){
+let _scanLabor=null; // crew [{emp,min}] parsed from a scanned harvest/fruiting sheet, consumed by the next labor gate
+function addLaborGateRow(emp,min){
   const i=_laborGateRows++;
   const wrap=document.getElementById('lg-rows'); if(!wrap) return;
   const div=document.createElement('div');
   div.style.cssText='display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;';
-  div.innerHTML=`<div style="flex:1;"><label style="font-size:9px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:1px;">STAFF</label>${staffInput('lg-emp-'+i,'')}</div>
-    <div style="width:110px;"><label style="font-size:9px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:1px;">MINUTES</label><input class="fi" type="number" min="1" id="lg-min-${i}" placeholder="e.g. 60"></div>`;
+  div.innerHTML=`<div style="flex:1;"><label style="font-size:9px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:1px;">STAFF</label>${staffInput('lg-emp-'+i,emp||'')}</div>
+    <div style="width:110px;"><label style="font-size:9px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:1px;">MINUTES</label><input class="fi" type="number" min="1" id="lg-min-${i}" placeholder="e.g. 60" value="${min?String(min):''}"></div>`;
   wrap.appendChild(div);
 }
 async function confirmSessionLabor(){
@@ -3914,6 +3923,14 @@ function rFruiting(el){
     </div>
 
     <!-- ── LOG FORM ── -->
+    ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
+      <div class="card-t">📸 Snap / Upload Fruiting Sheet</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the fruiting log — AI reads container, lots, block counts, and crew. You verify, set block weight, then Log. Crew auto-fills the labor step.</div>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
+        <input type="file" accept="image/*" style="display:none;" onchange="snapFruiting(this)">
+      </label>
+      <div id="fr-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+    </div>`:''}
     ${canEdit()?`<div class="card"><div class="card-t">Log Fruiting Block</div>`:'<div style="display:none"><div>'}
     <div class="fgl" style="margin-bottom:12px;">
       <label>Place from Received Batch <span style="color:var(--text3);font-size:9px;">draws down the on-hand pool · leave blank for manual entry</span></label>
@@ -4321,6 +4338,8 @@ async function snapHarvest(input){
   show('⏳ Reading the sheet with AI…');
   try{
     const d=await parseSheetImage(file,'harvest');
+    // keep a small copy of the photo to attach to the notification email
+    try{ const dn=await _downscaleImage(file); if(dn) _lastSnap={kind:'harvest',b64:dn.b64,dataUrl:dn.dataUrl,mime:dn.mime,name:'harvest-sheet.jpg'}; }catch(e){}
     if(d.container){ const c=document.getElementById('hl-c'); if(c){ c.value=d.container; onContainerSelect(d.container); } }
     if(d.strain){ const v=document.getElementById('hl-v'); if(v) v.value=d.strain; }
     if(d.lot){ const l=document.getElementById('hl-lot'); if(l){ l.value=d.lot; onHarvestLot(); } }
@@ -4329,8 +4348,11 @@ async function snapHarvest(input){
       const iso=_toISO(rows[0].date); if(iso){ const dt=document.getElementById('hl-dt'); if(dt) dt.value=iso; }
       if(rows[0].weight){ const w=document.getElementById('hl-w'); if(w) w.value=rows[0].weight; }
     }
+    // crew parsed off the sheet → pre-fills the mandatory labor gate at submit
+    _scanLabor=Array.isArray(d.crew)?d.crew.map(c=>({emp:(c.name||'').trim(),min:parseInt(c.minutes)||0})).filter(c=>c.emp||c.min):null;
     let extra='';
-    if(rows.length>1) extra=` <span style="color:var(--gold)">· extra flush(es): ${rows.slice(1).map(r=>`${r.date||'?'} = ${r.weight}lb`).join(', ')} — add as separate rows</span>`;
+    if(rows.length>1) extra+=` <span style="color:var(--gold)">· extra flush(es): ${rows.slice(1).map(r=>`${r.date||'?'} = ${r.weight}lb`).join(', ')} — add as separate rows</span>`;
+    if(_scanLabor&&_scanLabor.length) extra+=` <span style="color:var(--fern)">· crew: ${_scanLabor.map(c=>`${c.emp||'?'} ${c.min}m`).join(', ')} (auto-fills at Log)</span>`;
     show(`✓ Read <b>${d.lot||'?'}</b> / ${d.strain||'?'} @ ${d.container||'?'} — <b>verify below &amp; set the Grade</b>, then Log.${extra}`);
     renderHarvestQueue();
   }catch(e){ show('⚠ '+e.message); }
@@ -4358,12 +4380,62 @@ function notifySubject(kind, r){
   if(kind==='lab')      return `Lab ${r.lot||r.batch||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
   return '';
 }
+// ── glanceable plain-text report body (repeats subject + writes out every field) ──
+function notifyReport(kind, subject, data){
+  data=data||{};
+  const head={harvest:'Harvest Log',slip:'Packing Slip',receiving:'Receiving',fruiting:'Fruiting Log'}[kind]||kind;
+  const L=['TOTALLY MUSHROOMS — '+head.toUpperCase(), subject, '─────────────────────────', ''];
+  if(kind==='harvest'){
+    const rows=data.rows||[]; const crew=data.crew||[]; const p=data.prime||rows[0]||{};
+    L.push('Date:      '+(_mm_dd_yy(p.date)||p.date||''));
+    L.push('Container: '+(p.container||''));
+    if(p.facility) L.push('Facility:  '+p.facility);
+    if(crew.length) L.push('Crew:      '+crew.map(c=>`${c.emp} (${c.min}m)`).join(', '));
+    L.push(''); L.push('LOTS HARVESTED');
+    let tot=0;
+    rows.forEach(r=>{ tot+=(parseFloat(r.weight)||0); L.push(` • ${r.lotNumber||''} — ${r.variety||''} — Grade ${r.grade||'?'} — ${r.weight} lb`); });
+    L.push(''); L.push('TOTAL: '+tot.toFixed(1)+' lb across '+rows.length+' lot'+(rows.length!==1?'s':''));
+  } else if(kind==='fruiting'){
+    const rows=data.rows||[]; const crew=data.crew||[]; const p=data.prime||rows[0]||{};
+    L.push('Date:      '+(_mm_dd_yy(p.date)||p.date||''));
+    L.push('Container: '+(p.container||p.containerID||''));
+    if(crew.length) L.push('Crew:      '+crew.map(c=>`${c.emp} (${c.min}m)`).join(', '));
+    L.push(''); L.push('BLOCKS PLACED');
+    let tot=0;
+    rows.forEach(r=>{ tot+=(parseInt(r.blockCount)||0); L.push(` • ${r.lotNumber||r.lot||''} — ${r.variety||''} — ${r.blockCount||0} blocks`); });
+    L.push(''); L.push('TOTAL: '+tot+' blocks across '+rows.length+' lot'+(rows.length!==1?'s':''));
+  } else if(data.lines){ data.lines.forEach(l=>L.push(l)); }
+  L.push(''); L.push('— Auto-generated by TM HQ from a scanned sheet.');
+  return L.join('\n');
+}
+// downscale a photo to keep email attachments small (~max 1400px, JPEG)
+function _downscaleImage(file, maxDim, quality){
+  return new Promise((res)=>{
+    const img=new Image(); const url=URL.createObjectURL(file);
+    img.onload=()=>{ try{
+      let{width:w,height:h}=img; const m=maxDim||1400;
+      if(w>m||h>m){ const s=m/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+      const cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);
+      const durl=cv.toDataURL('image/jpeg',quality||0.72);
+      URL.revokeObjectURL(url);
+      res({b64:durl.slice(durl.indexOf(',')+1), dataUrl:durl, mime:'image/jpeg'});
+    }catch(e){ URL.revokeObjectURL(url); res(null); } };
+    img.onerror=()=>{ URL.revokeObjectURL(url); res(null); };
+    img.src=url;
+  });
+}
+let _lastSnap=null; // {kind, b64, dataUrl, mime, name} — downscaled photo of the last scanned sheet, for attaching to its email
 // ── the pick-recipients / send modal, shown on submit (and on Resend) ──
+let _dispatch=null; // {kind, report, image} held for the current dispatch modal
 function openEmailDispatch(kind, subject, opts){
   opts=opts||{};
   const recips=notifyRecips(kind);
   const master=DB.notify.enabled!==false;
   const ready=master && DB.notify.templateId && DB.emailjs.serviceId && DB.emailjs.publicKey;
+  const report=opts.data?notifyReport(kind, subject, opts.data):(opts.report||'');
+  const image=opts.image||null;
+  _dispatch={kind, report, image};
   document.getElementById('em-title').textContent=(opts.resend?'Re-send Notification — ':'Send Notification — ')+(opts.label||kind);
   document.getElementById('em-body').innerHTML=`
     ${!ready?`<div style="background:rgba(184,76,32,.09);border:1px solid rgba(184,76,32,.3);border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--rust,#b84c20);line-height:1.5;">
@@ -4378,6 +4450,12 @@ function openEmailDispatch(kind, subject, opts){
       </div>
       <div style="display:flex;gap:6px;margin-top:8px;"><input class="fi" id="disp-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();dispAddRecip();}"><button class="btn b-g b-sm" onclick="dispAddRecip()">+ Add</button></div>
     </div>
+    ${report?`<div class="fgl" style="margin-top:14px;"><label>Email body <span style="color:var(--text3);font-size:9px;">this exact report gets sent</span></label>
+      <pre style="white-space:pre-wrap;font-family:'Syne Mono',monospace;font-size:11px;line-height:1.55;color:var(--text2);background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:11px 13px;margin-top:5px;max-height:220px;overflow:auto;">${attrEsc(report)}</pre></div>`:''}
+    ${image?`<label style="display:flex;align-items:center;gap:10px;font-size:12px;margin-top:12px;color:var(--text2);">
+      <input type="checkbox" id="disp-attach" ${DB.notify.attach!==false?'checked':''}> 📎 Attach the scanned photo
+      <img src="${image.dataUrl}" style="height:40px;border-radius:4px;border:1px solid var(--border);margin-left:auto;">
+      <span style="font-size:9px;color:var(--text3);">needs EmailJS attachment support</span></label>`:''}
     <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:16px;color:var(--text2);padding-top:12px;border-top:1px solid var(--border);">
       <input type="checkbox" id="disp-master" ${master?'checked':''} onchange="toggleNotifyMaster(this.checked)"> <b>Email sending enabled</b> (global — turn off during testing)
     </label>
@@ -4407,22 +4485,53 @@ async function dispSend(){
   const to=[...document.querySelectorAll('.disp-r:checked')].map(c=>c.value);
   if(!subj){ alert('Subject line is required.'); return; }
   if(!to.length){ alert('Pick at least one recipient (or hit Skip).'); return; }
+  const report=_dispatch?_dispatch.report:'';
+  const attachEl=document.getElementById('disp-attach');
+  const image=(attachEl&&attachEl.checked&&_dispatch&&_dispatch.image)?_dispatch.image:null;
   const btn=document.getElementById('disp-send'); if(btn){ btn.disabled=true; btn.textContent='Sending…'; }
-  const ok=await sendNotify(subj,to);
+  const ok=await sendNotify(subj,to,report,image);
   if(ok){ toast('disp-t','✓ Sent to '+to.length+' recipient'+(to.length>1?'s':'')); setTimeout(closeModal,900); }
-  else { alert('Send failed — check Admin → Email (template ID + master toggle).'); if(btn){ btn.disabled=false; btn.textContent='✉ Send now'; } }
+  else { alert('Send failed — check Admin → Email (template ID + master toggle). If you enabled the photo attachment, your EmailJS plan may not support attachments.'); if(btn){ btn.disabled=false; btn.textContent='✉ Send now'; } }
 }
-async function sendNotify(subject, toList){
+async function sendNotify(subject, toList, report, image){
   if(DB.notify.enabled===false){ console.warn('notify disabled — skipped'); return false; }
   if(!DB.emailjs.serviceId||!DB.notify.templateId||!DB.emailjs.publicKey){ console.warn('notify not configured — skipped'); return false; }
   try{
-    await emailjs.send(DB.emailjs.serviceId, DB.notify.templateId, { email_subject:subject, to_email:toList.join(','), from_name:'Totally Mushrooms HQ' });
-    try{ logAudit('notify_sent', subject+' → '+toList.join(', ')); }catch(e){}
+    const params={ email_subject:subject, message:report||subject, to_email:toList.join(','), from_name:'Totally Mushrooms HQ' };
+    // EmailJS variable attachment (only delivers on plans that support attachments)
+    if(image&&image.b64){ params.attachment=image.b64; params.attachment_name=image.name||'sheet.jpg'; }
+    await emailjs.send(DB.emailjs.serviceId, DB.notify.templateId, params);
+    try{ logAudit('notify_sent', subject+' → '+toList.join(', ')+(image?' [+photo]':'')); }catch(e){}
     return true;
   }catch(e){ console.error('notify send failed',e); return false; }
 }
+// Snap → parse a fruiting sheet → prefill the form + labor gate (labor logged even though fruiting isn't emailed)
+async function snapFruiting(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('fr-snap-status');
+  const show=(h)=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Reading the sheet with AI…');
+  try{
+    const d=await parseSheetImage(file,'fruiting');
+    if(d.container){ const c=document.getElementById('fr-cid'); if(c){ c.value=d.container; if(typeof onFrContainer==='function') onFrContainer(); } }
+    const iso=_toISO(d.date); if(iso){ const dt=document.getElementById('fr-dt'); if(dt) dt.value=iso; }
+    const rows=Array.isArray(d.rows)?d.rows:[];
+    if(rows[0]){
+      if(rows[0].lot){ const l=document.getElementById('fr-lot'); if(l) l.value=rows[0].lot; }
+      if(rows[0].variety){ const v=document.getElementById('fr-variety'); if(v) v.value=rows[0].variety; }
+      if(rows[0].blockCount){ const b=document.getElementById('fr-bc'); if(b) b.value=rows[0].blockCount; }
+    }
+    _scanLabor=Array.isArray(d.crew)?d.crew.map(c=>({emp:(c.name||'').trim(),min:parseInt(c.minutes)||0})).filter(c=>c.emp||c.min):null;
+    if(typeof updateFruitingPreview==='function') updateFruitingPreview();
+    let extra='';
+    if(rows.length>1) extra+=` <span style="color:var(--gold)">· ${rows.length-1} more lot(s) on the sheet — add as rows</span>`;
+    if(_scanLabor&&_scanLabor.length) extra+=` <span style="color:var(--fern)">· crew: ${_scanLabor.map(c=>`${c.emp||'?'} ${c.min}m`).join(', ')} (auto-fills at Log)</span>`;
+    show(`✓ Read ${rows[0]&&rows[0].lot||'?'} / ${rows[0]&&rows[0].variety||'?'} @ ${d.container||'?'} — <b>verify &amp; set block weight</b>, then Log.${extra}`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
 // Resend the notification for an already-logged record
-function resendHarvest(id){ const h=DB.harvests.find(x=>x.id===id); if(!h) return; openEmailDispatch('harvest', notifySubject('harvest',h), {label:'Harvest '+(h.lotNumber||''), resend:true}); }
+function resendHarvest(id){ const h=DB.harvests.find(x=>x.id===id); if(!h) return; openEmailDispatch('harvest', notifySubject('harvest',h), {label:'Harvest '+(h.lotNumber||''), resend:true, data:{prime:h, rows:[h], crew:[]}}); }
 
 function rHarvest(el){
   const s=sByKey('harvest',[...DB.harvests].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')),{date:h=>h.date,container:h=>h.container,facility:h=>h.facility||'',lotNumber:h=>h.lotNumber||'',variety:h=>h.variety,grade:h=>h.grade||'',weight:h=>h.weight||0,usedWeight:h=>h.usedWeight||0});
@@ -4709,9 +4818,9 @@ async function logHarv(){
   // Hard-block: must log who worked + how long before the session saves
   const primeCon=(rows.find(r=>r.container)||{}).container||'';
   const primeDate=(rows[0]||{}).date||tday();
-  openSessionLaborGate('harvest', primeCon, primeDate, 'Harvesting', ()=>_doHarvestCommit(rows));
+  openSessionLaborGate('harvest', primeCon, primeDate, 'Harvesting', (crew)=>_doHarvestCommit(rows, crew));
 }
-async function _doHarvestCommit(rows){
+async function _doHarvestCommit(rows, crew){
   let n=0;
   for(const r of rows){
     if(r.variety) addVariety(r.variety); // persist any typed-in variety
@@ -4726,8 +4835,10 @@ async function _doHarvestCommit(rows){
   const prime=rows.find(r=>r.container)||rows[0]||{};
   toast('hl-t', n>1?`✓ ${n} harvests recorded`:'✓ Harvest recorded');
   rHarvest(document.getElementById('main-views'));
-  // fire the auto-email dispatcher (subject = "LOC CONTAINER MMDDYY")
-  openEmailDispatch('harvest', notifySubject('harvest',prime), {label:'Harvest '+(prime.container||'')});
+  // fire the auto-email dispatcher (subject = "LOC CONTAINER MMDDYY" + full report body + photo)
+  openEmailDispatch('harvest', notifySubject('harvest',prime), {label:'Harvest '+(prime.container||''),
+    data:{prime,rows,crew:crew||[]}, image:(_lastSnap&&_lastSnap.kind==='harvest')?_lastSnap:null});
+  _lastSnap=null;
 }
 
 // ── EDIT / DELETE a harvest (fix mistakes) ──
@@ -9313,7 +9424,7 @@ function rAdmin(el){
         </div>
         <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin:20px 0 10px;border-top:1px solid var(--border);padding-top:16px;">📨 Auto-Email Notifications <span style="color:var(--gold);font-size:8px;">(Harvest / Packing / Receiving / Lab → Katherine)</span></div>
         <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);line-height:1.7;margin-bottom:10px;">
-          Create ONE EmailJS template with <b>To&nbsp;Email</b> = <code style="color:var(--gold);">{{to_email}}</code> and <b>Subject</b> = <code style="color:var(--gold);">{{email_subject}}</code> (body can be anything). Paste its ID here.
+          Create ONE EmailJS template — <b>To&nbsp;Email</b> = <code style="color:var(--gold);">{{to_email}}</code> · <b>Subject</b> = <code style="color:var(--gold);">{{email_subject}}</code> · <b>Content/Body</b> = <code style="color:var(--gold);">{{message}}</code> (the full report). To attach the scanned photo, add a <b>Variable Attachment</b> named <code style="color:var(--gold);">attachment</code> with filename <code style="color:var(--gold);">{{attachment_name}}</code> <span style="color:var(--amber);">(attachments need a paid EmailJS plan)</span>. Paste the Template ID here.
         </div>
         <div class="fg2">
           <div class="fgl"><label>Notification Template ID</label><input class="fi" id="notify-tpl" value="${DB.notify.templateId||''}" placeholder="e.g. template_xxxxxxx"></div>
