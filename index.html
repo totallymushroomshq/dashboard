@@ -2799,7 +2799,7 @@ function buildPackOrderCard(){
       <div style="background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.3);border-radius:6px;padding:12px 14px;margin-bottom:14px;">
         <div style="font-size:12px;font-weight:600;color:var(--fern);margin-bottom:8px;">📸 Snap / Upload the packing slip — AI fills this whole form</div>
         <label class="btn b-g" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
-          <input type="file" accept="image/*" style="display:none;" onchange="snapSlip(this)">
+          <input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapSlip(this)">
         </label>
         <div id="po-snap-status" style="display:none;margin-top:10px;font-size:12px;padding:8px 12px;background:var(--white);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
       </div>
@@ -3779,7 +3779,7 @@ function rReceiving(el){
       <div class="card-t">📸 Snap / Upload Receiving Sheet</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the delivery/receiving sheet — AI fills the form below. You verify, then Log.</div>
       <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
-        <input type="file" accept="image/*" style="display:none;" onchange="snapReceiving(this)">
+        <input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapReceiving(this)">
       </label>
       <div id="rc-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
     </div>`:''}
@@ -3974,7 +3974,7 @@ function rFruiting(el){
       <div class="card-t">📸 Snap / Upload Fruiting Sheet</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the fruiting log — AI reads container, lots, block counts, and crew. You verify, set block weight, then Log. Crew auto-fills the labor step.</div>
       <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
-        <input type="file" accept="image/*" style="display:none;" onchange="snapFruiting(this)">
+        <input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapFruiting(this)">
       </label>
       <div id="fr-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
     </div>`:''}
@@ -4562,19 +4562,27 @@ function _fitCanvas(img, maxDim){
 // full detail/colour for the best read); the cleaned high-contrast version is used ONLY
 // for the PDF archive + email attachment.
 async function processScan(file, kind){
-  const img=await _loadImg(file);
-  const aiJpg=_canvasToJpeg(_fitCanvas(img, 2000), 900000);   // faithful → to the AI
-  const enh=_canvasToJpeg(_enhanceDoc(img), 260000);          // cleaned → to the PDF
-  const pdfB64=_jpegToPdfB64(enh.b64, enh.w, enh.h);
-  const pdfBytes=Math.ceil(pdfB64.length*3/4);
+  const isPdf=(file.type==='application/pdf')||/\.pdf$/i.test(file.name||'');
+  let sendImage, sendMime, pdfB64, pdfBytes, thumb;
+  if(isPdf){
+    // already a flat PDF — send it straight to the AI as a document; archive/attach as-is
+    pdfB64=await _fileToB64(file); sendImage=pdfB64; sendMime='application/pdf';
+    pdfBytes=Math.ceil(pdfB64.length*3/4); thumb='';
+  } else {
+    const img=await _loadImg(file);
+    const aiJpg=_canvasToJpeg(_fitCanvas(img, 2000), 900000);   // faithful → to the AI
+    const enh=_canvasToJpeg(_enhanceDoc(img), 260000);          // cleaned → to the PDF
+    pdfB64=_jpegToPdfB64(enh.b64, enh.w, enh.h); pdfBytes=Math.ceil(pdfB64.length*3/4);
+    sendImage=aiJpg.b64; sendMime='image/jpeg'; thumb=enh.dataUrl;
+  }
   const user=firebase.auth().currentUser; if(!user) throw new Error('Not signed in — reload and log in.');
   const tok=await user.getIdToken();
   const resp=await fetch(PARSE_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
-    body:JSON.stringify({image:aiJpg.b64,mime:'image/jpeg',kind,archiveB64:pdfB64,archiveMime:'application/pdf',archiveExt:'pdf'})});
+    body:JSON.stringify({image:sendImage,mime:sendMime,kind,archiveB64:pdfB64,archiveMime:'application/pdf',archiveExt:'pdf'})});
   let j={}; try{ j=await resp.json(); }catch(e){}
   if(!resp.ok) throw new Error(j.error||('Server error '+resp.status));
   if(!j.ok) throw new Error(j.parseError?'Could not read the sheet clearly — retake with better light / flatter angle.':(j.error||'Parse failed.'));
-  return {data:j.data||{}, imageUrl:j.imageUrl||'', pdfB64, pdfBytes, thumb:enh.dataUrl};
+  return {data:j.data||{}, imageUrl:j.imageUrl||'', pdfB64, pdfBytes, thumb};
 }
 let _lastSnap=null; // {kind, b64(pdf), dataUrl(thumb), mime, name, url, bytes} — cleaned PDF of the last scanned sheet
 // ── the pick-recipients / send modal, shown on submit (and on Resend) ──
@@ -4603,10 +4611,11 @@ function openEmailDispatch(kind, subject, opts){
     </div>
     ${report?`<div class="fgl" style="margin-top:14px;"><label>Email body <span style="color:var(--text3);font-size:9px;">this exact report gets sent</span></label>
       <pre style="white-space:pre-wrap;font-family:'Syne Mono',monospace;font-size:11px;line-height:1.55;color:var(--text2);background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:11px 13px;margin-top:5px;max-height:220px;overflow:auto;">${attrEsc(report)}</pre></div>`:''}
-    ${image&&image.b64?`<label style="display:flex;align-items:center;gap:10px;font-size:12px;margin-top:12px;color:var(--text2);">
+    ${image&&image.b64&&(!image.bytes||image.bytes<=480000)?`<label style="display:flex;align-items:center;gap:10px;font-size:12px;margin-top:12px;color:var(--text2);">
       <input type="checkbox" id="disp-attach" ${DB.notify.attach!==false?'checked':''}> 📎 Attach cleaned scan (PDF)
       ${image.dataUrl?`<img src="${image.dataUrl}" style="height:40px;border-radius:4px;border:1px solid var(--border);margin-left:auto;">`:'<span style="margin-left:auto;"></span>'}
-      <span style="font-size:9px;color:var(--text3);">${image.bytes?Math.round(image.bytes/1024)+'kb':''} · fits 500kb plan</span></label>`:''}
+      <span style="font-size:9px;color:var(--text3);">${image.bytes?Math.round(image.bytes/1024)+'kb':''} · fits 500kb plan</span></label>`
+      :(image&&image.bytes&&image.bytes>480000?`<div style="font-size:11px;color:var(--text3);margin-top:12px;padding:8px 12px;background:var(--paper);border:1px solid var(--border);border-radius:5px;">📎 File is ${Math.round(image.bytes/1024)}kb — over the 500kb attachment cap, so the <b>download link</b> in the body delivers it instead.</div>`:'')}
     <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:16px;color:var(--text2);padding-top:12px;border-top:1px solid var(--border);">
       <input type="checkbox" id="disp-master" ${master?'checked':''} onchange="toggleNotifyMaster(this.checked)"> <b>Email sending enabled</b> (global — turn off during testing)
     </label>
@@ -4649,9 +4658,9 @@ async function sendNotify(subject, toList, report, image){
   if(!DB.emailjs.serviceId||!DB.notify.templateId||!DB.emailjs.publicKey){ console.warn('notify not configured — skipped'); return false; }
   try{
     const params={ email_subject:subject, message:report||subject, to_email:toList.join(','), from_name:'Totally Mushrooms HQ' };
-    // EmailJS variable attachment (only delivers on plans that support attachments)
+    // EmailJS variable attachment (only delivers on plans that support attachments; 500kb cap)
     // filename mirrors the subject line, e.g. "OHF GH-01-01 071726.pdf"
-    if(image&&image.b64){ params.attachment=image.b64; params.attachment_name=_safeFile(subject)+((image.mime==='application/pdf')?'.pdf':'.jpg'); }
+    if(image&&image.b64&&(!image.bytes||image.bytes<=480000)){ params.attachment=image.b64; params.attachment_name=_safeFile(subject)+((image.mime==='application/pdf')?'.pdf':'.jpg'); }
     await emailjs.send(DB.emailjs.serviceId, DB.notify.templateId, params);
     try{ logAudit('notify_sent', subject+' → '+toList.join(', ')+(image?' [+photo]':'')); }catch(e){}
     return true;
@@ -4770,7 +4779,7 @@ function rHarvest(el){
       <div class="card-t">📸 Snap / Upload Harvest Sheet</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the handwritten tote label — the app cleans it into a crisp PDF, reads it, and fills the form below. You verify, set the grade, then Log.</div>
       <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
-        <input type="file" accept="image/*" style="display:none;" onchange="snapHarvest(this)">
+        <input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapHarvest(this)">
       </label>
       <div id="hl-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
     </div>`:''}
