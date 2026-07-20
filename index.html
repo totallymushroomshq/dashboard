@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #22</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #23</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4438,6 +4438,15 @@ function _toISO(s){
   m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?$/);
   if(m){ let yr=m[3]?(m[3].length===2?'20'+m[3]:m[3]):tday().slice(0,4);
     return `${yr}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`; }
+  // month-name dates: "June 17 2026", "Jun 17, 2026", "17 June 2026", "June 17 26"
+  const MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+  const low=s.toLowerCase();
+  let mon,day,yr;
+  let mm=low.match(/([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{2,4})/); // Month DD YYYY
+  if(mm){ mon=MON[mm[1].slice(0,3)]; day=parseInt(mm[2]); yr=mm[3]; }
+  else { mm=low.match(/(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})\.?,?\s+(\d{2,4})/); // DD Month YYYY
+    if(mm){ day=parseInt(mm[1]); mon=MON[mm[2].slice(0,3)]; yr=mm[3]; } }
+  if(mon&&day&&yr){ if(yr.length===2) yr='20'+yr; return `${yr}-${String(mon).padStart(2,'0')}-${String(day).padStart(2,'0')}`; }
   return '';
 }
 async function snapHarvest(input){
