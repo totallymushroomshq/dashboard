@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #20</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #21</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4052,6 +4052,7 @@ function rFruiting(el){
             <td>${canEdit()?`<div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button class="btn b-g b-sm" onclick="markFruitingHarvested('${f.id}')">Harvested ✓</button>
               <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button>
+              <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendFruiting('${f.id}')">✉</button>
               ${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}
             </div>`:'—'}</td>
           </tr>`;
@@ -4089,7 +4090,7 @@ function rFruiting(el){
           <td class="mn">${f.blockCount}</td>
           <td class="mn" style="color:var(--fern);">${((f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK)).toFixed(1)} lb</td>
           <td class="mn">${f.harvestedAt?fDate(f.harvestedAt):'—'}</td>
-          ${canEdit()?`<td><div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button>${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}</div></td>`:''}
+          ${canEdit()?`<td><div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button><button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendFruiting('${f.id}')">✉</button>${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}</div></td>`:''}
         </tr>`).join('')}</tbody>
       </table>
     </div>`:''}
@@ -4228,16 +4229,17 @@ async function subFruiting(){
   // Hard-block: must log who worked + how long before the session saves
   const primeCon=(rows.find(r=>r.containerID)||{}).containerID||'';
   const primeDate=(rows[0]||{}).date||tday();
-  openSessionLaborGate('fruiting', primeCon, primeDate, 'Fruiting', ()=>_doFruitingCommit(rows));
+  openSessionLaborGate('fruiting', primeCon, primeDate, 'Fruiting', (crew)=>_doFruitingCommit(rows, crew));
 }
-async function _doFruitingCommit(rows){
+async function _doFruitingCommit(rows, crew){
+  const snapUrl=(_lastSnap&&_lastSnap.kind==='fruiting')?_lastSnap.url:'';
   let n=0;
   for(const r of rows){
     let rec=null;
     if(r.receivingId){ rec=DB.receivings.find(x=>x.id===r.receivingId); if(rec && r.blockCount>receivingOnHand(rec)){ alert(`Skipped lot ${r.lotNumber}: only ${receivingOnHand(rec)} block(s) remain in its received batch.`); continue; } }
     if(r.variety) addVariety(r.variety);
     if(r.source==='supplier' && r.vendor) addSupplier(r.vendor); // remember the supplier
-    const fData={date:r.date,containerID:r.containerID,lotNumber:r.lotNumber,source:r.source,vendor:r.vendor,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,rateLbPerBlock:r.rateLbPerBlock,notes:r.notes,status:'fruiting',createdAt:new Date().toISOString()};
+    const fData={date:r.date,containerID:r.containerID,lotNumber:r.lotNumber,source:r.source,vendor:r.vendor,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,rateLbPerBlock:r.rateLbPerBlock,notes:r.notes,scanUrl:snapUrl,status:'fruiting',createdAt:new Date().toISOString()};
     if(r.lotNotInInventory){ fData.lotNotInInventory=true; fData.lotExplanation=r.lotExplanation||''; }
     if(r.receivingId) fData.receivingId=r.receivingId;
     const fId=await FS.add('fruitings',fData);
@@ -4252,8 +4254,16 @@ async function _doFruitingCommit(rows){
     n++;
   }
   _fruitingQueue=[];
+  // capture the session's primary identity + facility for the notification subject BEFORE re-render
+  const prime=rows.find(r=>r.containerID)||rows[0]||{};
+  const facility=(getActiveContainers().find(c=>c.code===prime.containerID)||{}).facility||'';
+  const emailRows=rows.map(r=>({lotNumber:r.lotNumber,variety:r.variety,blockCount:r.blockCount}));
   toast('fr-t', n>1?`✓ ${n} lots placed`:'✓ Fruiting block logged');
   clrFruiting(); renderC();
+  // fire the auto-email dispatcher (same as harvest/packing) → Katherine + crew
+  openEmailDispatch('fruiting', notifySubject('fruiting',{container:prime.containerID,facility,date:prime.date}), {label:'Fruiting '+(prime.containerID||''),
+    data:{prime:{container:prime.containerID,date:prime.date},rows:emailRows,crew:crew||[],imageUrl:snapUrl}, image:(_lastSnap&&_lastSnap.kind==='fruiting'&&_lastSnap.b64)?_lastSnap:null});
+  _lastSnap=null;
 }
 
 function clrFruiting(){
@@ -4469,6 +4479,7 @@ async function snapHarvest(input){
 // Default recipients per protocol (editable at Admin → Email; overrides live in DB.notify.to)
 const NOTIFY_TO = {
   harvest:  ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  fruiting: ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
   slip:     ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
   receiving:['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
   lab:      ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com']
@@ -4489,6 +4500,7 @@ function _mm_dd_yy(iso){ const m=String(iso||'').match(/(\d{4})-(\d{2})-(\d{2})/
 function notifySubject(kind, r){
   r=r||{};
   if(kind==='harvest')  return `${_locCode(r.facility)} ${r.container||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='fruiting') return `${_locCode(r.facility||r.location)} ${r.container||r.containerID||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
   if(kind==='slip')     return `${r.client||''} Packing Slip SO ${r.soNum||''} ${_mm_dd_yy(r.shipDate||r.date)}`.replace(/\s+/g,' ').trim();
   if(kind==='receiving')return `Receiving ${r.vendor||r.source||''} ${r.lot||r.lotNumber||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
   if(kind==='lab')      return `Lab ${r.lot||r.batch||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
@@ -4788,6 +4800,10 @@ async function snapFruiting(input){
 }
 // Resend the notification for an already-logged record
 function resendHarvest(id){ const h=DB.harvests.find(x=>x.id===id); if(!h) return; openEmailDispatch('harvest', notifySubject('harvest',h), {label:'Harvest '+(h.lotNumber||''), resend:true, data:{prime:h, rows:[h], crew:[], imageUrl:h.scanUrl||''}}); }
+function resendFruiting(id){ const f=DB.fruitings.find(x=>x.id===id); if(!f) return;
+  const facility=(getActiveContainers().find(c=>c.code===f.containerID)||{}).facility||'';
+  openEmailDispatch('fruiting', notifySubject('fruiting',{container:f.containerID,facility,date:f.date}), {label:'Fruiting '+(f.containerID||''), resend:true,
+    data:{prime:{container:f.containerID,date:f.date}, rows:[{lotNumber:f.lotNumber,variety:f.variety,blockCount:f.blockCount}], crew:[], imageUrl:f.scanUrl||''}}); }
 
 // ── RECEIVING snap → parse → prefill form ──
 async function snapReceiving(input){
