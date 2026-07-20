@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-17 #17</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #18</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4138,16 +4138,19 @@ function addFruitingRow(){
   const lh=document.getElementById('fr-lot'); if(lh) lh.focus();
 }
 function removeFruitingRow(i){ _fruitingQueue.splice(i,1); renderFruitingQueue(); }
+function updateFruitingRow(i, field, value){ if(_fruitingQueue[i]){ _fruitingQueue[i][field] = (field==='blockCount')?(parseInt(value)||0):(field==='blockWeightLb')?(parseFloat(value)||0):(value||'').trim(); } }
 function renderFruitingQueue(){
   const c=document.getElementById('fr-queue');
-  if(c) c.innerHTML = _fruitingQueue.length ? `<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;">STAGED — ${_fruitingQueue.length} LOT(S) TO PLACE</div>`+
-    _fruitingQueue.map((r,i)=>`<div style="display:flex;align-items:center;gap:10px;background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:7px 12px;margin-bottom:6px;font-size:12px;flex-wrap:wrap;">
-      <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);">${r.lotNumber}</span>
-      <span style="font-weight:600;">${r.variety}</span>
-      <span class="mn">${r.blockCount} blocks</span>
-      <span style="color:var(--text3);font-size:11px;">→ ${r.containerID}</span>
-      ${r.unusable?`<span style="color:var(--rust);font-size:11px;">${r.unusable} unusable</span>`:''}
-      <button class="btn b-r b-sm" style="margin-left:auto;" onclick="removeFruitingRow(${i})">✕</button>
+  if(c) c.innerHTML = _fruitingQueue.length ? `<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;">STAGED — ${_fruitingQueue.length} LOT(S) · EDIT ANY FIELD BEFORE LOGGING</div>
+    <div style="display:flex;gap:6px;align-items:center;padding:0 8px 4px;font-family:'Syne Mono',monospace;font-size:8px;letter-spacing:1px;color:var(--text3);">
+      <span style="flex:0 0 116px;">LOT #</span><span style="flex:1;">VARIETY</span><span style="flex:0 0 66px;">BLOCKS</span><span style="flex:0 0 76px;">BLK WT lb</span><span style="flex:0 0 26px;"></span>
+    </div>`+
+    _fruitingQueue.map((r,i)=>`<div style="display:flex;align-items:center;gap:6px;background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:6px 8px;margin-bottom:6px;">
+      <input class="fi" style="flex:0 0 116px;padding:5px 7px;font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);" value="${attrEsc(r.lotNumber)}" onchange="updateFruitingRow(${i},'lotNumber',this.value)" title="Lot number">
+      <input class="fi" list="fr-variety-dl" style="flex:1;padding:5px 7px;" value="${attrEsc(r.variety)}" onchange="updateFruitingRow(${i},'variety',this.value)" title="Variety">
+      <input class="fi" type="number" min="0" style="flex:0 0 66px;padding:5px 7px;" value="${r.blockCount}" onchange="updateFruitingRow(${i},'blockCount',this.value)" title="Blocks placed">
+      <input class="fi" type="number" min="0" step="0.1" style="flex:0 0 76px;padding:5px 7px;" value="${r.blockWeightLb||''}" placeholder="wt" onchange="updateFruitingRow(${i},'blockWeightLb',this.value)" title="Block weight (lb)">
+      <button class="btn b-r b-sm" style="flex:0 0 26px;" onclick="removeFruitingRow(${i})" title="Remove this lot">✕</button>
     </div>`).join('') : '';
   const cur=_readFruitingRow();
   const n=_fruitingQueue.length+((cur.lotNumber&&cur.variety)?1:0);
@@ -4703,20 +4706,38 @@ async function snapFruiting(input){
   try{
     const r=await processScan(file,'fruiting'); const d=r.data;
     _lastSnap={kind:'fruiting',url:r.imageUrl,name:'fruiting-sheet.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
+    // shared header
     if(d.container){ const c=document.getElementById('fr-cid'); if(c){ c.value=d.container; if(typeof onFrContainer==='function') onFrContainer(); } }
     const iso=_toISO(d.date); if(iso){ const dt=document.getElementById('fr-dt'); if(dt) dt.value=iso; }
-    const rows=Array.isArray(d.rows)?d.rows:[];
-    if(rows[0]){
-      if(rows[0].lot){ const l=document.getElementById('fr-lot'); if(l) l.value=rows[0].lot; }
-      if(rows[0].variety){ const v=document.getElementById('fr-variety'); if(v) v.value=rows[0].variety; }
-      if(rows[0].blockCount){ const b=document.getElementById('fr-bc'); if(b) b.value=rows[0].blockCount; }
-    }
+    // crew ripped off the labor row → pre-fills (hard-merges into) the mandatory labor gate at submit
     _scanLabor=Array.isArray(d.crew)?d.crew.map(c=>({emp:(c.name||'').trim(),min:parseInt(c.minutes)||0})).filter(c=>c.emp||c.min):null;
+    // one row per lot: first fills the form, the rest are staged (each with its own lot/variety/blocks)
+    const bcOf=x=>parseInt(x.blocksUsed!=null?x.blocksUsed:x.blockCount)||0;
+    const rows=(Array.isArray(d.rows)?d.rows:[]).filter(x=>x&&(x.lot||x.strain||x.variety||bcOf(x)));
+    if(rows[0]){
+      const l=document.getElementById('fr-lot'); if(l && rows[0].lot){ l.value=rows[0].lot; if(typeof onLotInput==='function') onLotInput(); }
+      const v=document.getElementById('fr-variety'); if(v && (rows[0].strain||rows[0].variety)) v.value=rows[0].strain||rows[0].variety;
+      const b=document.getElementById('fr-bc'); if(b && bcOf(rows[0])) b.value=bcOf(rows[0]);
+    }
+    const con=document.getElementById('fr-cid')?.value||'', dt2=document.getElementById('fr-dt')?.value||tday();
+    let staged=0;
+    for(let i=1;i<rows.length;i++){ const rr=rows[i]; const lot=(rr.lot||'').trim(), variety=(rr.strain||rr.variety||'').trim(); if(!(lot||variety)) continue;
+      const match=onHandReceivings().find(x=>(x.lotNumber||'').trim().toLowerCase()===lot.toLowerCase());
+      const info=(typeof detectLot==='function')?detectLot(lot):null;
+      _fruitingQueue.push({ date:dt2, containerID:con, lotNumber:lot, variety:variety,
+        source: match?(match.source==='internal'?'internal':'supplier'):((info&&info.vendor==='In-house')?'internal':'supplier'),
+        vendor: (match?match.vendor:(info?info.vendor:''))||'',
+        blockCount: bcOf(rr),
+        blockWeightLb: (match?match.blockWeightLb:(info?info.blockWeightLb:0))||0,
+        rateLbPerBlock: LBSPERBLOCK, receivingId: match?match.id:'', unusable:0, notes:'from scan' });
+      staged++;
+    }
+    renderFruitingQueue();
     if(typeof updateFruitingPreview==='function') updateFruitingPreview();
     let extra='';
-    if(rows.length>1) extra+=` <span style="color:var(--gold)">· ${rows.length-1} more lot(s) on the sheet — add as rows</span>`;
+    if(staged) extra+=` <span style="color:var(--gold)">· ${staged} more lot(s) staged below (edit anything)</span>`;
     if(_scanLabor&&_scanLabor.length) extra+=` <span style="color:var(--fern)">· crew: ${_scanLabor.map(c=>`${c.emp||'?'} ${c.min}m`).join(', ')} (auto-fills at Log)</span>`;
-    show(`✓ Read ${rows[0]&&rows[0].lot||'?'} / ${rows[0]&&rows[0].variety||'?'} @ ${d.container||'?'} — <b>verify &amp; set block weight</b>, then Log.${extra}`);
+    show(`✓ Read <b>${rows.length} lot(s)</b> @ ${d.container||'?'}${d.location?' ('+d.location+')':''} — <b>verify &amp; set block weight</b>, then Log.${extra}`);
   }catch(e){ show('⚠ '+e.message); }
   finally{ input.value=''; }
 }
