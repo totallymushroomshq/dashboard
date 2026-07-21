@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #23</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #24</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4233,7 +4233,7 @@ async function subFruiting(){
 }
 async function _doFruitingCommit(rows, crew){
   const snapUrl=(_lastSnap&&_lastSnap.kind==='fruiting')?_lastSnap.url:'';
-  let n=0;
+  let n=0; const _frCreatedIds=[];
   for(const r of rows){
     let rec=null;
     if(r.receivingId){ rec=DB.receivings.find(x=>x.id===r.receivingId); if(rec && r.blockCount>receivingOnHand(rec)){ alert(`Skipped lot ${r.lotNumber}: only ${receivingOnHand(rec)} block(s) remain in its received batch.`); continue; } }
@@ -4243,7 +4243,7 @@ async function _doFruitingCommit(rows, crew){
     if(r.lotNotInInventory){ fData.lotNotInInventory=true; fData.lotExplanation=r.lotExplanation||''; }
     if(r.receivingId) fData.receivingId=r.receivingId;
     const fId=await FS.add('fruitings',fData);
-    DB.fruitings.push({id:fId,...fData});
+    DB.fruitings.push({id:fId,...fData}); _frCreatedIds.push(fId);
     if(rec){ rec.placedCount=(rec.placedCount||0)+r.blockCount; const upd={placedCount:rec.placedCount}; if(receivingOnHand(rec)<=0){ rec.status='placed'; upd.status='placed'; } try{ await FS.update('receivings',rec.id,upd); }catch(e){ console.warn('receiving placedCount update:',e); } }
     // Unusable blocks → waste stream (same blockDisposals stream as harvest)
     if(r.unusable>0){
@@ -4262,6 +4262,7 @@ async function _doFruitingCommit(rows, crew){
   clrFruiting(); renderC();
   // fire the auto-email dispatcher (same as harvest/packing) → Katherine + crew
   openEmailDispatch('fruiting', notifySubject('fruiting',{container:prime.containerID,facility,date:prime.date}), {label:'Fruiting '+(prime.containerID||''),
+    edit:{kind:'fruiting',col:'fruitings',containerField:'containerID',ids:_frCreatedIds,container:prime.containerID,date:prime.date,facility},
     data:{prime:{container:prime.containerID,date:prime.date},rows:emailRows,crew:crew||[],imageUrl:snapUrl}, image:(_lastSnap&&_lastSnap.kind==='fruiting'&&_lastSnap.b64)?_lastSnap:null});
   _lastSnap=null;
 }
@@ -4678,13 +4679,19 @@ function openEmailDispatch(kind, subject, opts){
   const ready=master && DB.notify.templateId && DB.emailjs.serviceId && DB.emailjs.publicKey;
   const report=opts.data?notifyReport(kind, subject, opts.data):(opts.report||'');
   const image=opts.image||null;
-  _dispatch={kind, report, image};
+  _dispatch={kind, subject, report, image, data:opts.data||null, edit:opts.edit||null};
   document.getElementById('em-title').textContent=(opts.resend?'Re-send Notification — ':'Send Notification — ')+(opts.label||kind);
   document.getElementById('em-body').innerHTML=`
     ${!ready?`<div style="background:rgba(184,76,32,.09);border:1px solid rgba(184,76,32,.3);border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--rust,#b84c20);line-height:1.5;">
       ${!master?'📴 Email sending is <b>OFF</b> (testing mode). Flip it on below, or in Admin → Email.'
         :'⚠ Notification template not set yet — add the EmailJS Template ID in Admin → Email to enable sending. You can still review the subject &amp; recipients here.'}
     </div>`:''}
+    ${opts.edit?`<div style="background:rgba(184,130,10,.06);border:1px solid rgba(184,130,10,.28);border-radius:6px;padding:10px 13px;margin-bottom:14px;">
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--gold);margin-bottom:8px;">⚑ VERIFY BEFORE SENDING — edits here update the subject, the report &amp; the logged record</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <div class="fgl" style="flex:1;min-width:130px;"><label>Container</label><input class="fi" id="disp-container" value="${attrEsc(opts.edit.container||'')}" onchange="dispEditKey('container',this.value)"></div>
+        <div class="fgl" style="flex:1;min-width:130px;"><label>Date</label><input class="fi" type="date" id="disp-date" value="${attrEsc(_toISO(opts.edit.date)||opts.edit.date||'')}" onchange="dispEditKey('date',this.value)"></div>
+      </div></div>`:''}
     <div class="fgl"><label>Subject line <span style="color:var(--text3);font-size:9px;">edit if needed</span></label>
       <input class="fi" id="disp-subj" value="${attrEsc(subject||'')}" style="font-family:'Syne Mono',monospace;"></div>
     <div class="fgl" style="margin-top:12px;"><label>Send to <span style="color:var(--text3);font-size:9px;">uncheck to skip anyone</span></label>
@@ -4694,7 +4701,7 @@ function openEmailDispatch(kind, subject, opts){
       <div style="display:flex;gap:6px;margin-top:8px;"><input class="fi" id="disp-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();dispAddRecip();}"><button class="btn b-g b-sm" onclick="dispAddRecip()">+ Add</button></div>
     </div>
     ${report?`<div class="fgl" style="margin-top:14px;"><label>Email body <span style="color:var(--text3);font-size:9px;">this exact report gets sent</span></label>
-      <pre style="white-space:pre-wrap;font-family:'Syne Mono',monospace;font-size:11px;line-height:1.55;color:var(--text2);background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:11px 13px;margin-top:5px;max-height:220px;overflow:auto;">${attrEsc(report)}</pre></div>`:''}
+      <pre id="disp-report" style="white-space:pre-wrap;font-family:'Syne Mono',monospace;font-size:11px;line-height:1.55;color:var(--text2);background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:11px 13px;margin-top:5px;max-height:220px;overflow:auto;">${attrEsc(report)}</pre></div>`:''}
     ${image&&image.b64&&(!image.bytes||image.bytes<=480000)?`<label style="display:flex;align-items:center;gap:10px;font-size:12px;margin-top:12px;color:var(--text2);">
       <input type="checkbox" id="disp-attach" ${DB.notify.attach!==false?'checked':''}> 📎 Attach cleaned scan (PDF)
       ${image.dataUrl?`<img src="${image.dataUrl}" style="height:40px;border-radius:4px;border:1px solid var(--border);margin-left:auto;">`:'<span style="margin-left:auto;"></span>'}
@@ -4709,6 +4716,36 @@ function openEmailDispatch(kind, subject, opts){
     </div>
     <div class="toast" id="disp-t">✓ Sent</div>`;
   document.getElementById('edit-modal').classList.add('open');
+}
+// edit the Container/Date in the send box → live-update subject + report body + patch the saved records
+async function dispEditKey(field, value){
+  if(!_dispatch||!_dispatch.edit||!_dispatch.data) return;
+  value=(value||'').trim();
+  const e=_dispatch.edit, d=_dispatch.data, cf=e.containerField||'container';
+  if(field==='container'){
+    e.container=value;
+    if(d.prime){ d.prime.container=value; d.prime.containerID=value; }
+    (d.rows||[]).forEach(r=>{ r.container=value; r.containerID=value; });
+  } else if(field==='date'){
+    e.date=value;
+    if(d.prime) d.prime.date=value;
+    (d.rows||[]).forEach(r=>{ r.date=value; });
+  }
+  // regenerate subject + body from the corrected values
+  const subj=notifySubject(_dispatch.kind, {container:e.container, containerID:e.container, facility:(d.prime&&d.prime.facility)||e.facility||'', date:e.date});
+  _dispatch.subject=subj;
+  const si=document.getElementById('disp-subj'); if(si) si.value=subj;
+  const rep=notifyReport(_dispatch.kind, subj, d); _dispatch.report=rep;
+  const rp=document.getElementById('disp-report'); if(rp) rp.textContent=rep;
+  // patch the already-saved records so the app data matches the corrected email
+  if(e.ids&&e.ids.length){
+    const patch={}; if(field==='container') patch[cf]=value; else if(field==='date') patch.date=value;
+    for(const id of e.ids){
+      const rec=(DB[e.col]||[]).find(x=>x.id===id); if(rec) Object.assign(rec,patch);
+      try{ await FS.update(e.col, id, patch); }catch(err){ console.warn('record patch failed',err); }
+    }
+    try{ if(typeof renderC==='function'){} }catch(_){}
+  }
 }
 function dispAddRecip(){
   const inp=document.getElementById('disp-add'); const v=(inp?.value||'').trim(); if(!v) return;
@@ -5180,12 +5217,12 @@ async function logHarv(){
   openSessionLaborGate('harvest', primeCon, primeDate, 'Harvesting', (crew)=>_doHarvestCommit(rows, crew));
 }
 async function _doHarvestCommit(rows, crew){
-  let n=0;
+  let n=0; const createdIds=[];
   for(const r of rows){
     if(r.variety) addVariety(r.variety); // persist any typed-in variety
     const hData={date:r.date,container:r.container,facility:r.facility,lotNumber:r.lotNumber,variety:r.variety,grade:r.grade,weight:r.weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes:r.notes,scanUrl:(_lastSnap&&_lastSnap.kind==='harvest'?_lastSnap.url:'')||'',createdAt:new Date().toISOString()};
     const hId=await FS.add('harvests',hData);
-    DB.harvests.push({id:hId,...hData});
+    DB.harvests.push({id:hId,...hData}); createdIds.push(hId);
     logAudit('harvest_logged',`Logged ${r.weight}lb ${r.variety} — Lot ${r.lotNumber} — ${r.container} @ ${r.facility}`);
     n++;
   }
@@ -5197,6 +5234,7 @@ async function _doHarvestCommit(rows, crew){
   // fire the auto-email dispatcher (subject = "LOC CONTAINER MMDDYY" + full report body + photo)
   const snapUrl=(_lastSnap&&_lastSnap.kind==='harvest')?_lastSnap.url:'';
   openEmailDispatch('harvest', notifySubject('harvest',prime), {label:'Harvest '+(prime.container||''),
+    edit:{kind:'harvest',col:'harvests',containerField:'container',ids:createdIds,container:prime.container,date:prime.date,facility:prime.facility},
     data:{prime,rows,crew:crew||[],imageUrl:snapUrl}, image:(_lastSnap&&_lastSnap.kind==='harvest'&&_lastSnap.b64)?_lastSnap:null});
   _lastSnap=null;
 }
