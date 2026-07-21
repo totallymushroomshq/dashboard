@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #24</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #25</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2817,6 +2817,7 @@ function buildPackOrderCard(){
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px;">${prodInputs}</div>
       <div class="fgl" style="margin-bottom:12px;"><label>Notes</label><input class="fi" id="po-notes" placeholder="Optional"></div>
       <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:6px 0 8px;">LOTS THAT WENT INTO THIS PACK <span style="text-transform:none;letter-spacing:0;">— check the lots used (pulled-session lots are pre-checked & outlined green)</span></div>
+      <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:8px;background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.2);border-radius:5px;padding:8px 11px;">📦 <b>Inventory auto-deducts on Generate:</b> each box = <b>qty × 3 lb</b>, split evenly across the varieties you check — so a mix box (MO8/CM5/WD01) with <b>3 varieties checked = 1 lb each</b>. Lots already pulled in today's pack session are skipped (that session already deducted them).</div>
       <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">${lotChecks}</div>
       <div class="form-acts">
         <button class="btn b-m b-lg" onclick="savePackOrder()">Generate Packed Order</button>
@@ -2824,6 +2825,34 @@ function buildPackOrderCard(){
       </div>
       <div class="toast" id="po-t">✓ Order logged</div>
     </div>`;
+}
+// ── MIX-BOX INVENTORY ENGINE ──
+// Each product consumes qty × unitLb total (mix box 3 lb, tote 10 lb, retail 0.25 lb),
+// split evenly across the DISTINCT checked varieties valid for that product → a 3-variety
+// mix box = 1 lb/variety. Skips lots already pulled in a pack session today (session wins).
+function computeOrderDeductions(qtys, checked){
+  const today=tday();
+  const inSession=(hid)=>DB.packSessions.some(s=>s.date===today && (s.pulled||[]).some(p=>p.harvestId===hid));
+  const targetByVar={}; const unmatched=[];
+  ALL_PRODS.forEach(p=>{ const N=parseInt(qtys[p.dataKey])||0; if(N<=0) return;
+    const total=N*(p.unitLb||3);
+    const relVars=[...new Set(checked.filter(l=>p.varieties&&p.varieties.includes(l.variety)).map(l=>l.variety))];
+    if(!relVars.length){ unmatched.push({code:p.code,name:p.name,qty:N,lb:total}); return; }
+    const per=total/relVars.length; // e.g. 3 lb box ÷ 3 varieties = 1 lb each
+    relVars.forEach(v=>{ targetByVar[v]=(targetByVar[v]||0)+per; });
+  });
+  const deductions=[]; let skippedSession=0; const shortfall={};
+  Object.entries(targetByVar).forEach(([v,need])=>{
+    let remaining=need;
+    const lots=checked.filter(l=>l.variety===v).sort((a,b)=>b.onHand-a.onHand); // draw from the biggest lot first
+    for(const l of lots){ if(remaining<=0.01) break;
+      if(inSession(l.harvestId)){ skippedSession+=Math.min(remaining,l.onHand); remaining-=Math.min(remaining,l.onHand); continue; } // handled by the pack session
+      const take=Math.min(remaining, l.onHand);
+      if(take>0.01){ deductions.push({harvestId:l.harvestId,lot:l.lotNumber,variety:v,used:Math.round(take*100)/100}); remaining-=take; }
+    }
+    if(remaining>0.05) shortfall[v]=Math.round(remaining*100)/100;
+  });
+  return {deductions, skippedSession:Math.round(skippedSession*100)/100, shortfall, unmatched};
 }
 async function savePackOrder(){
   const so=(document.getElementById('po-so')?.value||'').trim();
@@ -2844,10 +2873,25 @@ async function savePackOrder(){
     ...qtys, notes:(document.getElementById('po-notes')?.value||'').trim(),
     orderRef:nextHQOrderNum(), soNum:so, custom:false, isStanding:false, week:wkStart(),
     usedHarvests, usedLots, scanUrl:snapUrl, source:'pack' };
+  // ── inventory deduction (mix rule: qty×unitLb split across checked varieties; session lots skipped) ──
+  const checkedObjs=checked.map(c=>{ const hid=c.getAttribute('data-hid'); const h=DB.harvests.find(x=>x.id===hid); return h?{harvestId:hid,lotNumber:h.lotNumber,variety:h.variety,onHand:packOnHand(h)}:null; }).filter(Boolean);
+  const ded=computeOrderDeductions(qtys, checkedObjs);
+  o.deductions=ded.deductions;
   try{ const oId=await FS.add('orders',o); o.id=oId; DB.orders.push(o); }
   catch(e){ alert('Save failed: '+(e.message||e)); return; }
-  logAudit('order_created',`Packed order${so?' SO#'+so:''} for ${client} — ${usedLots.length} lot(s) tied`);
-  toast('po-t','✓ Packed order for '+client+(so?' (SO#'+so+')':' — add SO# later')+' created');
+  // apply the deductions to on-hand
+  const invUpd=[];
+  ded.deductions.forEach(d=>{ const h=DB.harvests.find(x=>x.id===d.harvestId); if(h){ h.usedWeight=(h.usedWeight||0)+d.used; invUpd.push(FS.update('harvests',d.harvestId,{usedWeight:h.usedWeight})); } });
+  try{ await Promise.all(invUpd); }catch(e){ console.warn('inventory deduct update failed',e); }
+  const dedTot=ded.deductions.reduce((s,d)=>s+d.used,0);
+  logAudit('order_created',`Packed order${so?' SO#'+so:''} for ${client} — ${usedLots.length} lot(s) tied — deducted ${dedTot.toFixed(1)}lb`);
+  // surface reconciliation notes so nothing silently mis-deducts
+  let warn='';
+  if(ded.skippedSession>0) warn+=`\n${ded.skippedSession.toFixed(1)} lb already handled by today's pack session (skipped).`;
+  if(Object.keys(ded.shortfall).length) warn+='\n⚠ Not enough on-hand for: '+Object.entries(ded.shortfall).map(([v,l])=>`${v} (${l}lb short)`).join(', ')+'.';
+  if(ded.unmatched.length) warn+='\n⚠ No matching lot checked for: '+ded.unmatched.map(u=>`${u.code}×${u.qty}`).join(', ')+' — inventory NOT deducted for these.';
+  toast('po-t','✓ Packed order for '+client+(so?' (SO#'+so+')':'')+' — deducted '+dedTot.toFixed(1)+' lb');
+  if(warn) setTimeout(()=>alert('Order logged. Inventory notes:'+warn),300);
   // build the email report from what was packed
   const items=ALL_PRODS.filter(p=>qtys[p.dataKey]>0).map(p=>({code:p.code,name:p.name,qty:qtys[p.dataKey]}));
   const shipIso=_toISO(slipShip)||_toISO(o.packedAt.slice(0,10))||o.packedAt.slice(0,10);
@@ -2863,7 +2907,10 @@ function clrPackOrder(){
 
 function appOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!o) return; o.status='confirmed'; FS.update('orders',id,{status:'confirmed'}); const c=DB.clients.find(x=>x.id===o.clientId); notify(o.clientId,`Hi ${c?.contact||'there'}, your ${o.day} order is confirmed! ${oSum(o)}.`,'approval'); logAudit('order_confirmed',`Confirmed order for ${o.client} — ${o.day}`); renderC() }
 function rejOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!o||!confirm('Reject order for '+o.client+'?')) return; notify(o.clientId,`Hi ${DB.clients.find(x=>x.id===o.clientId)?.contact||'there'}, we can't fulfil your ${o.day} order this week. Please contact us.`,'rejection'); DB.orders=DB.orders.filter(x=>x.id!==id); FS.del('orders',id); renderC() }
-function delOrd(id){ if(!confirm('Delete order?')) return; DB.orders=DB.orders.filter(x=>x.id!==id); FS.del('orders',id); renderC() }
+function delOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!confirm('Delete order?')) return;
+  // revert any inventory this order deducted (restore on-hand)
+  if(o&&o.deductions&&o.deductions.length){ o.deductions.forEach(d=>{ const h=DB.harvests.find(x=>x.id===d.harvestId); if(h){ h.usedWeight=Math.max(0,(h.usedWeight||0)-(d.used||0)); FS.update('harvests',d.harvestId,{usedWeight:h.usedWeight}); } }); }
+  DB.orders=DB.orders.filter(x=>x.id!==id); FS.del('orders',id); renderC() }
 function subOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!o) return; const note=prompt('Substitution note for '+o.client+':'); if(!note) return; o.subNote=note; const req=confirm('Does client need to approve this sub?'); if(req){ o.status='pending'; notify(o.clientId,`Hi, we need to change your ${o.day} order: ${note}. Please log in to approve.`,'sub-approval') } else { o.status='confirmed'; notify(o.clientId,`Hi, a small update to your ${o.day} order: ${note}. All confirmed!`,'sub-notify') } renderC() }
 
 // ── EDIT ORDER (add / remove / substitute / change quantities after creation) ──
