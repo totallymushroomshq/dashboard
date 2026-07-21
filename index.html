@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #25</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #26</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4539,7 +4539,9 @@ const NOTIFY_TO = {
   fruiting: ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
   slip:     ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
   receiving:['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
-  lab:      ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com']
+  lab:      ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  spawn:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  block:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com']
 };
 function notifyRecips(kind){ return (DB.notify.to&&DB.notify.to[kind]&&DB.notify.to[kind].length)?DB.notify.to[kind]:(NOTIFY_TO[kind]||[]); }
 // ── subject-line formatters ──
@@ -4561,12 +4563,14 @@ function notifySubject(kind, r){
   if(kind==='slip')     return `${r.client||''} Packing Slip SO ${r.soNum||''} ${_mm_dd_yy(r.shipDate||r.date)}`.replace(/\s+/g,' ').trim();
   if(kind==='receiving')return `Receiving ${r.vendor||r.source||''} ${r.lot||r.lotNumber||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
   if(kind==='lab')      return `Lab ${r.lot||r.batch||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='spawn')    return `Spawn ${r.lotCode||r.spawnLot||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='block')    return `Block ${r.lotCode||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
   return '';
 }
 // ── glanceable plain-text report body (repeats subject + writes out every field) ──
 function notifyReport(kind, subject, data){
   data=data||{};
-  const head={harvest:'Harvest Log',slip:'Packing Slip',receiving:'Receiving',fruiting:'Fruiting Log'}[kind]||kind;
+  const head={harvest:'Harvest Log',slip:'Packing Slip',receiving:'Receiving',fruiting:'Fruiting Log',spawn:'Grain Spawn Log',block:'Block Production Log'}[kind]||kind;
   const L=['TOTALLY MUSHROOMS — '+head.toUpperCase(), subject, '─────────────────────────', ''];
   if(kind==='harvest'){
     const rows=data.rows||[]; const crew=data.crew||[]; const p=data.prime||rows[0]||{};
@@ -4604,6 +4608,23 @@ function notifyReport(kind, subject, data){
     L.push('Lot:     '+(data.lot||data.lotNumber||''));
     L.push('Blocks:  '+(data.blockCount||0)+(data.blockWeightLb?' @ '+data.blockWeightLb+' lb/block':''));
     if(data.poNum) L.push('PO #:    '+data.poNum);
+  } else if(kind==='spawn'){
+    L.push('Lot Code:  '+(data.lotCode||''));
+    L.push('Date:      '+(_mm_dd_yy(data.date)||data.date||''));
+    L.push('Strain:    '+(data.strain||''));
+    L.push('Grain:     '+(data.grain||'')+(data.grainWeight?' · '+data.grainWeight:''));
+    L.push('Bags/Jars: '+(data.bags||0));
+    if(data.substrateBatch) L.push('Substrate Batch: '+data.substrateBatch);
+    if(data.cultureSource)  L.push('Culture:   '+data.cultureSource+(data.cultureType?' ('+data.cultureType+')':''));
+    if(data.crewText)       L.push('Crew:      '+data.crewText);
+  } else if(kind==='block'){
+    L.push('Lot Code:  '+(data.lotCode||''));
+    L.push('Date:      '+(_mm_dd_yy(data.date)||data.date||''));
+    if(data.subLbs) L.push('Substrate: '+data.subLbs+' lb · '+(data.buckets||0)+' buckets · '+(data.gallons||0)+' gal water');
+    if(data.crewText) L.push('Crew:      '+data.crewText);
+    L.push(''); L.push('BLOCKS BY STRAIN');
+    let tb=0; (data.rows||[]).forEach(r=>{ tb+=(parseInt(r.blockCount)||0); L.push(` • ${r.strain||r.variety||''} — ${r.blockCount||0} blocks${r.spawnLot?' (spawn '+r.spawnLot+')':''}`); });
+    L.push(''); L.push('TOTAL: '+tb+' blocks across '+((data.rows||[]).length)+' strain'+(((data.rows||[]).length)!==1?'s':''));
   } else if(data.lines){ data.lines.forEach(l=>L.push(l)); }
   if(data.imageUrl){ L.push(''); L.push('📎 Scanned sheet (click to view/download):'); L.push(data.imageUrl); }
   L.push(''); L.push('— Auto-generated by TM HQ from a scanned sheet.');
@@ -4897,6 +4918,49 @@ function resendFruiting(id){ const f=DB.fruitings.find(x=>x.id===id); if(!f) ret
   const facility=(getActiveContainers().find(c=>c.code===f.containerID)||{}).facility||'';
   openEmailDispatch('fruiting', notifySubject('fruiting',{container:f.containerID,facility,date:f.date}), {label:'Fruiting '+(f.containerID||''), resend:true,
     data:{prime:{container:f.containerID,date:f.date}, rows:[{lotNumber:f.lotNumber,variety:f.variety,blockCount:f.blockCount}], crew:[], imageUrl:f.scanUrl||''}}); }
+
+// ── LAB: SPAWN log snap → parse → prefill the Grain Spawn form ──
+async function snapSpawn(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('sp-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Cleaning + reading the spawn log…');
+  try{
+    const r=await processScan(file,'spawn'); const d=r.data;
+    _lastSnap={kind:'spawn',url:r.imageUrl,name:'spawn-log.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
+    const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null&&v!=='') e.value=v; };
+    set('sp-pdate',_toISO(d.productionDate)); set('sp-lotcode',d.lotCode); set('sp-subbatch',d.substrateBatch); set('sp-batchno',d.batch);
+    set('sp-grain',d.grainType); set('sp-grainwt',d.grainWeight); set('sp-grainlot',d.grainLot); if(d.bags) set('sp-bags',d.bags);
+    set('sp-additives',d.additives); set('sp-subnotes',d.subNotes);
+    set('sp-sterdate',_toISO(d.sterDate)); set('sp-actemp',d.autoclaveTemp); set('sp-cookhrs',d.cookHrs); set('sp-cookstart',d.cookStart); set('sp-cookend',d.cookEnd); set('sp-sternotes',d.sterNotes);
+    set('sp-inocdate',_toISO(d.inocDate)); set('sp-strain',d.strain); set('sp-method',d.method); set('sp-graintemp',d.grainTemp);
+    set('sp-culsource',d.cultureSource); set('sp-lclot',(d.strainLots&&d.strainLots.length?d.strainLots.join(', '):d.lcLot)); set('sp-spawnqty',d.spawnQty); set('sp-inocnotes',d.inocNotes);
+    show(`✓ Read spawn log <b>${d.lotCode||''}</b> · ${d.grainType||''}${d.strain?' / '+d.strain:''} — <b>verify (set Strain if blank)</b>, then Log.`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+// ── LAB: BLOCK PRODUCTION log snap → parse → prefill form + per-strain variety lines ──
+async function snapBlock(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('pl-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Cleaning + reading the block log…');
+  try{
+    const r=await processScan(file,'block'); const d=r.data;
+    _lastSnap={kind:'block',url:r.imageUrl,name:'block-log.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
+    const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null&&v!=='') e.value=v; };
+    set('pl-pdate',_toISO(d.productionDate)); set('pl-lot',d.lotCode); set('pl-sbatch',d.substrateBatch); set('pl-batchnum',d.batch); set('pl-order',d.order);
+    if(d.subLbs) set('pl-sublbs',d.subLbs); if(d.buckets) set('pl-buckets',d.buckets); if(d.gallons) set('pl-gallons',d.gallons);
+    set('pl-wstart',d.waterStart); set('pl-wend',d.waterEnd); set('pl-mixtime',d.mixTime); set('pl-prodnotes',d.prodNotes);
+    set('pl-sdate',_toISO(d.sterDate)); set('pl-actemp',d.autoclaveTemp); set('pl-cooktime',d.cookTime); set('pl-cookstart',d.cookStart); set('pl-cookend',d.cookEnd); set('pl-sternotes',d.sterNotes);
+    // per-strain block lines → the pl-varieties list
+    const rows=(Array.isArray(d.rows)?d.rows:[]).filter(x=>x&&(x.strain||x.blockCount));
+    if(rows.length && typeof plVarieties!=='undefined'){
+      plVarieties=rows.map(x=>({...blankPlVar(), variety:(x.strain||'').trim(), blockCount:x.blockCount||'', spawnLot:(x.spawnLot||'').trim(), spawnDate:_toISO(d.spawnDate)||'', spawnQuantity:d.spawnQty||'', spawnSource:d.spawnSource||'', rack:d.rackLocation||''}));
+      if(typeof paintPlVarieties==='function') paintPlVarieties();
+    }
+    show(`✓ Read block log <b>${d.lotCode||''}</b> — <b>${rows.length} strain(s)</b> populated below — verify, then Log.`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
 
 // ── RECEIVING snap → parse → prefill form ──
 async function snapReceiving(input){
@@ -8826,6 +8890,11 @@ async function logSpawn(){
   if(cult&&cult.status==='viable'){ cult.status='in-use'; try{FS.update('cultures',cult.id,{status:'in-use'});}catch(e){} }
   logAudit('spawn_logged',`Grain spawn ${data.lotCode||spawnLot} — ${strain} on ${data.grain||'grain'} (${bagCount} bags)`);
   toast('sp-t'); setTimeout(()=>rLab(document.getElementById('main-views')),600);
+  // auto-email the lab (orders + joel/Mat/Allen/Ashley)
+  const snapUrl=(_lastSnap&&_lastSnap.kind==='spawn')?_lastSnap.url:'';
+  const snapImg=(_lastSnap&&_lastSnap.kind==='spawn'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
+  openEmailDispatch('spawn', notifySubject('spawn',{lotCode:data.lotCode,spawnLot,date:pdate}), {label:'Spawn '+(data.lotCode||spawnLot),
+    data:{lotCode:data.lotCode,spawnLot,date:pdate,strain,grain:data.grain,grainWeight:data.totalGrainWeight,bags:bagCount,substrateBatch:data.substrateBatch,cultureSource:data.cultureSource,crewText:data.crew||'',imageUrl:snapUrl}, image:snapImg});
 }
 function clrSpawn(){ ['sp-lotcode','sp-subbatch','sp-order','sp-batchno','sp-grainwt','sp-additives','sp-grainlot','sp-bags','sp-subnotes','sp-actemp','sp-cookhrs','sp-cookstart','sp-cookend','sp-sternotes','sp-strain','sp-culture','sp-culsource','sp-graintemp','sp-lclot','sp-spawnqty','sp-inocnotes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';}); }
 // ── EDIT / DELETE a grain spawn run (all fields) ──
@@ -8964,6 +9033,12 @@ function rLabSpawn(el){
       <div class="sc g"><div class="sc-l">Spawn Bags On Hand</div><div class="sc-v">${totalBags}</div><div class="sc-n">${onHand.length} run${onHand.length===1?'':'s'} available</div></div>
       <div class="sc"><div class="sc-l">Spawn Runs</div><div class="sc-v">${(DB.spawnRuns||[]).length}</div><div class="sc-n">all-time</div></div>
     </div>
+    ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
+      <div class="card-t">📸 Snap / Upload Grain Spawn Log</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph or upload the spawn production sheet — AI fills the form below. Verify (set Strain if blank), then Log.</div>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / PDF<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapSpawn(this)"></label>
+      <div id="sp-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+    </div>`:''}
     ${canEdit()?`<div class="card"><div class="card-t">Grain Spawn Production Log</div>
       ${sec('Header')}
       <div class="fg2">
@@ -9067,6 +9142,12 @@ function rLabSubstrate(el){
   el.innerHTML=`
     <div class="sh" style="margin-bottom:16px;"><span>Substrate / Block Production</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">MIX · STERILIZE · INOCULATE</span></div>
 
+    ${!editBatch&&canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
+      <div class="card-t">📸 Snap / Upload Block Production Log</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph or upload the block log — AI fills the form AND the per-strain block lines below. Verify, then Log.</div>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / PDF<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapBlock(this)"></label>
+      <div id="pl-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+    </div>`:''}
     <!-- ══ PRODUCTION LOG FORM ══ -->
     <div class="card"${editBatch?' style="border:2px solid var(--gold);"':''}>
       <div class="card-t" style="font-size:15px;letter-spacing:1px;">${editBatch?`✎ Edit Production Log — ${attrEsc(editBatch.batchNum||editBatch.id)}`:'New Production Log'}</div>
@@ -9337,6 +9418,11 @@ async function logProductionBatch(){
   logAudit('lab_production_log',`${batchNum} — ${totalBlocks} blocks · ${varieties.length} variety(ies): ${data.strain}`);
   toast('pl-t');
   setTimeout(()=>renderC(),900);
+  // auto-email the lab (orders + joel/Mat/Allen/Ashley)
+  const snapUrl=(_lastSnap&&_lastSnap.kind==='block')?_lastSnap.url:'';
+  const snapImg=(_lastSnap&&_lastSnap.kind==='block'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
+  openEmailDispatch('block', notifySubject('block',{lotCode:data.lotCode,date:productionDate}), {label:'Block '+(data.lotCode||batchNum),
+    data:{lotCode:data.lotCode,date:productionDate,subLbs:data.substrateLbs,buckets:data.buckets,gallons:data.gallonsWater,crewText:[data.sterCrew,data.inocCrew].filter(Boolean).join(' / '),rows:varieties.map(v=>({strain:v.variety,blockCount:v.blockCount,spawnLot:v.spawnLot})),imageUrl:snapUrl}, image:snapImg});
 }
 
 // Draw produced spawn down as block production consumes it (create path only).
