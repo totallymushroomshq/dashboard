@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #31</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #32</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4036,6 +4036,10 @@ function rFruiting(el){
       <div class="sc ${overdueCount>0?'r':''}"><div class="sc-l">Past Window</div><div class="sc-v">${overdueCount}</div><div class="sc-n">overdue to harvest</div></div>
       <div class="sc"><div class="sc-l">Projected Yield</div><div class="sc-v" style="font-size:26px;">${totalProjLbs.toFixed(1)}<span style="font-size:14px"> lb</span></div><div class="sc-n">from active lots</div></div>
     </div>
+    ${canEdit()&&(DB.fruitings||[]).some(f=>f.relocatedFrom&&(f.date===tday()||(f.createdAt||'').slice(0,10)===tday()))?`<div style="background:rgba(46,109,164,.06);border:1px solid rgba(46,109,164,.28);border-radius:6px;padding:12px 15px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div style="font-size:12px;color:var(--text2);">🔀 Block/container moves logged today — send Katherine the moves report.</div>
+      <button class="btn b-m" onclick="emailMovesReport()">📤 Email today's block-moves report</button>
+    </div>`:''}
 
     <!-- ── LOG FORM ── -->
     ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
@@ -4560,7 +4564,8 @@ const NOTIFY_TO = {
   spawn:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
   block:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
   shipment: ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
-  waste:    ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com']
+  waste:    ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  relocation:['orders@totallymushrooms.com','Allen@totallymushrooms.com']
 };
 function notifyRecips(kind){ return (DB.notify.to&&DB.notify.to[kind]&&DB.notify.to[kind].length)?DB.notify.to[kind]:(NOTIFY_TO[kind]||[]); }
 // ── subject-line formatters ──
@@ -4586,12 +4591,13 @@ function notifySubject(kind, r){
   if(kind==='block')    return `Block ${r.lotCode||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
   if(kind==='shipment') return `Block Shipment Carthage→Hydes ${_mm_dd_yy(r.date)}`.replace(/\s+/g,' ').trim();
   if(kind==='waste')    return `Block Waste ${_mm_dd_yy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='relocation') return `Block Moves ${_mm_dd_yy(r.date)}`.replace(/\s+/g,' ').trim();
   return '';
 }
 // ── glanceable plain-text report body (repeats subject + writes out every field) ──
 function notifyReport(kind, subject, data){
   data=data||{};
-  const head={harvest:'Harvest Log',slip:'Packing Slip',receiving:'Receiving',fruiting:'Fruiting Log',spawn:'Grain Spawn Log',block:'Block Production Log',shipment:'Block Shipment · Carthage → Hydes',waste:'Block Waste'}[kind]||kind;
+  const head={harvest:'Harvest Log',slip:'Packing Slip',receiving:'Receiving',fruiting:'Fruiting Log',spawn:'Grain Spawn Log',block:'Block Production Log',shipment:'Block Shipment · Carthage → Hydes',waste:'Block Waste',relocation:'Block / Container Moves'}[kind]||kind;
   const L=['TOTALLY MUSHROOMS — '+head.toUpperCase(), subject, '─────────────────────────', ''];
   if(kind==='harvest'){
     const rows=data.rows||[]; const crew=data.crew||[]; const p=data.prime||rows[0]||{};
@@ -4663,6 +4669,15 @@ function notifyReport(kind, subject, data){
     L.push(''); L.push('BLOCKS WASTED');
     let tb=0; (data.rows||[]).forEach(r=>{ tb+=(parseInt(r.blockCount)||0); L.push(` • ${r.variety||''} — Lot ${r.lotNumber||'—'}${r.container?' @ '+r.container:''} — ${r.blockCount||0} blocks (${r.reason||'waste'})`); });
     L.push(''); L.push('TOTAL: '+tb+' blocks wasted across '+((data.rows||[]).length)+' lot'+(((data.rows||[]).length)!==1?'s':''));
+  } else if(kind==='relocation'){
+    L.push('Date: '+(_mm_dd_yy(data.date)||data.date||''));
+    if(data.origin) L.push('Moved OUT of: '+data.origin);
+    const byDest={}; (data.rows||[]).forEach(r=>{ (byDest[r.dest]=byDest[r.dest]||[]).push(r); });
+    Object.keys(byDest).sort().forEach(dest=>{ const rs=byDest[dest]; const sub=rs.reduce((s,r)=>s+(parseInt(r.blockCount)||0),0);
+      L.push(''); L.push(`→ TO ${dest}  (${sub} blocks)`);
+      rs.forEach(r=>L.push(` • ${r.variety||''} — Lot ${r.lot||''} — ${r.blockCount||0}`)); });
+    L.push(''); L.push('TOTAL: '+(data.total||0)+' blocks · '+((data.rows||[]).length)+' move'+(((data.rows||[]).length)!==1?'s':''));
+    if(data.note) L.push('Note: '+data.note);
   } else if(data.lines){ data.lines.forEach(l=>L.push(l)); }
   if(data.imageUrl){ L.push(''); L.push('📎 Scanned sheet (click to view/download):'); L.push(data.imageUrl); }
   L.push(''); L.push('— Auto-generated by TM HQ from a scanned sheet.');
@@ -4974,6 +4989,17 @@ async function snapFruiting(input){
 }
 // Resend the notification for an already-logged record
 function resendHarvest(id){ const h=DB.harvests.find(x=>x.id===id); if(!h) return; openEmailDispatch('harvest', notifySubject('harvest',h), {label:'Harvest '+(h.lotNumber||''), resend:true, data:{prime:h, rows:[h], crew:[], imageUrl:h.scanUrl||''}}); }
+// compile & email today's block/container relocations (from records tagged relocatedFrom, dated today)
+function emailMovesReport(){
+  const today=tday();
+  const moves=(DB.fruitings||[]).filter(f=>f.relocatedFrom && (f.date===today || (f.createdAt||'').slice(0,10)===today));
+  if(!moves.length){ alert('No block relocations logged today.'); return; }
+  const origin=(moves.find(f=>f.relocatedFrom)||{}).relocatedFrom||'';
+  const total=moves.reduce((s,f)=>s+(parseInt(f.blockCount)||0),0);
+  const rows=moves.map(f=>({dest:f.containerID,variety:f.variety,lot:f.lotNumber,blockCount:parseInt(f.blockCount)||0}));
+  openEmailDispatch('relocation', notifySubject('relocation',{date:today}), {label:'Block Moves '+_mm_dd_yy(today),
+    data:{date:today,origin,total,rows}});
+}
 function resendFruiting(id){ const f=DB.fruitings.find(x=>x.id===id); if(!f) return;
   const facility=(getActiveContainers().find(c=>c.code===f.containerID)||{}).facility||'';
   openEmailDispatch('fruiting', notifySubject('fruiting',{container:f.containerID,facility,date:f.date}), {label:'Fruiting '+(f.containerID||''), resend:true,
