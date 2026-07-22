@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #36</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #37</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -9363,6 +9363,24 @@ function delSpawn(id){
   rLab(document.getElementById('main-views'));
 }
 
+// pool distinct historical values across BOTH spawn runs and block batches so the lab remembers
+// substrate batches, orders, batch #s, lot/cook-lot codes & grain lots once — auto-complete everywhere
+function _labFieldOpts(){
+  const SR=DB.spawnRuns||[], LB=DB.labBatches||[];
+  const uniq=arr=>[...new Set(arr.map(v=>(v==null?'':String(v).trim())).filter(v=>v!==''))].sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}));
+  const opt=arr=>uniq(arr).map(v=>`<option value="${attrEsc(v)}">`).join('');
+  return {
+    subBatch: opt([...SR.map(x=>x.substrateBatch), ...LB.map(x=>x.substrateBatch)]),
+    lotCode:  opt([...SR.map(x=>x.lotCode), ...LB.map(x=>x.lotCode||x.cookLot)]),
+    order:    opt([...SR.map(x=>x.order), ...LB.map(x=>x.order)]),
+    batchNo:  opt([...SR.map(x=>x.batchNo), ...LB.map(x=>x.batchNum)]),
+    grainLot: opt(SR.map(x=>x.grainBatchLot))
+  };
+}
+function labDatalistsHTML(){
+  const o=_labFieldOpts();
+  return `<datalist id="lab-lotcode-l">${o.lotCode}</datalist><datalist id="lab-subbatch-l">${o.subBatch}</datalist><datalist id="lab-order-l">${o.order}</datalist><datalist id="lab-batchno-l">${o.batchNo}</datalist><datalist id="lab-grainlot-l">${o.grainLot}</datalist>`;
+}
 function rLabSpawn(el){
   const q=(_spawnQ||'').toLowerCase();
   const onHand=onHandSpawn(); const totalBags=onHand.reduce((s,r)=>s+spawnOnHand(r),0);
@@ -9416,19 +9434,20 @@ function rLabSpawn(el){
       <div id="sp-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
     </div>`:''}
     ${canEdit()?`<div class="card"><div class="card-t">Grain Spawn Production Log</div>
+      ${labDatalistsHTML()}
       ${sec('Header')}
       <div class="fg2">
         <div class="fgl"><label>Production Date</label><input class="fi" type="date" id="sp-pdate" value="${tday()}"></div>
-        <div class="fgl"><label>Lot Code</label><input class="fi" id="sp-lotcode" placeholder="e.g. #060826"></div>
-        <div class="fgl"><label>Substrate Batch</label><input class="fi" id="sp-subbatch" placeholder="e.g. #HFM-24"></div>
-        <div class="fgl"><label>Order</label><input class="fi" id="sp-order" placeholder="optional"></div>
-        <div class="fgl"><label>Batch #</label><input class="fi" id="sp-batchno" placeholder="e.g. 001"></div>
+        <div class="fgl"><label>Lot Code</label><input class="fi" id="sp-lotcode" list="lab-lotcode-l" autocomplete="off" placeholder="e.g. #060826"></div>
+        <div class="fgl"><label>Substrate Batch</label><input class="fi" id="sp-subbatch" list="lab-subbatch-l" autocomplete="off" placeholder="e.g. #HFM-24"></div>
+        <div class="fgl"><label>Order</label><input class="fi" id="sp-order" list="lab-order-l" autocomplete="off" placeholder="optional"></div>
+        <div class="fgl"><label>Batch #</label><input class="fi" id="sp-batchno" list="lab-batchno-l" autocomplete="off" placeholder="e.g. 001"></div>
       </div>
       ${sec('Substrate & Ingredients')}
       <div class="fg2">
         <div class="fgl"><label>Grain Type</label><select class="fs" id="sp-grain">${GRAIN_TYPES.map(g=>`<option value="${g}">${g}</option>`).join('')}</select></div>
         <div class="fgl"><label>Total Grain Weight</label><input class="fi" id="sp-grainwt" placeholder="e.g. 1100 g/bag"></div>
-        <div class="fgl"><label>Grain Batch/Lot</label><input class="fi" id="sp-grainlot" placeholder="e.g. 002"></div>
+        <div class="fgl"><label>Grain Batch/Lot</label><input class="fi" id="sp-grainlot" list="lab-grainlot-l" autocomplete="off" placeholder="e.g. 002"></div>
         <div class="fgl"><label># of Bags / Jars</label><input class="fi" type="number" min="1" id="sp-bags" placeholder="e.g. 8"></div>
       </div>
       <div class="fg2">
@@ -9531,21 +9550,22 @@ function rLabSubstrate(el){
         ${editBatch?'Editing an existing record. Changes are saved over the original and logged to the audit trail.':'One record per cook. Substrate &amp; sterilization are shared; add a variety line per strain — each gets a lot suffix off the cook lot number.'}
       </div>
 
+      ${labDatalistsHTML()}
       <!-- Header fields -->
       <div class="fg2" style="margin-top:14px;">
         <div class="fgl"><label>Production Date</label><input class="fi" type="date" id="pl-pdate" value="${editBatch?(E.productionDate||E.date||''):tday()}"></div>
-        <div class="fgl"><label>Substrate Batch</label><input class="fi" id="pl-sbatch" value="${attrEsc(E.substrateBatch||'')}" placeholder="e.g. SB-2026-01"></div>
+        <div class="fgl"><label>Substrate Batch</label><input class="fi" id="pl-sbatch" list="lab-subbatch-l" autocomplete="off" value="${attrEsc(E.substrateBatch||'')}" placeholder="e.g. SB-2026-01"></div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Cook Lot Number</label><input class="fi" id="pl-lot" value="${attrEsc(E.lotCode||'')}" placeholder="e.g. 10209" oninput="onPlCookLotInput()">
+        <div class="fgl"><label>Cook Lot Number</label><input class="fi" id="pl-lot" list="lab-lotcode-l" autocomplete="off" value="${attrEsc(E.lotCode||'')}" placeholder="e.g. 10209" oninput="onPlCookLotInput()">
           <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:1px;">SHARED BY THE COOK · EACH VARIETY GETS A SUFFIX</div>
         </div>
         <div class="fgl"><label>Batch # <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${editBatch?'':'AUTO'}</span></label>
-          <input class="fi" id="pl-batchnum" value="${editBatch?attrEsc(E.batchNum||''):nextLabBatchNum()}" placeholder="LAB-2026-001">
+          <input class="fi" id="pl-batchnum" list="lab-batchno-l" autocomplete="off" value="${editBatch?attrEsc(E.batchNum||''):nextLabBatchNum()}" placeholder="LAB-2026-001">
         </div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Order / Run #</label><input class="fi" id="pl-order" value="${attrEsc(E.order||'')}" placeholder="e.g. 1 of 3"></div>
+        <div class="fgl"><label>Order / Run #</label><input class="fi" id="pl-order" list="lab-order-l" autocomplete="off" value="${attrEsc(E.order||'')}" placeholder="e.g. 1 of 3"></div>
         <div class="fgl"><label>Substrate Supplier / Origin</label><input class="fi" id="pl-suborigin" value="${attrEsc(E.substrateOrigin||'')}" placeholder="e.g. Nashville Straw Co., in-house sawdust mix"></div>
       </div>
 
