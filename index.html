@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #40</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #41</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4699,7 +4699,9 @@ function notifyReport(kind, subject, data){
     if(data.crewText) L.push('Crew:      '+data.crewText);
     L.push(''); L.push('BLOCKS BY STRAIN');
     let tb=0; (data.rows||[]).forEach(r=>{ tb+=(parseInt(r.blockCount)||0); L.push(` • ${r.lot?r.lot+' — ':''}${r.strain||r.variety||''}${r.generation?' ['+r.generation+']':''} — ${r.blockCount||0} blocks${r.spawnLot?' (spawn '+r.spawnLot+')':''}`); });
-    L.push(''); L.push('TOTAL: '+tb+' blocks across '+((data.rows||[]).length)+' lot'+(((data.rows||[]).length)!==1?'s':''));
+    const cooked=parseInt(data.blocksProduced)||tb;
+    L.push(''); L.push('BLOCKS PRODUCED (total cooked): '+cooked);
+    L.push('Allocated across lots: '+tb+' in '+((data.rows||[]).length)+' lot'+(((data.rows||[]).length)!==1?'s':''));
   } else if(kind==='shipment'){
     L.push('From:      Carthage');
     L.push('To:        Hyde’s Ferry Pike');
@@ -5090,7 +5092,7 @@ async function snapBlock(input){
     _lastSnap={kind:'block',url:r.imageUrl,name:'block-log.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
     const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null&&v!=='') e.value=v; };
     set('pl-pdate',_toISO(d.productionDate)); set('pl-lot',d.lotCode); set('pl-sbatch',d.substrateBatch); set('pl-batchnum',d.batch); set('pl-order',d.order);
-    if(d.subLbs) set('pl-sublbs',d.subLbs); if(d.buckets) set('pl-buckets',d.buckets); if(d.gallons) set('pl-gallons',d.gallons);
+    if(d.subLbs) set('pl-sublbs',d.subLbs); if(d.buckets) set('pl-buckets',d.buckets); if(d.gallons) set('pl-gallons',d.gallons); if(d.blocksProduced) set('pl-blocksproduced',d.blocksProduced);
     set('pl-wmin', (_minsBetween(d.waterStart,d.waterEnd)||_num(d.waterMinutes)||'')); set('pl-mixtime', _num(d.mixTime)); set('pl-prodnotes',d.prodNotes);
     set('pl-sdate',_toISO(d.sterDate)); set('pl-actemp',d.autoclaveTemp); set('pl-cooktime',d.cookTime); set('pl-cookstart',d.cookStart); set('pl-cookend',d.cookEnd); set('pl-sternotes',d.sterNotes);
     // per-cook-lot block lines → the pl-varieties list
@@ -7965,7 +7967,7 @@ function dlBlockProductionCSV(fromDate, toDate){
 
   const headers = [
     'Batch #','Production Date','Cook Lot','Lot (with suffix)','Strain / Variety','Substrate Batch','Order / Run #','Substrate Supplier / Origin',
-    'Substrate Lbs','Buckets','Gallons Water','Add Water (min)','Mix (min)','Blocks',
+    'Substrate Lbs','Buckets','Gallons Water','Add Water (min)','Mix (min)','Blocks (this lot)','Blocks Produced (total cooked)',
     'Sterilization Date','Autoclave Temp (F)','Cook Hours','Cook Start','Cook End','Sterilization Crew','Inoculation Crew',
     'Spawn Date','Spawn Type','Spawn Supplier / Origin','Spawn Qty / Rate','Spawn Lot #',
     'Rack Location','Expected Colonization (days)','Variety Notes','Created By','Timestamp'
@@ -7980,7 +7982,7 @@ function dlBlockProductionCSV(fromDate, toDate){
         b.batchNum||'', b.productionDate||b.date||'', b.lotCode||'', fullLot, v.variety||'',
         b.substrateBatch||'', b.order||'', b.substrateOrigin||'',
         b.substrateLbs||0, b.buckets||0, b.gallonsWater||0,
-        _waterMin(b), _mixMin(b), v.blockCount||0,
+        _waterMin(b), _mixMin(b), v.blockCount||0, (b.blocksProduced||''),
         b.sterilizationDate||'', b.autoclaveTemp||'', b.cookTimeHours||'',
         b.cookTimeStart||'', b.cookTimeEnd||'', b.sterCrew||'', b.inocCrew||'',
         v.spawnDate||'', v.spawnSource||'', v.spawnSupplier||'', v.spawnQuantity||'', v.spawnLot||'',
@@ -9605,6 +9607,7 @@ function rLabSubstrate(el){
       </div>
       <div class="fg2">
         <div class="fgl"><label>Gallons of Water</label><input class="fi" type="number" step="0.1" id="pl-gallons" value="${E.gallonsWater||''}" placeholder="e.g. 25"></div>
+        <div class="fgl"><label>Blocks Produced <span style="color:var(--text3);font-size:9px;">total cooked — whole batch</span></label><input class="fi" type="number" min="0" id="pl-blocksproduced" value="${E.blocksProduced||''}" placeholder="e.g. 97"></div>
       </div>
       <div class="fg2">
         <div class="fgl"><label>Add Water Time (min)</label><input class="fi" type="number" min="0" step="1" id="pl-wmin" value="${attrEsc(_waterMin(E))}" placeholder="e.g. 12"></div>
@@ -9669,6 +9672,7 @@ function rLabSubstrate(el){
           const st = labStatusBadge(b);
           const vlines = batchVarietyLines(b);
           const totalBlocks = vlines.reduce((s,v)=>s+(parseInt(v.blockCount)||0),0) || b.blockCount || 0;
+          const cooked = parseInt(b.blocksProduced)||totalBlocks;
           const varSummary = vlines.map(v=>v.variety).filter(Boolean).join(' · ') || '—';
           const cookLot = b.lotCode || '';
           return `<details style="border:1px solid var(--border);border-radius:6px;margin-bottom:8px;background:white;overflow:hidden;">
@@ -9678,7 +9682,7 @@ function rLabSubstrate(el){
               <span style="font-weight:600;font-size:13px;">${varSummary}</span>
               ${vlines.length>1?`<span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--gold);background:rgba(196,168,130,.12);border-radius:3px;padding:2px 6px;">${vlines.length} VARIETIES</span>`:''}
               <span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${fDate(b.productionDate||b.date)}</span>
-              ${totalBlocks?`<span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text2);">${totalBlocks} blocks</span>`:''}
+              ${cooked?`<span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text2);">${cooked} cooked${(totalBlocks&&totalBlocks!==cooked)?' · '+totalBlocks+' in lots':''}</span>`:''}
               <span style="margin-left:auto;font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;color:${st.col};background:${st.col}22;border:1px solid ${st.col}44;border-radius:3px;padding:2px 8px;">${st.label}</span>
             </summary>
             <div style="padding:0 16px 16px;border-top:1px solid var(--border);margin-top:0;">
@@ -9693,7 +9697,8 @@ function rLabSubstrate(el){
                   ${b.gallonsWater?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Water: </span>${b.gallonsWater} gal</div>`:''}
                   ${_waterMin(b)!==''&&_waterMin(b)!=null?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Add Water: </span>${_waterMin(b)} min</div>`:''}
                   ${_mixMin(b)!==''&&_mixMin(b)!=null?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Mix Time: </span>${_mixMin(b)} min</div>`:''}
-                  ${totalBlocks?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Total Blocks: </span><strong>${totalBlocks}</strong></div>`:''}
+                  ${cooked?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Blocks Produced (cooked): </span><strong>${cooked}</strong></div>`:''}
+                  ${(totalBlocks&&totalBlocks!==cooked)?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Allocated to lots: </span><strong>${totalBlocks}</strong></div>`:''}
                   ${b.prodNotes?`<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic;">${b.prodNotes}</div>`:''}
                 </div>
                 <div style="flex:1;">
@@ -9786,6 +9791,7 @@ async function logProductionBatch(){
     // strain kept as a readable summary for legacy displays / search
     strain         : varieties.map(v=>v.variety).join(', '),
     blockCount     : totalBlocks,
+    blocksProduced : parseInt(document.getElementById('pl-blocksproduced')?.value)||totalBlocks,
     // Production (shared across the cook)
     substrateLbs   : parseFloat(document.getElementById('pl-sublbs').value)||0,
     buckets        : parseInt(document.getElementById('pl-buckets').value)||0,
@@ -9846,7 +9852,7 @@ async function logProductionBatch(){
   const snapUrl=(_lastSnap&&_lastSnap.kind==='block')?_lastSnap.url:'';
   const snapImg=(_lastSnap&&_lastSnap.kind==='block'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
   openEmailDispatch('block', notifySubject('block',{lotCode:data.lotCode,date:productionDate}), {label:'Block '+(data.lotCode||batchNum),
-    data:{lotCode:data.lotCode,date:productionDate,subLbs:data.substrateLbs,buckets:data.buckets,gallons:data.gallonsWater,crewText:[data.sterCrew,data.inocCrew].filter(Boolean).join(' / '),rows:varieties.map(v=>({lot:v.lot,strain:v.variety,generation:v.generation,blockCount:v.blockCount,spawnLot:v.spawnLot})),imageUrl:snapUrl}, image:snapImg});
+    data:{lotCode:data.lotCode,date:productionDate,subLbs:data.substrateLbs,buckets:data.buckets,gallons:data.gallonsWater,blocksProduced:data.blocksProduced,crewText:[data.sterCrew,data.inocCrew].filter(Boolean).join(' / '),rows:varieties.map(v=>({lot:v.lot,strain:v.variety,generation:v.generation,blockCount:v.blockCount,spawnLot:v.spawnLot})),imageUrl:snapUrl}, image:snapImg});
 }
 
 // Draw produced spawn down as block production consumes it (create path only).
