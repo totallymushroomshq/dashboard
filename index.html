@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #38</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #39</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -8309,13 +8309,30 @@ function onFlipContainer(){
   const lots=(DB.fruitings||[]).filter(f=>f.containerID===con && (f.status==='fruiting'||f.status==='harvested') && fruitingRemaining(f)>0);
   if(!con){ wrap.innerHTML=''; return; }
   if(!lots.length){ wrap.innerHTML=`<div style="font-size:11px;color:var(--text3);margin:6px 0;">No blocks on hand in ${con} — use "extra spent blocks" below for untied leftovers.</div>`; return; }
-  wrap.innerHTML=`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:6px 0 8px;">BLOCKS IN ${con} — SET # TO REMOVE PER LOT (blank/0 = leave · "all" = flip the whole lot)</div>
+  const totalOnHand=lots.reduce((s,f)=>s+fruitingRemaining(f),0);
+  wrap.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:rgba(184,76,32,.06);border:1px solid rgba(184,76,32,.28);border-radius:6px;padding:11px 14px;margin:6px 0 12px;">
+      <div style="font-size:12px;color:var(--text2);line-height:1.55;">
+        <strong style="color:var(--rust);">${con}</strong> currently holds <strong>${totalOnHand}</strong> active block${totalOnHand===1?'':'s'} across <strong>${lots.length}</strong> lot${lots.length===1?'':'s'}.
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">Staged to remove: <strong id="cf-stage-total" style="color:var(--rust);">0</strong> / ${totalOnHand}</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn b-r" type="button" onclick="purgeContainer()">⚡ Kick whole container — purge all ${totalOnHand}</button>
+        <button class="btn b-g b-sm" type="button" onclick="clearCfRem()">clear</button>
+      </div>
+    </div>
+    <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:6px 0 8px;">BLOCKS IN ${con} — SET # TO REMOVE PER LOT (blank/0 = leave · "all" = whole lot · or ⚡ purge the whole container above)</div>
     ${lots.map(f=>{ const rem=fruitingRemaining(f); return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:5px;margin-bottom:6px;font-size:12px;flex-wrap:wrap;">
       <span style="flex:1;min-width:180px;"><strong>${f.variety}</strong> · Lot <span style="color:var(--gold);">${f.lotNumber}</span> · <span style="color:var(--fern);">${rem} on hand</span></span>
-      <button class="btn b-g b-sm" onclick="document.getElementById('cf-rem-${f.id}').value=${rem}">all</button>
-      <input class="fi cf-rem" type="number" min="0" max="${rem}" id="cf-rem-${f.id}" placeholder="0" style="width:96px;" data-lot="${(f.lotNumber||'').replace(/"/g,'&quot;')}" data-var="${(f.variety||'').replace(/"/g,'&quot;')}" data-rem="${rem}">
+      <button class="btn b-g b-sm" type="button" onclick="document.getElementById('cf-rem-${f.id}').value=${rem};updateCfTotal();">all</button>
+      <input class="fi cf-rem" type="number" min="0" max="${rem}" id="cf-rem-${f.id}" placeholder="0" oninput="updateCfTotal()" style="width:96px;" data-lot="${(f.lotNumber||'').replace(/"/g,'&quot;')}" data-var="${(f.variety||'').replace(/"/g,'&quot;')}" data-rem="${rem}">
     </div>`;}).join('')}`;
+  updateCfTotal();
 }
+// one-click: stage every lot in the container to its full on-hand count (kick the whole container)
+function purgeContainer(){ document.querySelectorAll('.cf-rem').forEach(inp=>{ inp.value=parseInt(inp.getAttribute('data-rem'))||0; }); updateCfTotal(); }
+function clearCfRem(){ document.querySelectorAll('.cf-rem').forEach(inp=>{ inp.value=''; }); updateCfTotal(); }
+function updateCfTotal(){ let t=0; document.querySelectorAll('.cf-rem').forEach(inp=>{ t+=Math.min(parseInt(inp.value)||0, parseInt(inp.getAttribute('data-rem'))||0); }); const el=document.getElementById('cf-stage-total'); if(el) el.textContent=t; }
 function saveClean(){
   const con=document.getElementById('cf-con')?.value;
   const date=document.getElementById('cf-date')?.value||tday();
