@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #37</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #38</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4698,8 +4698,8 @@ function notifyReport(kind, subject, data){
     if(data.subLbs) L.push('Substrate: '+data.subLbs+' lb · '+(data.buckets||0)+' buckets · '+(data.gallons||0)+' gal water');
     if(data.crewText) L.push('Crew:      '+data.crewText);
     L.push(''); L.push('BLOCKS BY STRAIN');
-    let tb=0; (data.rows||[]).forEach(r=>{ tb+=(parseInt(r.blockCount)||0); L.push(` • ${r.strain||r.variety||''} — ${r.blockCount||0} blocks${r.spawnLot?' (spawn '+r.spawnLot+')':''}`); });
-    L.push(''); L.push('TOTAL: '+tb+' blocks across '+((data.rows||[]).length)+' strain'+(((data.rows||[]).length)!==1?'s':''));
+    let tb=0; (data.rows||[]).forEach(r=>{ tb+=(parseInt(r.blockCount)||0); L.push(` • ${r.lot?r.lot+' — ':''}${r.strain||r.variety||''}${r.generation?' ['+r.generation+']':''} — ${r.blockCount||0} blocks${r.spawnLot?' (spawn '+r.spawnLot+')':''}`); });
+    L.push(''); L.push('TOTAL: '+tb+' blocks across '+((data.rows||[]).length)+' lot'+(((data.rows||[]).length)!==1?'s':''));
   } else if(kind==='shipment'){
     L.push('From:      Carthage');
     L.push('To:        Hyde’s Ferry Pike');
@@ -5093,13 +5093,17 @@ async function snapBlock(input){
     if(d.subLbs) set('pl-sublbs',d.subLbs); if(d.buckets) set('pl-buckets',d.buckets); if(d.gallons) set('pl-gallons',d.gallons);
     set('pl-wstart',d.waterStart); set('pl-wend',d.waterEnd); set('pl-mixtime',d.mixTime); set('pl-prodnotes',d.prodNotes);
     set('pl-sdate',_toISO(d.sterDate)); set('pl-actemp',d.autoclaveTemp); set('pl-cooktime',d.cookTime); set('pl-cookstart',d.cookStart); set('pl-cookend',d.cookEnd); set('pl-sternotes',d.sterNotes);
-    // per-strain block lines → the pl-varieties list
+    // per-cook-lot block lines → the pl-varieties list
     const rows=(Array.isArray(d.rows)?d.rows:[]).filter(x=>x&&(x.strain||x.blockCount));
+    // LABORATORY spawn lot lines (shared across the cook) → a readable fallback for each row's spawn lot
+    const spawnLotStr=(Array.isArray(d.spawnLots)?d.spawnLots:[]).map(s=>((s.source?s.source+'-':'')+(s.lot||'')+(s.qty?(' ×'+s.qty):'')).trim()).filter(Boolean).join(', ');
+    const lotCode=(d.lotCode||'').trim();
+    const suffixOf=lot=>{ lot=(lot||'').trim(); return (lotCode&&lot.toUpperCase().startsWith(lotCode.toUpperCase()))?lot.slice(lotCode.length).replace(/^[-\s]+/,'').trim():''; };
     if(rows.length && typeof plVarieties!=='undefined'){
-      plVarieties=rows.map(x=>({...blankPlVar(), variety:(x.strain||'').trim(), blockCount:x.blockCount||'', spawnLot:(x.spawnLot||'').trim(), spawnDate:_toISO(d.spawnDate)||'', spawnQuantity:d.spawnQty||'', spawnSource:d.spawnSource||'', rack:d.rackLocation||''}));
+      plVarieties=rows.map(x=>({...blankPlVar(), suffix:suffixOf(x.lot), variety:(x.strain||'').trim(), generation:(x.generation||'').trim(), blockCount:x.blockCount||'', spawnLot:(x.spawnLot||'').trim()||spawnLotStr, spawnDate:_toISO(d.spawnDate)||'', spawnQuantity:d.spawnQty||'', spawnSource:d.spawnSource||'', rack:d.rackLocation||''}));
       if(typeof paintPlVarieties==='function') paintPlVarieties();
     }
-    show(`✓ Read block log <b>${d.lotCode||''}</b> — <b>${rows.length} strain(s)</b> populated below — verify, then Log.`);
+    show(`✓ Read block log <b>${d.lotCode||''}</b> — <b>${rows.length} lot line(s)</b> populated below${spawnLotStr?` · spawn: ${spawnLotStr}`:''} — verify, then Log.`);
   }catch(e){ show('⚠ '+e.message); }
   finally{ input.value=''; }
 }
@@ -8534,7 +8538,7 @@ const SPAWN_SOURCES = ['Grain Spawn','Agar Culture','Liquid Culture (LC)','Grain
 let plVarieties = [];
 let editingLabId = null;  // when set, the Production Log form is editing an existing record (admin only)
 function plSuffix(i){ return String.fromCharCode(65+i); } // 0→A, 1→B …
-function blankPlVar(){ return {suffix:'',variety:'',blockCount:'',spawnRunId:'',bagsUsed:'',spawnDate:'',spawnSource:'',spawnSupplier:'',spawnQuantity:'',spawnLot:'',rack:'',colDays:'',notes:''}; }
+function blankPlVar(){ return {suffix:'',variety:'',generation:'',blockCount:'',spawnRunId:'',bagsUsed:'',spawnDate:'',spawnSource:'',spawnSupplier:'',spawnQuantity:'',spawnLot:'',rack:'',colDays:'',notes:''}; }
 function attrEsc(s){ return String(s==null?'':s).replace(/"/g,'&quot;'); }
 
 // Read the current per-variety DOM inputs back into the plVarieties array
@@ -8542,6 +8546,7 @@ function readPlVarieties(){
   return plVarieties.map((_,i)=>({
     suffix        : document.getElementById('plv-suffix-'+i)?.value || '',
     variety       : document.getElementById('plv-variety-'+i)?.value || '',
+    generation    : document.getElementById('plv-gen-'+i)?.value || '',
     blockCount    : document.getElementById('plv-blocks-'+i)?.value || '',
     spawnRunId    : document.getElementById('plv-spawnrun-'+i)?.value || '',
     bagsUsed      : document.getElementById('plv-bagsused-'+i)?.value || '',
@@ -8577,6 +8582,7 @@ function renderPlVarietiesHTML(){
       <div class="fg2">
         <div class="fgl"><label>Lot Suffix</label><input class="fi" id="plv-suffix-${i}" value="${attrEsc(row.suffix)}" placeholder="e.g. A" oninput="updatePlLotLabel(${i})" style="max-width:120px;"></div>
         <div class="fgl"><label>Variety / Strain <span style="color:var(--text3);font-size:9px;">type or pick</span></label><input class="fi" id="plv-variety-${i}" list="plv-vdl-${i}" value="${attrEsc(row.variety)}" placeholder="Type or pick…" autocomplete="off"><datalist id="plv-vdl-${i}">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+        <div class="fgl"><label>Generation <span style="color:var(--text3);font-size:9px;">spawn gen</span></label><input class="fi" id="plv-gen-${i}" value="${attrEsc(row.generation||'')}" placeholder="e.g. G2" style="max-width:120px;"></div>
         <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="0" id="plv-blocks-${i}" value="${attrEsc(row.blockCount)}" placeholder="e.g. 24"></div>
       </div>
       <div class="fg2" style="background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.18);border-radius:5px;padding:10px 12px;margin-bottom:10px;">
@@ -9727,6 +9733,7 @@ async function logProductionBatch(){
       suffix,
       lot          : lotCode ? `${lotCode}${suffix?' '+suffix:''}` : '',
       variety      : v.variety,
+      generation   : (v.generation||'').trim(),
       blockCount   : parseInt(v.blockCount)||0,
       spawnRunId   : v.spawnRunId||'',
       bagsUsed     : parseInt(v.bagsUsed)||0,
@@ -9818,7 +9825,7 @@ async function logProductionBatch(){
   const snapUrl=(_lastSnap&&_lastSnap.kind==='block')?_lastSnap.url:'';
   const snapImg=(_lastSnap&&_lastSnap.kind==='block'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
   openEmailDispatch('block', notifySubject('block',{lotCode:data.lotCode,date:productionDate}), {label:'Block '+(data.lotCode||batchNum),
-    data:{lotCode:data.lotCode,date:productionDate,subLbs:data.substrateLbs,buckets:data.buckets,gallons:data.gallonsWater,crewText:[data.sterCrew,data.inocCrew].filter(Boolean).join(' / '),rows:varieties.map(v=>({strain:v.variety,blockCount:v.blockCount,spawnLot:v.spawnLot})),imageUrl:snapUrl}, image:snapImg});
+    data:{lotCode:data.lotCode,date:productionDate,subLbs:data.substrateLbs,buckets:data.buckets,gallons:data.gallonsWater,crewText:[data.sterCrew,data.inocCrew].filter(Boolean).join(' / '),rows:varieties.map(v=>({lot:v.lot,strain:v.variety,generation:v.generation,blockCount:v.blockCount,spawnLot:v.spawnLot})),imageUrl:snapUrl}, image:snapImg});
 }
 
 // Draw produced spawn down as block production consumes it (create path only).
