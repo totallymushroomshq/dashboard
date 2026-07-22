@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Totally Mushrooms</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Syne:wght@400;500;600;700&family=Syne+Mono&display=swap" rel="stylesheet">
 <style>
@@ -209,8 +212,8 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 .bn{background:var(--blue-lt);color:var(--blue);border:1px solid rgba(42,85,120,.2)}
 
 /* ── FORM ── */
-.fg2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
-.fgl{display:flex;flex-direction:column;gap:7px}
+.fg2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:16px}
+.fgl{display:flex;flex-direction:column;gap:7px;min-width:0}
 .fgl label{font-family:'Syne Mono',monospace;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--text3)}
 .vg{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin:18px 0}
 .vi{background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:14px;transition:border-color .2s}
@@ -240,8 +243,8 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 .wo-d{font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3)}
 
 /* ── CHARTS ── */
-.cr{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
-.cc{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:22px;box-shadow:var(--shadow)}
+.cr{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:20px;margin-bottom:20px}
+.cc{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:22px;box-shadow:var(--shadow);min-width:0}
 .cc-l{font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:20px}
 .bch{display:flex;gap:10px;align-items:flex-end;height:120px}
 .bg2{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px}
@@ -350,6 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #33</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -503,7 +507,8 @@ const DB = {
   preservationBatches:[],
   labBatches:[], blockDisposals:[], containerFlips:[], shipments:[],
   facilities:[], containerOverrides:{},
-  emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false}
+  emailjs:{serviceId:'',templateId:'',publicKey:'',enabled:false},
+  notify:{enabled:true,templateId:'',to:{}}
 };
 let packDaySelected = {}; // harvestId -> pull weight, persists across renders
 let packExpanded = {}; // variety -> expanded (breakout) in pack pull view
@@ -542,7 +547,7 @@ const ALL_INTERNAL_TABS = [
   {id:'receiving',l:'📥 Receiving'},
   {id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},
   {id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},
-  {id:'cleaning',l:'🧽 Clean & Flip'},
+  {id:'cleaning',l:'🧽 Clean · Flip · Waste'},
   {id:'trace',l:'🔍 Trace'},
   {id:'lab',l:'🧫 Lab'},
   {id:'cordyceps',l:'🐛 Cordyceps'},
@@ -552,11 +557,11 @@ const ALL_INTERNAL_TABS = [
   {id:'qb',l:'📒 QB',c:'at'}
 ];
 const DEFAULT_PERMS = {
-  admin: {today:true,week:true,'new-order':true,'email-parse':true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
-  staff: {today:true,week:true,'new-order':true,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
-  accountant: {today:true,week:true,'new-order':false,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:false,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
+  admin: {today:true,week:true,'new-order':true,'email-parse':true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
+  staff: {today:true,week:true,'new-order':true,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
+  accountant: {today:true,week:true,'new-order':false,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:false,waste:true,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
 };
-const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',lab:'Lab — Carthage',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
+const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',cleaning:'🧽 Clean · Flip · Waste',lab:'Lab — Carthage',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
 
 // ── FIREBASE CONFIG ──
 const FIREBASE_CONFIG = {
@@ -652,6 +657,11 @@ async function loadDB(){
       const cfgDoc=await fdb.collection('appConfig').doc('emailjs').get();
       if(cfgDoc.exists){ Object.assign(DB.emailjs,cfgDoc.data()); }
     }catch(e){ console.warn('EmailJS config not found'); }
+    // Load notification (auto-email) config from appConfig
+    try{
+      const nDoc=await fdb.collection('appConfig').doc('notify').get();
+      if(nDoc.exists){ Object.assign(DB.notify,nDoc.data()); }
+    }catch(e){ console.warn('notify config not found'); }
     // Load active facilities config from appConfig
     try{
       const facDoc=await fdb.collection('appConfig').doc('facilities').get();
@@ -1219,15 +1229,24 @@ function openSessionLaborGate(kind, container, date, activity, doCommit){
       <button class="btn b-g" onclick="cancelSessionLabor()">Cancel</button>
     </div>`;
   document.getElementById('edit-modal').classList.add('open');
-  addLaborGateRow();
+  // pre-fill crew from a scanned sheet (harvest/fruiting snap), else one blank row
+  if(_scanLabor && _scanLabor.length){
+    _scanLabor.forEach(c=>addLaborGateRow(c.emp,c.min));
+    const note=document.createElement('div');
+    note.style.cssText='font-size:11px;color:var(--fern);margin:-6px 0 12px;font-family:\'Syne Mono\',monospace;';
+    note.textContent='✓ Crew pre-filled from the scanned sheet — verify before saving.';
+    const rows=document.getElementById('lg-rows'); if(rows&&rows.parentNode) rows.parentNode.insertBefore(note, rows.nextSibling);
+    _scanLabor=null;
+  } else { addLaborGateRow(); }
 }
-function addLaborGateRow(){
+let _scanLabor=null; // crew [{emp,min}] parsed from a scanned harvest/fruiting sheet, consumed by the next labor gate
+function addLaborGateRow(emp,min){
   const i=_laborGateRows++;
   const wrap=document.getElementById('lg-rows'); if(!wrap) return;
   const div=document.createElement('div');
   div.style.cssText='display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;';
-  div.innerHTML=`<div style="flex:1;"><label style="font-size:9px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:1px;">STAFF</label>${staffInput('lg-emp-'+i,'')}</div>
-    <div style="width:110px;"><label style="font-size:9px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:1px;">MINUTES</label><input class="fi" type="number" min="1" id="lg-min-${i}" placeholder="e.g. 60"></div>`;
+  div.innerHTML=`<div style="flex:1;"><label style="font-size:9px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:1px;">STAFF</label>${staffInput('lg-emp-'+i,emp||'')}</div>
+    <div style="width:110px;"><label style="font-size:9px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:1px;">MINUTES</label><input class="fi" type="number" min="1" id="lg-min-${i}" placeholder="e.g. 60" value="${min?String(min):''}"></div>`;
   wrap.appendChild(div);
 }
 async function confirmSessionLabor(){
@@ -1661,7 +1680,11 @@ async function saveEmailJSConfig(){
   DB.emailjs={serviceId:svc,templateId:tpl,alertTemplateId:atpl||'',publicKey:pk,enabled:!!en,alertMode:am};
   await fdb.collection('appConfig').doc('emailjs').set(DB.emailjs);
   emailjs.init({publicKey:pk});
-  toast('ejs-t','✓ EmailJS settings saved');
+  // auto-email notification config
+  DB.notify.templateId=document.getElementById('notify-tpl')?.value.trim()||'';
+  DB.notify.enabled=!!document.getElementById('notify-en')?.checked;
+  await fdb.collection('appConfig').doc('notify').set({templateId:DB.notify.templateId,enabled:DB.notify.enabled},{merge:true});
+  toast('ejs-t','✓ Email settings saved');
 }
 
 // ── PASSWORD RESET VIA URL PARAM ──
@@ -1976,7 +1999,7 @@ function sw(id){
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,trace:rTrace,lab:rLab,cordyceps:rCordyceps,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTrace,lab:rLab,cordyceps:rCordyceps,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -2401,6 +2424,10 @@ function rOC(o,container,showApprove){
     if(['pending','confirmed','packed'].includes(o.status)){
       actHTML = `<button class="btn b-g b-sm" onclick="openEditOrder('${o.id}')">✎ Edit</button>` + actHTML;
     }
+    // Re-send the packing-slip notification email
+    if(['packed','invoiced'].includes(o.status)){
+      actHTML = `<button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send packing-slip email" onclick="resendSlip('${o.id}')">✉</button>` + actHTML;
+    }
   }
 
   // Batch checkbox (admin/staff only)
@@ -2773,7 +2800,14 @@ function buildPackOrderCard(){
   return `
     <div class="card" style="margin-bottom:24px;border:2px solid var(--gold);">
       <div class="card-t">📦 Pack → Log Order (from SO#)</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Enter the <strong>S.O. number from the packing slip</strong>, the client, what you packed, and <strong>check the lots that went into this pack</strong>. Generates the order (marked <strong>packed</strong>) with those lots tied for traceability.</div>
+      <div style="background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.3);border-radius:6px;padding:12px 14px;margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:600;color:var(--fern);margin-bottom:8px;">📸 Snap / Upload the packing slip — AI fills this whole form</div>
+        <label class="btn b-g" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
+          <input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapSlip(this)">
+        </label>
+        <div id="po-snap-status" style="display:none;margin-top:10px;font-size:12px;padding:8px 12px;background:var(--white);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Or enter manually: the <strong>S.O. number from the packing slip</strong>, the client, what you packed, and <strong>check the lots that went into this pack</strong>. Generates the order (marked <strong>packed</strong>) with those lots tied for traceability.</div>
       <div class="fg2">
         <div class="fgl"><label>S.O. # <span style="color:var(--text3);font-size:9px;">optional — add later</span></label><input class="fi" id="po-so" placeholder="from Accounting's slip (or blank)"></div>
         <div class="fgl"><label>Client <span style="color:var(--rust);">*</span></label><input class="fi" id="po-client" list="po-clientl" placeholder="Type or pick client…" autocomplete="off"><datalist id="po-clientl">${clientNames.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('')}</datalist></div>
@@ -2783,6 +2817,7 @@ function buildPackOrderCard(){
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px;">${prodInputs}</div>
       <div class="fgl" style="margin-bottom:12px;"><label>Notes</label><input class="fi" id="po-notes" placeholder="Optional"></div>
       <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:6px 0 8px;">LOTS THAT WENT INTO THIS PACK <span style="text-transform:none;letter-spacing:0;">— check the lots used (pulled-session lots are pre-checked & outlined green)</span></div>
+      <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:8px;background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.2);border-radius:5px;padding:8px 11px;">📦 <b>Inventory auto-deducts on Generate:</b> each box = <b>qty × 3 lb</b>, split evenly across the varieties you check — so a mix box (MO8/CM5/WD01) with <b>3 varieties checked = 1 lb each</b>. Lots already pulled in today's pack session are skipped (that session already deducted them).</div>
       <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">${lotChecks}</div>
       <div class="form-acts">
         <button class="btn b-m b-lg" onclick="savePackOrder()">Generate Packed Order</button>
@@ -2790,6 +2825,34 @@ function buildPackOrderCard(){
       </div>
       <div class="toast" id="po-t">✓ Order logged</div>
     </div>`;
+}
+// ── MIX-BOX INVENTORY ENGINE ──
+// Each product consumes qty × unitLb total (mix box 3 lb, tote 10 lb, retail 0.25 lb),
+// split evenly across the DISTINCT checked varieties valid for that product → a 3-variety
+// mix box = 1 lb/variety. Skips lots already pulled in a pack session today (session wins).
+function computeOrderDeductions(qtys, checked){
+  const today=tday();
+  const inSession=(hid)=>DB.packSessions.some(s=>s.date===today && (s.pulled||[]).some(p=>p.harvestId===hid));
+  const targetByVar={}; const unmatched=[];
+  ALL_PRODS.forEach(p=>{ const N=parseInt(qtys[p.dataKey])||0; if(N<=0) return;
+    const total=N*(p.unitLb||3);
+    const relVars=[...new Set(checked.filter(l=>p.varieties&&p.varieties.includes(l.variety)).map(l=>l.variety))];
+    if(!relVars.length){ unmatched.push({code:p.code,name:p.name,qty:N,lb:total}); return; }
+    const per=total/relVars.length; // e.g. 3 lb box ÷ 3 varieties = 1 lb each
+    relVars.forEach(v=>{ targetByVar[v]=(targetByVar[v]||0)+per; });
+  });
+  const deductions=[]; let skippedSession=0; const shortfall={};
+  Object.entries(targetByVar).forEach(([v,need])=>{
+    let remaining=need;
+    const lots=checked.filter(l=>l.variety===v).sort((a,b)=>b.onHand-a.onHand); // draw from the biggest lot first
+    for(const l of lots){ if(remaining<=0.01) break;
+      if(inSession(l.harvestId)){ skippedSession+=Math.min(remaining,l.onHand); remaining-=Math.min(remaining,l.onHand); continue; } // handled by the pack session
+      const take=Math.min(remaining, l.onHand);
+      if(take>0.01){ deductions.push({harvestId:l.harvestId,lot:l.lotNumber,variety:v,used:Math.round(take*100)/100}); remaining-=take; }
+    }
+    if(remaining>0.05) shortfall[v]=Math.round(remaining*100)/100;
+  });
+  return {deductions, skippedSession:Math.round(skippedSession*100)/100, shortfall, unmatched};
 }
 async function savePackOrder(){
   const so=(document.getElementById('po-so')?.value||'').trim();
@@ -2804,15 +2867,38 @@ async function savePackOrder(){
   const checked=[...document.querySelectorAll('.po-lot-chk:checked')];
   const usedLots=[...new Set(checked.map(c=>c.value).filter(Boolean))];
   const usedHarvests=[...new Set(checked.map(c=>c.getAttribute('data-hid')).filter(Boolean))];
+  const snapUrl=(_lastSnap&&_lastSnap.kind==='slip')?_lastSnap.url:'';
+  const slipShip=(_lastSnap&&_lastSnap.kind==='slip')?_lastSnap.shipDate:'';
   const o={ clientId:cr?.id||null, client, day, status:'packed', receivedAt:new Date().toISOString(), packedAt:new Date().toISOString(),
     ...qtys, notes:(document.getElementById('po-notes')?.value||'').trim(),
     orderRef:nextHQOrderNum(), soNum:so, custom:false, isStanding:false, week:wkStart(),
-    usedHarvests, usedLots, source:'pack' };
+    usedHarvests, usedLots, scanUrl:snapUrl, source:'pack' };
+  // ── inventory deduction (mix rule: qty×unitLb split across checked varieties; session lots skipped) ──
+  const checkedObjs=checked.map(c=>{ const hid=c.getAttribute('data-hid'); const h=DB.harvests.find(x=>x.id===hid); return h?{harvestId:hid,lotNumber:h.lotNumber,variety:h.variety,onHand:packOnHand(h)}:null; }).filter(Boolean);
+  const ded=computeOrderDeductions(qtys, checkedObjs);
+  o.deductions=ded.deductions;
   try{ const oId=await FS.add('orders',o); o.id=oId; DB.orders.push(o); }
   catch(e){ alert('Save failed: '+(e.message||e)); return; }
-  logAudit('order_created',`Packed order${so?' SO#'+so:''} for ${client} — ${usedLots.length} lot(s) tied`);
-  toast('po-t','✓ Packed order for '+client+(so?' (SO#'+so+')':' — add SO# later')+' created');
+  // apply the deductions to on-hand
+  const invUpd=[];
+  ded.deductions.forEach(d=>{ const h=DB.harvests.find(x=>x.id===d.harvestId); if(h){ h.usedWeight=(h.usedWeight||0)+d.used; invUpd.push(FS.update('harvests',d.harvestId,{usedWeight:h.usedWeight})); } });
+  try{ await Promise.all(invUpd); }catch(e){ console.warn('inventory deduct update failed',e); }
+  const dedTot=ded.deductions.reduce((s,d)=>s+d.used,0);
+  logAudit('order_created',`Packed order${so?' SO#'+so:''} for ${client} — ${usedLots.length} lot(s) tied — deducted ${dedTot.toFixed(1)}lb`);
+  // surface reconciliation notes so nothing silently mis-deducts
+  let warn='';
+  if(ded.skippedSession>0) warn+=`\n${ded.skippedSession.toFixed(1)} lb already handled by today's pack session (skipped).`;
+  if(Object.keys(ded.shortfall).length) warn+='\n⚠ Not enough on-hand for: '+Object.entries(ded.shortfall).map(([v,l])=>`${v} (${l}lb short)`).join(', ')+'.';
+  if(ded.unmatched.length) warn+='\n⚠ No matching lot checked for: '+ded.unmatched.map(u=>`${u.code}×${u.qty}`).join(', ')+' — inventory NOT deducted for these.';
+  toast('po-t','✓ Packed order for '+client+(so?' (SO#'+so+')':'')+' — deducted '+dedTot.toFixed(1)+' lb');
+  if(warn) setTimeout(()=>alert('Order logged. Inventory notes:'+warn),300);
+  // build the email report from what was packed
+  const items=ALL_PRODS.filter(p=>qtys[p.dataKey]>0).map(p=>({code:p.code,name:p.name,qty:qtys[p.dataKey]}));
+  const shipIso=_toISO(slipShip)||_toISO(o.packedAt.slice(0,10))||o.packedAt.slice(0,10);
+  const snapImg=(_lastSnap&&_lastSnap.kind==='slip'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
   clrPackOrder(); renderC();
+  openEmailDispatch('slip', notifySubject('slip',{client,soNum:so,shipDate:shipIso}), {label:'Packing Slip '+(so?'SO '+so:client),
+    data:{client,soNum:so,poNum:(o.notes.match(/PO\s*(\S+)/i)||[])[1]||'',shipDate:shipIso,items,lots:usedLots,imageUrl:snapUrl}, image:snapImg});
 }
 function clrPackOrder(){
   ['po-so','po-client','po-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
@@ -2821,7 +2907,10 @@ function clrPackOrder(){
 
 function appOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!o) return; o.status='confirmed'; FS.update('orders',id,{status:'confirmed'}); const c=DB.clients.find(x=>x.id===o.clientId); notify(o.clientId,`Hi ${c?.contact||'there'}, your ${o.day} order is confirmed! ${oSum(o)}.`,'approval'); logAudit('order_confirmed',`Confirmed order for ${o.client} — ${o.day}`); renderC() }
 function rejOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!o||!confirm('Reject order for '+o.client+'?')) return; notify(o.clientId,`Hi ${DB.clients.find(x=>x.id===o.clientId)?.contact||'there'}, we can't fulfil your ${o.day} order this week. Please contact us.`,'rejection'); DB.orders=DB.orders.filter(x=>x.id!==id); FS.del('orders',id); renderC() }
-function delOrd(id){ if(!confirm('Delete order?')) return; DB.orders=DB.orders.filter(x=>x.id!==id); FS.del('orders',id); renderC() }
+function delOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!confirm('Delete order?')) return;
+  // revert any inventory this order deducted (restore on-hand)
+  if(o&&o.deductions&&o.deductions.length){ o.deductions.forEach(d=>{ const h=DB.harvests.find(x=>x.id===d.harvestId); if(h){ h.usedWeight=Math.max(0,(h.usedWeight||0)-(d.used||0)); FS.update('harvests',d.harvestId,{usedWeight:h.usedWeight}); } }); }
+  DB.orders=DB.orders.filter(x=>x.id!==id); FS.del('orders',id); renderC() }
 function subOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!o) return; const note=prompt('Substitution note for '+o.client+':'); if(!note) return; o.subNote=note; const req=confirm('Does client need to approve this sub?'); if(req){ o.status='pending'; notify(o.clientId,`Hi, we need to change your ${o.day} order: ${note}. Please log in to approve.`,'sub-approval') } else { o.status='confirmed'; notify(o.clientId,`Hi, a small update to your ${o.day} order: ${note}. All confirmed!`,'sub-notify') } renderC() }
 
 // ── EDIT ORDER (add / remove / substitute / change quantities after creation) ──
@@ -3601,6 +3690,22 @@ function onLotInput(){
   if(srcEl && info && info.vendor!=='Unknown') srcEl.value = info.vendor==='In-house' ? 'internal' : 'supplier';
   if(info?.variety && vEl){ vEl.value=info.variety; onVarietyInput(); }
   if(info?.blockWeightLb && bwEl) bwEl.value=info.blockWeightLb;
+  // exact match against blocks ON HAND → pull real inventory data + link the batch so placement draws it down
+  const typed=lot.trim().toLowerCase();
+  const match=typed?onHandReceivings().find(r=>(r.lotNumber||'').trim().toLowerCase()===typed):null;
+  const hint=document.getElementById('fr-lot-hint');
+  if(match){
+    if(vEl && match.variety){ vEl.value=match.variety; if(typeof onVarietyInput==='function') onVarietyInput(); }
+    if(vendorEl && match.vendor) vendorEl.value=match.vendor;
+    if(srcEl) srcEl.value=(match.source==='internal')?'internal':'supplier';
+    if(bwEl && match.blockWeightLb) bwEl.value=match.blockWeightLb;
+    const batch=document.getElementById('fr-batch'); if(batch) batch.value=match.id;
+    const bc=document.getElementById('fr-bc'); if(bc){ bc.max=receivingOnHand(match); if(!bc.value) bc.value=receivingOnHand(match); }
+    if(hint){ hint.style.color='var(--fern)'; hint.textContent=`✓ ${match.variety} · ${receivingOnHand(match)} blocks on hand · draws down on placement`; }
+  } else if(hint){
+    hint.style.color='var(--text3)';
+    hint.textContent = typed ? '⚠ NOT IN INVENTORY — will prompt for an explanation on submit' : 'TYPE TO MATCH BLOCKS ON HAND';
+  }
   updateFruitingPreview();
 }
 
@@ -3653,31 +3758,74 @@ function receivingOnHand(r){ return Math.max(0,(r.blockCount||0)-(r.placedCount|
 function onHandReceivings(){ return DB.receivings.filter(r=>receivingOnHand(r)>0).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')); }
 function onRecSourceChange(){ const src=document.getElementById('rc-source')?.value; const vEl=document.getElementById('rc-vendor'); if(vEl && !vEl.value && src==='internal') vEl.value='In-house Production'; }
 
+// ── multi-lot receiving: stage several lots in one delivery, one email ──
+let _recvQueue=[];
+function _readRecvRow(){
+  return { variety:(document.getElementById('rc-variety')?.value||'').trim(),
+    lotNumber:(document.getElementById('rc-lot')?.value||'').trim(),
+    blockCount:parseInt(document.getElementById('rc-bc')?.value)||0,
+    blockWeightLb:parseFloat(document.getElementById('rc-bw')?.value)||0 };
+}
+function _validRecvRow(r){
+  if(!r.variety){ alert('Variety is required.'); return false; }
+  if(!r.lotNumber){ alert('Lot / block number is required.'); return false; }
+  if(r.blockCount<1){ alert('Block count must be at least 1.'); return false; }
+  return true;
+}
+function addRecvRow(){
+  const r=_readRecvRow(); if(!_validRecvRow(r)) return;
+  _recvQueue.push(r); renderRecvQueue();
+  ['rc-variety','rc-lot','rc-bc','rc-bw'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  document.getElementById('rc-variety')?.focus();
+}
+function removeRecvRow(i){ _recvQueue.splice(i,1); renderRecvQueue(); }
+function updateRecvRow(i,field,value){ const r=_recvQueue[i]; if(!r) return; r[field]=(field==='blockCount')?(parseInt(value)||0):(field==='blockWeightLb')?(parseFloat(value)||0):(value||'').trim(); }
+function renderRecvQueue(){
+  const c=document.getElementById('rc-queue'); if(!c) return;
+  c.innerHTML=_recvQueue.length?`<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:12px 0 8px;">＋ ${_recvQueue.length} MORE LOT(S) THIS DELIVERY — VERIFY EACH</div>`+
+    _recvQueue.map((r,i)=>`<div style="background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"><span style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--gold);">LOT ${i+2}</span><button class="btn b-r b-sm" onclick="removeRecvRow(${i})">✕ Remove</button></div>
+      <div class="fg2">
+        <div class="fgl"><label>Variety</label><input class="fi" list="rc-variety-dl" value="${attrEsc(r.variety)}" onchange="updateRecvRow(${i},'variety',this.value)"></div>
+        <div class="fgl"><label>Lot / Block #</label><input class="fi" value="${attrEsc(r.lotNumber)}" onchange="updateRecvRow(${i},'lotNumber',this.value)"></div>
+        <div class="fgl"><label># of Blocks</label><input class="fi" type="number" min="1" value="${r.blockCount}" onchange="updateRecvRow(${i},'blockCount',this.value)"></div>
+        <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" value="${r.blockWeightLb||''}" onchange="updateRecvRow(${i},'blockWeightLb',this.value)"></div>
+      </div></div>`).join(''):'';
+  const btn=document.getElementById('rc-logbtn'); if(btn){ const cur=_readRecvRow(); const n=_recvQueue.length+((cur.variety||cur.lotNumber||cur.blockCount)?1:0); btn.textContent=_recvQueue.length?`Log ${n} Lots & Send Report`:'Log Received Blocks'; }
+}
 async function logReceiving(){
   const date=document.getElementById('rc-date')?.value||tday();
   const source=document.getElementById('rc-source')?.value||'vendor';
   const vendor=document.getElementById('rc-vendor')?.value.trim()||(source==='internal'?'In-house Production':'');
-  const variety=document.getElementById('rc-variety')?.value||'';
-  const lotNumber=document.getElementById('rc-lot')?.value.trim()||'';
-  const blockCount=parseInt(document.getElementById('rc-bc')?.value)||0;
-  const blockWeightLb=parseFloat(document.getElementById('rc-bw')?.value)||0;
   const receivedBy=document.getElementById('rc-by')?.value.trim()||(S.name||'');
   const poNum=document.getElementById('rc-po')?.value.trim()||'';
   const cost=parseFloat(document.getElementById('rc-cost')?.value)||null;
   const notes=document.getElementById('rc-notes')?.value.trim()||'';
-  if(!variety){ alert('Variety is required.'); return }
-  if(!lotNumber){ alert('Lot / block number is required.'); return }
-  if(blockCount<1){ alert('Block count must be at least 1.'); return }
-  const _vg={variety}; if(!normalizeRowVarieties([_vg])) return; const vCanon=_vg.variety; // standardize variety + warn on new
-  addVariety(vCanon);
-  if(source!=='internal' && vendor) addSupplier(vendor); // remember the supplier
-  const rData={date,facility:'Hydes Ferry',source,vendor,variety:vCanon,lotNumber,blockCount,blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,status:'on-hand',createdAt:new Date().toISOString()};
-  const rId=await FS.add('receivings',rData);
-  DB.receivings.push({id:rId,...rData});
-  logAudit('blocks_received',`Received ${blockCount} ${variety} blocks — Lot ${lotNumber} from ${vendor||source} @ Hydes Ferry`);
-  toast('rc-t'); clrReceiving(); renderC();
+  const temperature=document.getElementById('rc-temp')?.value.trim()||'';
+  const rows=[..._recvQueue];
+  const cur=_readRecvRow();
+  if(cur.variety||cur.lotNumber||cur.blockCount){ if(!_validRecvRow(cur)) return; rows.push(cur); }
+  if(!rows.length){ alert('Enter at least one lot to receive.'); return; }
+  if(!normalizeRowVarieties(rows)) return; // standardize each variety + warn on new
+  rows.forEach(r=>addVariety(r.variety));
+  if(source!=='internal' && vendor) addSupplier(vendor);
+  const snapUrl=(_lastSnap&&_lastSnap.kind==='receiving')?_lastSnap.url:'';
+  const tempLogUrl=_rcTempUrl, invoiceUrl=_rcInvoiceUrl;
+  const createdIds=[];
+  for(const r of rows){
+    const rData={date,facility:'Hydes Ferry',source,vendor,variety:r.variety,lotNumber:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,temperature,scanUrl:snapUrl,tempLogUrl,invoiceUrl,status:'on-hand',createdAt:new Date().toISOString()};
+    const rId=await FS.add('receivings',rData); DB.receivings.push({id:rId,...rData}); createdIds.push(rId);
+  }
+  const totalBlocks=rows.reduce((s,r)=>s+r.blockCount,0);
+  logAudit('blocks_received',`Received ${rows.length} lot(s) / ${totalBlocks} blocks from ${vendor||source} @ Hydes Ferry`);
+  toast('rc-t',`✓ ${rows.length} lot(s) · ${totalBlocks} blocks received`); clrReceiving(); _rcTempUrl=''; _rcInvoiceUrl=''; _recvQueue=[]; renderC();
+  const snapImg=(_lastSnap&&_lastSnap.kind==='receiving'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
+  // ONE compiled receiving report for the whole delivery
+  openEmailDispatch('receiving', notifySubject('receiving',{vendor,source,lot:(rows.length===1?rows[0].lotNumber:''),date}), {label:'Receiving '+(vendor||source),
+    edit:{kind:'receiving',col:'receivings',ids:createdIds,date},
+    data:{date,vendor,source,poNum,temperature,tempLogUrl,invoiceUrl,imageUrl:snapUrl,rows:rows.map(r=>({variety:r.variety,lot:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb}))}, image:snapImg});
 }
-function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); const v=document.getElementById('rc-variety'); if(v) v.value=''; }
+function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes','rc-temp'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); const v=document.getElementById('rc-variety'); if(v) v.value=''; _recvQueue=[]; renderRecvQueue(); }
 
 function buildIncomingShipments(){
   const inc=(DB.shipments||[]).filter(s=>s.status==='in-transit').sort((a,b)=>(a.date||'').localeCompare(b.date||''));
@@ -3695,6 +3843,7 @@ function buildIncomingShipments(){
     </table></div>`;
 }
 function rReceiving(el){
+  _rcTempUrl=''; _rcInvoiceUrl=''; _recvQueue=[]; // fresh doc uploads + lot queue each render
   const onHand=onHandReceivings();
   const history=[...DB.receivings].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
   const totalOnHand=onHand.reduce((s,r)=>s+receivingOnHand(r),0);
@@ -3709,7 +3858,7 @@ function rReceiving(el){
     <td class="mn" style="color:var(--gold);">${r.lotNumber}</td><td class="mn">${r.blockCount}</td><td class="mn">${r.placedCount||0}</td>
     <td class="mn">${receivingOnHand(r)}</td><td class="mn" style="font-size:10px;color:var(--text3);">${r.poNum||''}${r.cost?` · $${r.cost}`:''}</td>
     <td style="font-size:11px;color:var(--text3);">${r.receivedBy||''}</td>
-    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditReceiving('${r.id}')">✎ Edit</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
+    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditReceiving('${r.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendReceiving('${r.id}')">✉</button> <button class="btn b-sm" style="background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.25);" title="${r.invoiceUrl?'Replace invoice + re-send UPDATED report':'Attach invoice/packing slip + re-send UPDATED report'}" onclick="rcAddInvoice('${r.id}')">🧾${r.invoiceUrl?'':' +'}</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
   </tr>`).join('') : `<tr><td colspan="${canEdit()?10:9}" class="empty">No receivings logged yet.</td></tr>`;
   el.innerHTML=`
     <div class="ph"><div class="ph-t">📥 Receiving</div><div class="ph-s">Blocks into Hydes Ferry · internal production or vendors → placed into fruiting</div></div>
@@ -3717,6 +3866,14 @@ function rReceiving(el){
       <div class="sc g"><div class="sc-l">Blocks Awaiting Placement</div><div class="sc-v">${totalOnHand}</div><div class="sc-n">${onHand.length} batch${onHand.length===1?'':'es'} on hand</div></div>
       <div class="sc"><div class="sc-l">Receivings Logged</div><div class="sc-v">${history.length}</div><div class="sc-n">all-time intake records</div></div>
     </div>
+    ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
+      <div class="card-t">📸 Snap / Upload Receiving Sheet</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the delivery/receiving sheet — AI fills the form below. You verify, then Log.</div>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
+        <input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapReceiving(this)">
+      </label>
+      <div id="rc-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+    </div>`:''}
     ${canEdit()?`<div class="card"><div class="card-t">Log Received Blocks</div>
       <div class="fg2">
         <div class="fgl"><label>Date Received</label><input class="fi" type="date" id="rc-date" value="${tday()}"></div>
@@ -3730,13 +3887,30 @@ function rReceiving(el){
         <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="rc-bw" placeholder="e.g. 5.5"></div>
         <div class="fgl"><label>Received By</label><input class="fi" id="rc-by" value="${(S.name||'').replace(/"/g,'&quot;')}"></div>
       </div>
+      <div id="rc-queue" style="margin-bottom:8px;"></div>
+      <button class="btn b-g" onclick="addRecvRow()" style="margin-bottom:14px;">+ Add another lot</button>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">Same delivery, multiple lots? Add each — they log together and send Katherine <b>one</b> receiving report (not one per lot). Date, vendor, temp &amp; invoice are shared.</div>
       <div class="fg2">
         <div class="fgl"><label>PO # <span style="color:var(--text3);font-size:9px;">(vendor, optional)</span></label><input class="fi" id="rc-po" placeholder="Purchase order #"></div>
         <div class="fgl"><label>Cost $ <span style="color:var(--text3);font-size:9px;">(vendor, optional)</span></label><input class="fi" type="number" min="0" step="0.01" id="rc-cost" placeholder="Total cost"></div>
       </div>
+      <div class="fg2">
+        <div class="fgl"><label>Temperature <span style="color:var(--text3);font-size:9px;">on arrival — goes in the report</span></label><input class="fi" id="rc-temp" placeholder="e.g. 38°F"></div>
+      </div>
       <div class="fgl" style="margin-top:6px;margin-bottom:14px;"><label>Notes</label><textarea class="fta" id="rc-notes" placeholder="Condition on arrival, substrate, observations…"></textarea></div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+        <div>
+          <label class="btn b-g" style="cursor:pointer;display:inline-block;">🌡 Temperature Log photo<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="rcUploadDoc(this,'temp')"></label>
+          <div id="rc-temp-status" style="display:none;margin-top:6px;font-size:11px;color:var(--text3);"></div>
+        </div>
+        <div>
+          <label class="btn b-g" style="cursor:pointer;display:inline-block;">🧾 Invoice / Packing Slip<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="rcUploadDoc(this,'invoice')"></label>
+          <div id="rc-invoice-status" style="display:none;margin-top:6px;font-size:11px;color:var(--text3);"></div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">📎 No invoice yet? Log now — you can attach it later and re-send an <b>UPDATED</b> report from the Receiving History row.</div>
       <div class="form-acts">
-        <button class="btn b-m b-lg" onclick="logReceiving()">Log Received Blocks</button>
+        <button class="btn b-m b-lg" id="rc-logbtn" onclick="logReceiving()">Log Received Blocks</button>
         <button class="btn b-g" onclick="clrReceiving()">Clear</button>
       </div>
       <div class="toast" id="rc-t">✓ Blocks received</div>
@@ -3902,8 +4076,20 @@ function rFruiting(el){
       <div class="sc ${overdueCount>0?'r':''}"><div class="sc-l">Past Window</div><div class="sc-v">${overdueCount}</div><div class="sc-n">overdue to harvest</div></div>
       <div class="sc"><div class="sc-l">Projected Yield</div><div class="sc-v" style="font-size:26px;">${totalProjLbs.toFixed(1)}<span style="font-size:14px"> lb</span></div><div class="sc-n">from active lots</div></div>
     </div>
+    ${canEdit()&&(DB.fruitings||[]).some(f=>f.relocatedFrom&&(f.date===tday()||(f.createdAt||'').slice(0,10)===tday()))?`<div style="background:rgba(46,109,164,.06);border:1px solid rgba(46,109,164,.28);border-radius:6px;padding:12px 15px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+      <div style="font-size:12px;color:var(--text2);">🔀 Block/container moves logged today — send Katherine the moves report.</div>
+      <button class="btn b-m" onclick="emailMovesReport()">📤 Email today's block-moves report</button>
+    </div>`:''}
 
     <!-- ── LOG FORM ── -->
+    ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
+      <div class="card-t">📸 Snap / Upload Fruiting Sheet</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the fruiting log — AI reads container, lots, block counts, and crew. You verify, set block weight, then Log. Crew auto-fills the labor step.</div>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
+        <input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapFruiting(this)">
+      </label>
+      <div id="fr-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+    </div>`:''}
     ${canEdit()?`<div class="card"><div class="card-t">Log Fruiting Block</div>`:'<div style="display:none"><div>'}
     <div class="fgl" style="margin-bottom:12px;">
       <label>Place from Received Batch <span style="color:var(--text3);font-size:9px;">draws down the on-hand pool · leave blank for manual entry</span></label>
@@ -3919,9 +4105,10 @@ function rFruiting(el){
         <datalist id="fr-cidl">${activeCons.map(c=>`<option value="${c.code}">${c.code} · ${c.farm} (${c.facility})</option>`).join('')}${legacyCons.map(c=>`<option value="${c}">${c} (legacy)</option>`).join('')}</datalist>
       </div>
       <div class="fgl">
-        <label>Lot Number</label>
-        <input class="fi" id="fr-lot" placeholder="e.g. WSY00Y or 10162" oninput="onLotInput()">
-        <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:1px;">WS CODES AUTO-FILL · ALL DIGITS = IN-HOUSE</div>
+        <label>Lot Number <span style="color:var(--text3);font-size:9px;">type to match blocks on hand</span></label>
+        <input class="fi" id="fr-lot" list="fr-lotl" placeholder="Type to search inventory… e.g. WSY00Y or 10162" autocomplete="off" oninput="onLotInput()">
+        <datalist id="fr-lotl">${onHand.map(r=>`<option value="${(r.lotNumber||'').replace(/"/g,'&quot;')}">${r.variety} · ${receivingOnHand(r)} blocks on hand · ${r.vendor||(r.source==='internal'?'Internal':'Vendor')}</option>`).join('')}</datalist>
+        <div id="fr-lot-hint" style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:1px;">${onHand.length?onHand.length+' LOT(S) ON HAND · TYPE TO MATCH':'NO BLOCKS ON HAND — LOG A RECEIVING FIRST'}</div>
       </div>
       <div class="fgl">
         <label>Source</label>
@@ -3973,6 +4160,7 @@ function rFruiting(el){
             <td>${canEdit()?`<div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button class="btn b-g b-sm" onclick="markFruitingHarvested('${f.id}')">Harvested ✓</button>
               <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button>
+              <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendFruiting('${f.id}')">✉</button>
               ${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}
             </div>`:'—'}</td>
           </tr>`;
@@ -4010,7 +4198,7 @@ function rFruiting(el){
           <td class="mn">${f.blockCount}</td>
           <td class="mn" style="color:var(--fern);">${((f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK)).toFixed(1)} lb</td>
           <td class="mn">${f.harvestedAt?fDate(f.harvestedAt):'—'}</td>
-          ${canEdit()?`<td><div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button>${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}</div></td>`:''}
+          ${canEdit()?`<td><div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button><button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendFruiting('${f.id}')">✉</button>${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}</div></td>`:''}
         </tr>`).join('')}</tbody>
       </table>
     </div>`:''}
@@ -4059,17 +4247,63 @@ function addFruitingRow(){
   const lh=document.getElementById('fr-lot'); if(lh) lh.focus();
 }
 function removeFruitingRow(i){ _fruitingQueue.splice(i,1); renderFruitingQueue(); }
+function updateFruitingRow(i, field, value){
+  const r=_fruitingQueue[i]; if(!r) return;
+  if(field==='blockCount'||field==='unusable') r[field]=parseInt(value)||0;
+  else if(field==='blockWeightLb'||field==='rateLbPerBlock') r[field]=parseFloat(value)||0;
+  else r[field]=(value||'').trim();
+}
+// staged-lot inventory tie-in: match the typed lot to on-hand blocks + auto-fill + link the batch
+function updateFruitingRowLot(i, value){
+  const r=_fruitingQueue[i]; if(!r) return;
+  r.lotNumber=(value||'').trim();
+  const match=onHandReceivings().find(x=>(x.lotNumber||'').trim().toLowerCase()===r.lotNumber.toLowerCase());
+  const info=(typeof detectLot==='function')?detectLot(r.lotNumber):null;
+  if(match){
+    if(match.variety) r.variety=match.variety;
+    r.source=(match.source==='internal')?'internal':'supplier';
+    if(match.vendor) r.vendor=match.vendor;
+    if(match.blockWeightLb) r.blockWeightLb=match.blockWeightLb;
+    r.receivingId=match.id;
+  } else if(info){
+    if(info.variety) r.variety=info.variety;
+    if(info.vendor && info.vendor!=='Unknown'){ r.vendor=info.vendor; r.source=(info.vendor==='In-house')?'internal':'supplier'; }
+    if(info.blockWeightLb) r.blockWeightLb=info.blockWeightLb;
+    r.receivingId='';
+  } else { r.receivingId=''; }
+  renderFruitingQueue();
+}
 function renderFruitingQueue(){
   const c=document.getElementById('fr-queue');
-  if(c) c.innerHTML = _fruitingQueue.length ? `<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;">STAGED — ${_fruitingQueue.length} LOT(S) TO PLACE</div>`+
-    _fruitingQueue.map((r,i)=>`<div style="display:flex;align-items:center;gap:10px;background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:7px 12px;margin-bottom:6px;font-size:12px;flex-wrap:wrap;">
-      <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);">${r.lotNumber}</span>
-      <span style="font-weight:600;">${r.variety}</span>
-      <span class="mn">${r.blockCount} blocks</span>
-      <span style="color:var(--text3);font-size:11px;">→ ${r.containerID}</span>
-      ${r.unusable?`<span style="color:var(--rust);font-size:11px;">${r.unusable} unusable</span>`:''}
-      <button class="btn b-r b-sm" style="margin-left:auto;" onclick="removeFruitingRow(${i})">✕</button>
-    </div>`).join('') : '';
+  if(c) c.innerHTML = _fruitingQueue.length ? `<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:14px 0 8px;">＋ ${_fruitingQueue.length} MORE LOT(S) FROM THE SCAN — VERIFY EACH BELOW</div>`+
+    _fruitingQueue.map((r,i)=>{
+      const m=onHandReceivings().find(x=>(x.lotNumber||'').trim().toLowerCase()===(r.lotNumber||'').trim().toLowerCase());
+      const hint = m
+        ? `<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--fern);margin-top:4px;letter-spacing:1px;">✓ ${m.variety} · ${receivingOnHand(m)} BLOCKS ON HAND · DRAWS DOWN ON PLACEMENT</div>`
+        : `<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:1px;">${r.lotNumber?'⚠ NOT IN INVENTORY — WILL PROMPT ON SUBMIT':'TYPE TO MATCH BLOCKS ON HAND'}</div>`;
+      return `<div style="background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <span style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--gold);">LOT ${i+2}${r.containerID?' → '+r.containerID:''}</span>
+        <button class="btn b-r b-sm" onclick="removeFruitingRow(${i})">✕ Remove</button>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Lot Number <span style="color:var(--text3);font-size:9px;">type to match blocks on hand</span></label>
+          <input class="fi" list="fr-lotl" value="${attrEsc(r.lotNumber)}" onchange="updateFruitingRowLot(${i},this.value)" autocomplete="off" placeholder="Type to search inventory…">
+          ${hint}
+        </div>
+        <div class="fgl"><label>Source</label><select class="fs" onchange="updateFruitingRow(${i},'source',this.value)">
+          <option value="supplier" ${r.source!=='internal'?'selected':''}>External Supplier</option>
+          <option value="internal" ${r.source==='internal'?'selected':''}>Internal Production</option>
+        </select></div>
+        <div class="fgl"><label>Supplier / Production Company <span style="color:var(--text3);font-size:9px;">type or pick</span></label><input class="fi" list="fr-vendorl" value="${attrEsc(r.vendor||'')}" onchange="updateFruitingRow(${i},'vendor',this.value)" autocomplete="off" placeholder="Supplier or in-house"></div>
+        <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:9px;">type or pick</span></label><input class="fi" list="fr-variety-dl" value="${attrEsc(r.variety)}" onchange="updateFruitingRow(${i},'variety',this.value)" autocomplete="off" placeholder="Type or pick variety…"></div>
+        <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="1" value="${r.blockCount}" onchange="updateFruitingRow(${i},'blockCount',this.value)" placeholder="# of blocks"></div>
+        <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" value="${r.blockWeightLb||''}" placeholder="e.g. 5.5" onchange="updateFruitingRow(${i},'blockWeightLb',this.value)"></div>
+        <div class="fgl"><label>Forecast Rate <span style="color:var(--text3);font-size:9px;">lb / block</span></label><input class="fi" type="number" min="0" step="0.1" value="${r.rateLbPerBlock||LBSPERBLOCK}" onchange="updateFruitingRow(${i},'rateLbPerBlock',this.value)"></div>
+        <div class="fgl"><label>Unusable Blocks <span style="color:var(--text3);font-size:9px;">→ waste stream</span></label><input class="fi" type="number" min="0" value="${r.unusable||''}" placeholder="0" onchange="updateFruitingRow(${i},'unusable',this.value)"></div>
+      </div>
+      <div class="fgl" style="margin-top:8px;"><label>Notes</label><input class="fi" value="${attrEsc(r.notes||'')}" onchange="updateFruitingRow(${i},'notes',this.value)" placeholder="Block source, substrate mix, observations…"></div>
+    </div>`;}).join('') : '';
   const cur=_readFruitingRow();
   const n=_fruitingQueue.length+((cur.lotNumber&&cur.variety)?1:0);
   const btn=document.getElementById('fr-logbtn');
@@ -4103,20 +4337,21 @@ async function subFruiting(){
   // Hard-block: must log who worked + how long before the session saves
   const primeCon=(rows.find(r=>r.containerID)||{}).containerID||'';
   const primeDate=(rows[0]||{}).date||tday();
-  openSessionLaborGate('fruiting', primeCon, primeDate, 'Fruiting', ()=>_doFruitingCommit(rows));
+  openSessionLaborGate('fruiting', primeCon, primeDate, 'Fruiting', (crew)=>_doFruitingCommit(rows, crew));
 }
-async function _doFruitingCommit(rows){
-  let n=0;
+async function _doFruitingCommit(rows, crew){
+  const snapUrl=(_lastSnap&&_lastSnap.kind==='fruiting')?_lastSnap.url:'';
+  let n=0; const _frCreatedIds=[];
   for(const r of rows){
     let rec=null;
     if(r.receivingId){ rec=DB.receivings.find(x=>x.id===r.receivingId); if(rec && r.blockCount>receivingOnHand(rec)){ alert(`Skipped lot ${r.lotNumber}: only ${receivingOnHand(rec)} block(s) remain in its received batch.`); continue; } }
     if(r.variety) addVariety(r.variety);
     if(r.source==='supplier' && r.vendor) addSupplier(r.vendor); // remember the supplier
-    const fData={date:r.date,containerID:r.containerID,lotNumber:r.lotNumber,source:r.source,vendor:r.vendor,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,rateLbPerBlock:r.rateLbPerBlock,notes:r.notes,status:'fruiting',createdAt:new Date().toISOString()};
+    const fData={date:r.date,containerID:r.containerID,lotNumber:r.lotNumber,source:r.source,vendor:r.vendor,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,rateLbPerBlock:r.rateLbPerBlock,notes:r.notes,scanUrl:snapUrl,status:'fruiting',createdAt:new Date().toISOString()};
     if(r.lotNotInInventory){ fData.lotNotInInventory=true; fData.lotExplanation=r.lotExplanation||''; }
     if(r.receivingId) fData.receivingId=r.receivingId;
     const fId=await FS.add('fruitings',fData);
-    DB.fruitings.push({id:fId,...fData});
+    DB.fruitings.push({id:fId,...fData}); _frCreatedIds.push(fId);
     if(rec){ rec.placedCount=(rec.placedCount||0)+r.blockCount; const upd={placedCount:rec.placedCount}; if(receivingOnHand(rec)<=0){ rec.status='placed'; upd.status='placed'; } try{ await FS.update('receivings',rec.id,upd); }catch(e){ console.warn('receiving placedCount update:',e); } }
     // Unusable blocks → waste stream (same blockDisposals stream as harvest)
     if(r.unusable>0){
@@ -4127,8 +4362,17 @@ async function _doFruitingCommit(rows){
     n++;
   }
   _fruitingQueue=[];
+  // capture the session's primary identity + facility for the notification subject BEFORE re-render
+  const prime=rows.find(r=>r.containerID)||rows[0]||{};
+  const facility=(getActiveContainers().find(c=>c.code===prime.containerID)||{}).facility||'';
+  const emailRows=rows.map(r=>({lotNumber:r.lotNumber,variety:r.variety,blockCount:r.blockCount}));
   toast('fr-t', n>1?`✓ ${n} lots placed`:'✓ Fruiting block logged');
   clrFruiting(); renderC();
+  // fire the auto-email dispatcher (same as harvest/packing) → Katherine + crew
+  openEmailDispatch('fruiting', notifySubject('fruiting',{container:prime.containerID,facility,date:prime.date}), {label:'Fruiting '+(prime.containerID||''),
+    edit:{kind:'fruiting',col:'fruitings',containerField:'containerID',ids:_frCreatedIds,container:prime.containerID,date:prime.date,facility},
+    data:{prime:{container:prime.containerID,date:prime.date},rows:emailRows,crew:crew||[],imageUrl:snapUrl}, image:(_lastSnap&&_lastSnap.kind==='fruiting'&&_lastSnap.b64)?_lastSnap:null});
+  _lastSnap=null;
 }
 
 function clrFruiting(){
@@ -4275,6 +4519,664 @@ function onContainerSelect(code){
   }
 }
 
+// ============ AI SHEET PARSING (shared) ============
+const PARSE_URL='https://us-central1-totally-mushrooms-hq.cloudfunctions.net/parseSheet';
+function _fileToB64(file){
+  return new Promise((res,rej)=>{ const r=new FileReader();
+    r.onload=()=>{ const s=String(r.result); res(s.slice(s.indexOf(',')+1)); };
+    r.onerror=()=>rej(new Error('Could not read file')); r.readAsDataURL(file); });
+}
+async function parseSheetImage(file, kind){
+  const user=firebase.auth().currentUser;
+  if(!user) throw new Error('Not signed in — reload and log in.');
+  const tok=await user.getIdToken();
+  const b64=await _fileToB64(file);
+  const resp=await fetch(PARSE_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
+    body:JSON.stringify({image:b64,mime:file.type||'image/jpeg',kind})});
+  let j={}; try{ j=await resp.json(); }catch(e){}
+  if(!resp.ok) throw new Error(j.error||('Server error '+resp.status));
+  if(!j.ok) throw new Error(j.parseError?'Could not read the sheet clearly — retake the photo with better light.':(j.error||'Parse failed.'));
+  const data=j.data||{}; data._imageUrl=j.imageUrl||''; // permanent archived-sheet link
+  return data;
+}
+// lenient date → ISO (handles 7/12, 07/12/26, 071226, 2026-07-12)
+function _toISO(s){
+  s=String(s||'').trim(); if(!s) return '';
+  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/); if(m) return s;
+  m=s.match(/^(\d{2})(\d{2})(\d{2})$/); if(m) return `20${m[3]}-${m[1]}-${m[2]}`;
+  m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?$/);
+  if(m){ let yr=m[3]?(m[3].length===2?'20'+m[3]:m[3]):tday().slice(0,4);
+    return `${yr}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`; }
+  // month-name dates: "June 17 2026", "Jun 17, 2026", "17 June 2026", "June 17 26"
+  const MON={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+  const low=s.toLowerCase();
+  let mon,day,yr;
+  let mm=low.match(/([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(\d{2,4})/); // Month DD YYYY
+  if(mm){ mon=MON[mm[1].slice(0,3)]; day=parseInt(mm[2]); yr=mm[3]; }
+  else { mm=low.match(/(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]{3,9})\.?,?\s+(\d{2,4})/); // DD Month YYYY
+    if(mm){ day=parseInt(mm[1]); mon=MON[mm[2].slice(0,3)]; yr=mm[3]; } }
+  if(mon&&day&&yr){ if(yr.length===2) yr='20'+yr; return `${yr}-${String(mon).padStart(2,'0')}-${String(day).padStart(2,'0')}`; }
+  return '';
+}
+async function snapHarvest(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('hl-snap-status');
+  const show=(h)=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Cleaning + reading the sheet…');
+  try{
+    const r=await processScan(file,'harvest'); const d=r.data;
+    _lastSnap={kind:'harvest',url:r.imageUrl,name:'harvest-sheet.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
+    // shared header
+    if(d.container){ const c=document.getElementById('hl-c'); if(c){ c.value=d.container; onContainerSelect(d.container); } }
+    const iso=_toISO(d.date); if(iso){ const dt=document.getElementById('hl-dt'); if(dt) dt.value=iso; }
+    // crew → pre-fills the mandatory labor gate at submit
+    _scanLabor=Array.isArray(d.crew)?d.crew.map(c=>({emp:(c.name||'').trim(),min:parseInt(c.minutes)||0})).filter(c=>c.emp||c.min):null;
+    // one row per lot on the sheet: first fills the form, the rest are staged (grade defaults to A — adjust)
+    const rows=(Array.isArray(d.rows)?d.rows:[]).filter(x=>x&&(x.lot||x.strain||x.harvested));
+    if(rows[0]){
+      const l=document.getElementById('hl-lot'); if(l && rows[0].lot){ l.value=rows[0].lot; onHarvestLot(); }
+      const v=document.getElementById('hl-v'); if(v && rows[0].strain) v.value=rows[0].strain;
+      const w=document.getElementById('hl-w'); if(w && rows[0].harvested) w.value=rows[0].harvested;
+    }
+    const con=document.getElementById('hl-c')?.value||'', fac=document.getElementById('hl-fac')?.value||'', dt2=document.getElementById('hl-dt')?.value||tday();
+    let staged=0;
+    for(let i=1;i<rows.length;i++){ const rr=rows[i]; if(!(rr.lot||rr.strain)) continue;
+      _harvestQueue.push({date:dt2,container:con,facility:fac,lotNumber:(rr.lot||'').trim(),variety:(rr.strain||'').trim(),grade:'A',weight:parseFloat(rr.harvested)||0,notes:'from scan'});
+      staged++;
+    }
+    renderHarvestQueue();
+    let extra='';
+    if(staged) extra+=` <span style="color:var(--gold)">· ${staged} more lot(s) staged below (grade defaulted to A — adjust)</span>`;
+    if(_scanLabor&&_scanLabor.length) extra+=` <span style="color:var(--fern)">· crew: ${_scanLabor.map(c=>`${c.emp||'?'} ${c.min}m`).join(', ')} (auto-fills at Log)</span>`;
+    show(`✓ Read <b>${rows.length} lot(s)</b> @ ${d.container||'?'}${d.location?' ('+d.location+')':''} — <b>verify &amp; set the Grade</b>, then Log.${extra}`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+
+// ============ AUTO-EMAIL NOTIFICATION DISPATCHER (shared) ============
+// Default recipients per protocol (editable at Admin → Email; overrides live in DB.notify.to)
+const NOTIFY_TO = {
+  harvest:  ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  fruiting: ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  slip:     ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  receiving:['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  lab:      ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  spawn:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  block:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  shipment: ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  waste:    ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  relocation:['orders@totallymushrooms.com','Allen@totallymushrooms.com']
+};
+function notifyRecips(kind){ return (DB.notify.to&&DB.notify.to[kind]&&DB.notify.to[kind].length)?DB.notify.to[kind]:(NOTIFY_TO[kind]||[]); }
+// ── subject-line formatters ──
+// facility → location code (edit here to add facilities)
+const FACILITY_CODES={'hydes ferry pike':'OHF','hydes ferry':'OHF','opryland':'OPRY'};
+function _locCode(facility){
+  const k=String(facility||'').toLowerCase().replace(/['`’]/g,'').replace(/\s+/g,' ').trim();
+  if(FACILITY_CODES[k]) return FACILITY_CODES[k];
+  return k.split(' ').map(w=>(w[0]||'').toUpperCase()).join(''); // fallback: initials
+}
+// make a subject line safe as a filename
+function _safeFile(s){ return String(s||'sheet').replace(/[\/\\:*?"<>|]+/g,'-').replace(/\s+/g,' ').trim()||'sheet'; }
+function _mmddyy(iso){ const m=String(iso||'').match(/(\d{4})-(\d{2})-(\d{2})/); return m?`${m[2]}${m[3]}${m[1].slice(2)}`:''; }
+function _mm_dd_yy(iso){ const m=String(iso||'').match(/(\d{4})-(\d{2})-(\d{2})/); return m?`${m[2]}-${m[3]}-${m[1].slice(2)}`:''; }
+function notifySubject(kind, r){
+  r=r||{};
+  if(kind==='harvest')  return `${_locCode(r.facility)} ${r.container||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='fruiting') return `${_locCode(r.facility||r.location)} ${r.container||r.containerID||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='slip')     return `${r.client||''} Packing Slip SO ${r.soNum||''} ${_mm_dd_yy(r.shipDate||r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='receiving')return `Receiving ${r.vendor||r.source||''} ${r.lot||r.lotNumber||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='lab')      return `Lab ${r.lot||r.batch||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='spawn')    return `Spawn ${r.lotCode||r.spawnLot||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='block')    return `Block ${r.lotCode||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='shipment') return `Block Shipment Carthage→Hydes ${_mm_dd_yy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='waste')    return `Block Waste ${_mm_dd_yy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='relocation') return `Block Moves ${_mm_dd_yy(r.date)}`.replace(/\s+/g,' ').trim();
+  return '';
+}
+// ── glanceable plain-text report body (repeats subject + writes out every field) ──
+function notifyReport(kind, subject, data){
+  data=data||{};
+  const head={harvest:'Harvest Log',slip:'Packing Slip',receiving:'Receiving',fruiting:'Fruiting Log',spawn:'Grain Spawn Log',block:'Block Production Log',shipment:'Block Shipment · Carthage → Hydes',waste:'Block Waste',relocation:'Block / Container Moves'}[kind]||kind;
+  const L=['TOTALLY MUSHROOMS — '+head.toUpperCase(), subject, '─────────────────────────', ''];
+  if(kind==='harvest'){
+    const rows=data.rows||[]; const crew=data.crew||[]; const p=data.prime||rows[0]||{};
+    L.push('Date:      '+(_mm_dd_yy(p.date)||p.date||''));
+    L.push('Container: '+(p.container||''));
+    if(p.facility) L.push('Facility:  '+p.facility);
+    L.push('Labor:     '+(crew.length?crew.map(c=>`${c.emp} — ${c.min} min`).join(', '):'—'));
+    if(crew.length) L.push('Labor total: '+crew.reduce((s,c)=>s+(parseInt(c.min)||0),0)+' min');
+    L.push(''); L.push('LOTS HARVESTED');
+    let tot=0;
+    rows.forEach(r=>{ tot+=(parseFloat(r.weight)||0); L.push(` • ${r.lotNumber||''} — ${r.variety||''} — Grade ${r.grade||'?'} — ${r.weight} lb`); });
+    L.push(''); L.push('TOTAL: '+tot.toFixed(1)+' lb across '+rows.length+' lot'+(rows.length!==1?'s':''));
+  } else if(kind==='fruiting'){
+    const rows=data.rows||[]; const crew=data.crew||[]; const p=data.prime||rows[0]||{};
+    L.push('Date:      '+(_mm_dd_yy(p.date)||p.date||''));
+    L.push('Container: '+(p.container||p.containerID||''));
+    L.push('Labor:     '+(crew.length?crew.map(c=>`${c.emp} — ${c.min} min`).join(', '):'—'));
+    if(crew.length) L.push('Labor total: '+crew.reduce((s,c)=>s+(parseInt(c.min)||0),0)+' min');
+    L.push(''); L.push('BLOCKS PLACED');
+    let tot=0;
+    rows.forEach(r=>{ tot+=(parseInt(r.blockCount)||0); L.push(` • ${r.lotNumber||r.lot||''} — ${r.variety||''} — ${r.blockCount||0} blocks`); });
+    L.push(''); L.push('TOTAL: '+tot+' blocks across '+rows.length+' lot'+(rows.length!==1?'s':''));
+  } else if(kind==='slip'){
+    L.push('Client:    '+(data.client||''));
+    L.push('S.O. #:    '+(data.soNum||'—'));
+    if(data.poNum) L.push('P.O. #:    '+data.poNum);
+    if(data.shipDate) L.push('Ship date: '+(_mm_dd_yy(data.shipDate)||data.shipDate));
+    L.push(''); L.push('PACKED');
+    (data.items||[]).forEach(it=>L.push(` • ${it.code||''} ${it.name||''} × ${it.qty}`));
+    if((data.lots||[]).length){ L.push(''); L.push('LOTS TIED FOR TRACEABILITY'); L.push(' • '+data.lots.join(', ')); }
+  } else if(kind==='receiving'){
+    L.push('Date:    '+(_mm_dd_yy(data.date)||data.date||''));
+    L.push('Source:  '+((data.source==='internal'?'Internal':'Vendor')+(data.vendor?' — '+data.vendor:'')));
+    const rrows=(data.rows&&data.rows.length)?data.rows:[{variety:data.variety,lot:(data.lot||data.lotNumber),blockCount:data.blockCount,blockWeightLb:data.blockWeightLb}];
+    if(rrows.length>1){
+      L.push(''); L.push('BLOCKS RECEIVED ('+rrows.length+' lots)');
+      let tb=0; rrows.forEach(r=>{ tb+=(parseInt(r.blockCount)||0); L.push('  • '+(r.variety||'')+' — Lot '+(r.lot||'')+' — '+(r.blockCount||0)+' blocks'+(r.blockWeightLb?' @ '+r.blockWeightLb+' lb/block':'')); });
+      L.push(''); L.push('TOTAL:   '+tb+' blocks across '+rrows.length+' lots');
+    } else {
+      const r=rrows[0]||{};
+      L.push('Variety: '+(r.variety||''));
+      L.push('Lot:     '+(r.lot||''));
+      L.push('Blocks:  '+(r.blockCount||0)+(r.blockWeightLb?' @ '+r.blockWeightLb+' lb/block':''));
+    }
+    if(data.temperature) L.push('Temp:    '+data.temperature);
+    if(data.poNum) L.push('PO #:    '+data.poNum);
+    if(data.tempLogUrl){ L.push(''); L.push('🌡 Temperature log: '+data.tempLogUrl); }
+    if(data.invoiceUrl){ L.push(''); L.push('🧾 Invoice / packing slip: '+data.invoiceUrl); }
+  } else if(kind==='spawn'){
+    L.push('Lot Code:  '+(data.lotCode||''));
+    L.push('Date:      '+(_mm_dd_yy(data.date)||data.date||''));
+    L.push('Strain:    '+(data.strain||''));
+    L.push('Grain:     '+(data.grain||'')+(data.grainWeight?' · '+data.grainWeight:''));
+    L.push('Bags/Jars: '+(data.bags||0));
+    if(data.substrateBatch) L.push('Substrate Batch: '+data.substrateBatch);
+    if(data.cultureSource)  L.push('Culture:   '+data.cultureSource+(data.cultureType?' ('+data.cultureType+')':''));
+    if(data.crewText)       L.push('Crew:      '+data.crewText);
+  } else if(kind==='block'){
+    L.push('Lot Code:  '+(data.lotCode||''));
+    L.push('Date:      '+(_mm_dd_yy(data.date)||data.date||''));
+    if(data.subLbs) L.push('Substrate: '+data.subLbs+' lb · '+(data.buckets||0)+' buckets · '+(data.gallons||0)+' gal water');
+    if(data.crewText) L.push('Crew:      '+data.crewText);
+    L.push(''); L.push('BLOCKS BY STRAIN');
+    let tb=0; (data.rows||[]).forEach(r=>{ tb+=(parseInt(r.blockCount)||0); L.push(` • ${r.strain||r.variety||''} — ${r.blockCount||0} blocks${r.spawnLot?' (spawn '+r.spawnLot+')':''}`); });
+    L.push(''); L.push('TOTAL: '+tb+' blocks across '+((data.rows||[]).length)+' strain'+(((data.rows||[]).length)!==1?'s':''));
+  } else if(kind==='shipment'){
+    L.push('From:      Carthage');
+    L.push('To:        Hyde’s Ferry Pike');
+    L.push('Ship Date: '+(_mm_dd_yy(data.date)||data.date||''));
+    if(data.carrier) L.push('Carrier:   '+data.carrier);
+    L.push(''); L.push('BLOCKS SHIPPED');
+    let tb=0; (data.rows||[]).forEach(r=>{ tb+=(parseInt(r.blockCount)||0); L.push(` • ${r.variety||''} — Lot ${r.cookLot||'—'} — ${r.blockCount||0} blocks${r.blockWeightLb?' @ '+r.blockWeightLb+' lb/block':''}`); });
+    L.push(''); L.push('TOTAL: '+tb+' blocks across '+((data.rows||[]).length)+' lot'+(((data.rows||[]).length)!==1?'s':''));
+    if(data.notes) L.push('Notes: '+data.notes);
+  } else if(kind==='waste'){
+    L.push('Date: '+(_mm_dd_yy(data.date)||data.date||''));
+    L.push(''); L.push('BLOCKS WASTED');
+    let tb=0; (data.rows||[]).forEach(r=>{ tb+=(parseInt(r.blockCount)||0); L.push(` • ${r.variety||''} — Lot ${r.lotNumber||'—'}${r.container?' @ '+r.container:''} — ${r.blockCount||0} blocks (${r.reason||'waste'})`); });
+    L.push(''); L.push('TOTAL: '+tb+' blocks wasted across '+((data.rows||[]).length)+' lot'+(((data.rows||[]).length)!==1?'s':''));
+  } else if(kind==='relocation'){
+    L.push('Date: '+(_mm_dd_yy(data.date)||data.date||''));
+    if(data.origin) L.push('Moved OUT of: '+data.origin);
+    const byDest={}; (data.rows||[]).forEach(r=>{ (byDest[r.dest]=byDest[r.dest]||[]).push(r); });
+    Object.keys(byDest).sort().forEach(dest=>{ const rs=byDest[dest]; const sub=rs.reduce((s,r)=>s+(parseInt(r.blockCount)||0),0);
+      L.push(''); L.push(`→ TO ${dest}  (${sub} blocks)`);
+      rs.forEach(r=>L.push(` • ${r.variety||''} — Lot ${r.lot||''} — ${r.blockCount||0}`)); });
+    L.push(''); L.push('TOTAL: '+(data.total||0)+' blocks · '+((data.rows||[]).length)+' move'+(((data.rows||[]).length)!==1?'s':''));
+    if(data.note) L.push('Note: '+data.note);
+  } else if(data.lines){ data.lines.forEach(l=>L.push(l)); }
+  if(data.imageUrl){ L.push(''); L.push('📎 Scanned sheet (click to view/download):'); L.push(data.imageUrl); }
+  L.push(''); L.push('— Auto-generated by TM HQ from a scanned sheet.');
+  return L.join('\n');
+}
+// downscale + adaptively compress a photo so the JPEG stays under maxBytes
+// (EmailJS Personal plan caps attachments at 500kb; target ~350kb raw so the
+//  base64-encoded payload also stays comfortably under 500kb)
+function _downscaleImage(file, maxBytes){
+  maxBytes = maxBytes || 350000;
+  return new Promise((res)=>{
+    const img=new Image(); const url=URL.createObjectURL(file);
+    img.onload=()=>{ try{
+      const w0=img.width, h0=img.height;
+      const cv=document.createElement('canvas'); const ctx=cv.getContext('2d');
+      const bytesOf=d=>Math.ceil((d.length-(d.indexOf(',')+1))*3/4); // decoded byte size
+      const render=(dim,q)=>{ let rw=w0,rh=h0; if(w0>dim||h0>dim){ const s=dim/Math.max(w0,h0); rw=Math.round(w0*s); rh=Math.round(h0*s); } cv.width=rw; cv.height=rh; ctx.drawImage(img,0,0,rw,rh); return cv.toDataURL('image/jpeg',q); };
+      let durl=render(1400,0.72);
+      outer:
+      for(const dim of [1400,1150,950,780,640]){
+        for(const q of [0.72,0.6,0.5,0.42,0.35]){
+          durl=render(dim,q);
+          if(bytesOf(durl)<=maxBytes) break outer;
+        }
+      }
+      URL.revokeObjectURL(url);
+      res({b64:durl.slice(durl.indexOf(',')+1), dataUrl:durl, mime:'image/jpeg', bytes:bytesOf(durl)});
+    }catch(e){ URL.revokeObjectURL(url); res(null); } };
+    img.onerror=()=>{ URL.revokeObjectURL(url); res(null); };
+    img.src=url;
+  });
+}
+// ── DOCUMENT SCANNER: illumination-flatten + high contrast + PDF (no library) ──
+function _loadImg(file){ return new Promise((res,rej)=>{ const img=new Image(); const u=URL.createObjectURL(file); img.onload=()=>{ URL.revokeObjectURL(u); res(img); }; img.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error('Could not read image')); }; img.src=u; }); }
+// flatten uneven lighting (divide by a blurred background) + grayscale + contrast → clean scan
+function _enhanceDoc(img, maxDim){
+  let w=img.width, h=img.height; const m=maxDim||1600;
+  if(w>m||h>m){ const s=m/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const ctx=c.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+  const bw=Math.max(1,Math.round(w/12)), bh=Math.max(1,Math.round(h/12));
+  const sc=document.createElement('canvas'); sc.width=bw; sc.height=bh; sc.getContext('2d').drawImage(c,0,0,bw,bh);
+  const bgc=document.createElement('canvas'); bgc.width=w; bgc.height=h; const bx=bgc.getContext('2d'); bx.imageSmoothingEnabled=true; bx.drawImage(sc,0,0,w,h);
+  const im=ctx.getImageData(0,0,w,h), bgi=bx.getImageData(0,0,w,h); const d=im.data, bd=bgi.data; const K=1.2, WP=205;
+  for(let i=0;i<d.length;i+=4){
+    const g=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+    let bl=0.299*bd[i]+0.587*bd[i+1]+0.114*bd[i+2]; if(bl<1) bl=1;
+    let v=255*g/bl; v=(v-WP)*K+WP; v=v<0?0:v>255?255:v;
+    d[i]=d[i+1]=d[i+2]=v;
+  }
+  ctx.putImageData(im,0,0); return c;
+}
+// compress a canvas to a JPEG under maxBytes
+function _canvasToJpeg(c, maxBytes){
+  maxBytes=maxBytes||260000; const bytesOf=x=>Math.ceil((x.length-(x.indexOf(',')+1))*3/4);
+  let durl=c.toDataURL('image/jpeg',0.7);
+  for(const q of [0.7,0.6,0.5,0.42,0.35,0.3]){ durl=c.toDataURL('image/jpeg',q); if(bytesOf(durl)<=maxBytes) break; }
+  return {b64:durl.slice(durl.indexOf(',')+1), dataUrl:durl, bytes:bytesOf(durl), w:c.width, h:c.height};
+}
+// wrap a JPEG (base64) into a single-page PDF (base64)
+function _jpegToPdfB64(jb64, iw, ih){
+  const bin=atob(jb64); const pw=612, ph=792, s=Math.min(pw/iw,ph/ih), dw=iw*s, dh=ih*s, ox=(pw-dw)/2, oy=(ph-dh)/2;
+  const content=`q\n${dw.toFixed(2)} 0 0 ${dh.toFixed(2)} ${ox.toFixed(2)} ${oy.toFixed(2)} cm\n/Im0 Do\nQ\n`;
+  const objs=[
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pw} ${ph}] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>`,
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    `<< /Type /XObject /Subtype /Image /Width ${iw} /Height ${ih} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bin.length} >>\nstream\n${bin}\nendstream`
+  ];
+  let pdf='%PDF-1.4\n'; const off=[];
+  for(let i=0;i<objs.length;i++){ off.push(pdf.length); pdf+=`${i+1} 0 obj\n${objs[i]}\nendobj\n`; }
+  const xref=pdf.length; pdf+=`xref\n0 ${objs.length+1}\n0000000000 65535 f \n`;
+  off.forEach(o=>{ pdf+=String(o).padStart(10,'0')+' 00000 n \n'; });
+  pdf+=`trailer\n<< /Size ${objs.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return btoa(pdf);
+}
+// draw an image onto a canvas, scaled to fit maxDim (re-encodes HEIC/any → canvas)
+function _fitCanvas(img, maxDim){
+  let w=img.width, h=img.height; const m=maxDim||2000;
+  if(w>m||h>m){ const s=m/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+  const c=document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(img,0,0,w,h); return c;
+}
+// full pipeline: the AI reads a FAITHFUL re-encode of the original (converts HEIC, keeps
+// full detail/colour for the best read); the cleaned high-contrast version is used ONLY
+// for the PDF archive + email attachment.
+async function processScan(file, kind){
+  const isPdf=(file.type==='application/pdf')||/\.pdf$/i.test(file.name||'');
+  let sendImage, sendMime, pdfB64, pdfBytes, thumb;
+  if(isPdf){
+    // already a flat PDF — send it straight to the AI as a document; archive/attach as-is
+    pdfB64=await _fileToB64(file); sendImage=pdfB64; sendMime='application/pdf';
+    pdfBytes=Math.ceil(pdfB64.length*3/4); thumb='';
+  } else {
+    const img=await _loadImg(file);
+    const aiJpg=_canvasToJpeg(_fitCanvas(img, 2000), 900000);   // faithful → to the AI
+    const enh=_canvasToJpeg(_enhanceDoc(img), 260000);          // cleaned → to the PDF
+    pdfB64=_jpegToPdfB64(enh.b64, enh.w, enh.h); pdfBytes=Math.ceil(pdfB64.length*3/4);
+    sendImage=aiJpg.b64; sendMime='image/jpeg'; thumb=enh.dataUrl;
+  }
+  const user=firebase.auth().currentUser; if(!user) throw new Error('Not signed in — reload and log in.');
+  const tok=await user.getIdToken();
+  // PDFs: the image IS the pdf, so let the function archive it directly (don't send it twice)
+  const payload={image:sendImage,mime:sendMime,kind};
+  if(!isPdf){ payload.archiveB64=pdfB64; payload.archiveMime='application/pdf'; payload.archiveExt='pdf'; }
+  const resp=await fetch(PARSE_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
+    body:JSON.stringify(payload)});
+  let j={}; try{ j=await resp.json(); }catch(e){}
+  if(!resp.ok) throw new Error(j.error||('Server error '+resp.status));
+  if(!j.ok) throw new Error(j.parseError?'Could not read the sheet clearly — retake with better light / flatter angle.':(j.error||'Parse failed.'));
+  return {data:j.data||{}, imageUrl:j.imageUrl||'', pdfB64, pdfBytes, thumb};
+}
+// store a photo/PDF (temp log, invoice) WITHOUT parsing → returns permanent link
+async function storePhoto(file, tag){
+  let b64, mime;
+  if((file.type==='application/pdf')||/\.pdf$/i.test(file.name||'')){ b64=await _fileToB64(file); mime='application/pdf'; }
+  else { const img=await _loadImg(file); const enh=_canvasToJpeg(_enhanceDoc(img),300000); b64=_jpegToPdfB64(enh.b64,enh.w,enh.h); mime='application/pdf'; }
+  const user=firebase.auth().currentUser; if(!user) throw new Error('Not signed in — reload and log in.');
+  const tok=await user.getIdToken();
+  const resp=await fetch(PARSE_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify({storeOnly:true,kind:tag||'doc',image:b64,mime})});
+  let j={}; try{ j=await resp.json(); }catch(e){}
+  if(!resp.ok||!j.imageUrl) throw new Error(j.error||('Upload failed ('+resp.status+')'));
+  return j.imageUrl;
+}
+let _rcTempUrl='', _rcInvoiceUrl=''; // receiving: temperature-log + invoice photo links, held until Log
+async function rcUploadDoc(input, which){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('rc-'+which+'-status'); if(st){ st.style.display='block'; st.innerHTML='⏳ Uploading…'; }
+  try{ const url=await storePhoto(file,'receiving-'+which);
+    if(which==='temp') _rcTempUrl=url; else _rcInvoiceUrl=url;
+    if(st) st.innerHTML=`✓ ${which==='temp'?'Temp log':'Invoice'} attached — <a href="${url}" target="_blank" style="color:var(--blue);">view</a>`;
+  }catch(e){ if(st) st.innerHTML='⚠ '+e.message; }
+  finally{ input.value=''; }
+}
+let _lastSnap=null; // {kind, b64(pdf), dataUrl(thumb), mime, name, url, bytes} — cleaned PDF of the last scanned sheet
+// ── the pick-recipients / send modal, shown on submit (and on Resend) ──
+let _dispatch=null; // {kind, report, image} held for the current dispatch modal
+function openEmailDispatch(kind, subject, opts){
+  opts=opts||{};
+  const recips=notifyRecips(kind);
+  const master=DB.notify.enabled!==false;
+  const ready=master && DB.notify.templateId && DB.emailjs.serviceId && DB.emailjs.publicKey;
+  const report=opts.data?notifyReport(kind, subject, opts.data):(opts.report||'');
+  const image=opts.image||null;
+  _dispatch={kind, subject, report, image, data:opts.data||null, edit:opts.edit||null};
+  document.getElementById('em-title').textContent=(opts.resend?'Re-send Notification — ':'Send Notification — ')+(opts.label||kind);
+  document.getElementById('em-body').innerHTML=`
+    ${!ready?`<div style="background:rgba(184,76,32,.09);border:1px solid rgba(184,76,32,.3);border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--rust,#b84c20);line-height:1.5;">
+      ${!master?'📴 Email sending is <b>OFF</b> (testing mode). Flip it on below, or in Admin → Email.'
+        :'⚠ Notification template not set yet — add the EmailJS Template ID in Admin → Email to enable sending. You can still review the subject &amp; recipients here.'}
+    </div>`:''}
+    ${opts.edit?`<div style="background:rgba(184,130,10,.06);border:1px solid rgba(184,130,10,.28);border-radius:6px;padding:10px 13px;margin-bottom:14px;">
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--gold);margin-bottom:8px;">⚑ VERIFY BEFORE SENDING — edits here update the subject, the report &amp; the logged record</div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        ${opts.edit.container!=null?`<div class="fgl" style="flex:1;min-width:130px;"><label>Container</label><input class="fi" id="disp-container" value="${attrEsc(opts.edit.container||'')}" onchange="dispEditKey('container',this.value)"></div>`:''}
+        <div class="fgl" style="flex:1;min-width:130px;"><label>Date</label><input class="fi" type="date" id="disp-date" value="${attrEsc(_toISO(opts.edit.date)||opts.edit.date||'')}" onchange="dispEditKey('date',this.value)"></div>
+      </div></div>`:''}
+    <div class="fgl"><label>Subject line <span style="color:var(--text3);font-size:9px;">edit if needed</span></label>
+      <input class="fi" id="disp-subj" value="${attrEsc(subject||'')}" style="font-family:'Syne Mono',monospace;"></div>
+    <div class="fgl" style="margin-top:12px;"><label>Send to <span style="color:var(--text3);font-size:9px;">uncheck to skip anyone</span></label>
+      <div id="disp-recips" style="display:flex;flex-direction:column;gap:6px;margin-top:5px;">
+        ${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="checkbox" class="disp-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px;"><input class="fi" id="disp-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();dispAddRecip();}"><button class="btn b-g b-sm" onclick="dispAddRecip()">+ Add</button></div>
+    </div>
+    ${report?`<div class="fgl" style="margin-top:14px;"><label>Email body <span style="color:var(--text3);font-size:9px;">this exact report gets sent</span></label>
+      <pre id="disp-report" style="white-space:pre-wrap;font-family:'Syne Mono',monospace;font-size:11px;line-height:1.55;color:var(--text2);background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:11px 13px;margin-top:5px;max-height:220px;overflow:auto;">${attrEsc(report)}</pre></div>`:''}
+    ${image&&image.b64&&(!image.bytes||image.bytes<=480000)?`<label style="display:flex;align-items:center;gap:10px;font-size:12px;margin-top:12px;color:var(--text2);">
+      <input type="checkbox" id="disp-attach" ${DB.notify.attach!==false?'checked':''}> 📎 Attach cleaned scan (PDF)
+      ${image.dataUrl?`<img src="${image.dataUrl}" style="height:40px;border-radius:4px;border:1px solid var(--border);margin-left:auto;">`:'<span style="margin-left:auto;"></span>'}
+      <span style="font-size:9px;color:var(--text3);">${image.bytes?Math.round(image.bytes/1024)+'kb':''} · fits 500kb plan</span></label>`
+      :(image&&image.bytes&&image.bytes>480000?`<div style="font-size:11px;color:var(--text3);margin-top:12px;padding:8px 12px;background:var(--paper);border:1px solid var(--border);border-radius:5px;">📎 File is ${Math.round(image.bytes/1024)}kb — over the 500kb attachment cap, so the <b>download link</b> in the body delivers it instead.</div>`:'')}
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:16px;color:var(--text2);padding-top:12px;border-top:1px solid var(--border);">
+      <input type="checkbox" id="disp-master" ${master?'checked':''} onchange="toggleNotifyMaster(this.checked)"> <b>Email sending enabled</b> (global — turn off during testing)
+    </label>
+    <div class="form-acts" style="margin-top:18px;">
+      <button class="btn b-m b-lg" id="disp-send" onclick="dispSend()" ${ready?'':'disabled style="opacity:.45;cursor:not-allowed;"'}>✉ Send now</button>
+      <button class="btn b-g" onclick="closeModal()">${opts.resend?'Cancel':"Skip / don't send"}</button>
+    </div>
+    <div class="toast" id="disp-t">✓ Sent</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+// edit the Container/Date in the send box → live-update subject + report body + patch the saved records
+async function dispEditKey(field, value){
+  if(!_dispatch||!_dispatch.edit||!_dispatch.data) return;
+  value=(value||'').trim();
+  const e=_dispatch.edit, d=_dispatch.data, cf=e.containerField||'container';
+  if(field==='container'){
+    e.container=value;
+    if(d.prime){ d.prime.container=value; d.prime.containerID=value; }
+    (d.rows||[]).forEach(r=>{ r.container=value; r.containerID=value; });
+  } else if(field==='date'){
+    e.date=value; d.date=value;
+    if(d.prime) d.prime.date=value;
+    (d.rows||[]).forEach(r=>{ r.date=value; });
+  }
+  // regenerate subject + body from the corrected values
+  const subj=notifySubject(_dispatch.kind, {container:e.container, containerID:e.container, facility:(d.prime&&d.prime.facility)||e.facility||'', date:e.date});
+  _dispatch.subject=subj;
+  const si=document.getElementById('disp-subj'); if(si) si.value=subj;
+  const rep=notifyReport(_dispatch.kind, subj, d); _dispatch.report=rep;
+  const rp=document.getElementById('disp-report'); if(rp) rp.textContent=rep;
+  // patch the already-saved records so the app data matches the corrected email
+  if(e.ids&&e.ids.length){
+    const patch={}; if(field==='container') patch[cf]=value; else if(field==='date') patch.date=value;
+    for(const id of e.ids){
+      const rec=(DB[e.col]||[]).find(x=>x.id===id); if(rec) Object.assign(rec,patch);
+      try{ await FS.update(e.col, id, patch); }catch(err){ console.warn('record patch failed',err); }
+    }
+    try{ if(typeof renderC==='function'){} }catch(_){}
+  }
+}
+function dispAddRecip(){
+  const inp=document.getElementById('disp-add'); const v=(inp?.value||'').trim(); if(!v) return;
+  const box=document.getElementById('disp-recips');
+  const l=document.createElement('label'); l.style.cssText='display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;';
+  l.innerHTML=`<input type="checkbox" class="disp-r" value="${attrEsc(v)}" checked> ${v}`;
+  box.appendChild(l); inp.value=''; inp.focus();
+}
+async function toggleNotifyMaster(on){
+  DB.notify.enabled=!!on;
+  const btn=document.getElementById('disp-send');
+  const ready=DB.notify.enabled && DB.notify.templateId && DB.emailjs.serviceId && DB.emailjs.publicKey;
+  if(btn){ btn.disabled=!ready; btn.style.opacity=ready?'':'.45'; btn.style.cursor=ready?'':'not-allowed'; }
+  try{ await fdb.collection('appConfig').doc('notify').set({enabled:DB.notify.enabled},{merge:true}); }catch(e){ console.warn(e); }
+}
+async function dispSend(){
+  const subj=(document.getElementById('disp-subj')?.value||'').trim();
+  const to=[...document.querySelectorAll('.disp-r:checked')].map(c=>c.value);
+  if(!subj){ alert('Subject line is required.'); return; }
+  if(!to.length){ alert('Pick at least one recipient (or hit Skip).'); return; }
+  const report=_dispatch?_dispatch.report:'';
+  const attachEl=document.getElementById('disp-attach');
+  const image=(attachEl&&attachEl.checked&&_dispatch&&_dispatch.image)?_dispatch.image:null;
+  const btn=document.getElementById('disp-send'); if(btn){ btn.disabled=true; btn.textContent='Sending…'; }
+  const ok=await sendNotify(subj,to,report,image);
+  if(ok==='link-only'){ toast('disp-t','✓ Sent to '+to.length+' — file is the download link in the body (attachment not accepted)'); setTimeout(closeModal,1400); }
+  else if(ok){ toast('disp-t','✓ Sent to '+to.length+' recipient'+(to.length>1?'s':'')); setTimeout(closeModal,900); }
+  else { alert('Send failed — check Admin → Email (Notification Template ID + master toggle).'); if(btn){ btn.disabled=false; btn.textContent='✉ Send now'; } }
+}
+async function sendNotify(subject, toList, report, image){
+  if(DB.notify.enabled===false){ console.warn('notify disabled — skipped'); return false; }
+  if(!DB.emailjs.serviceId||!DB.notify.templateId||!DB.emailjs.publicKey){ console.warn('notify not configured — skipped'); return false; }
+  const base={ email_subject:subject, message:report||subject, to_email:toList.join(','), from_name:'Totally Mushrooms HQ' };
+  // base64 length is what EmailJS counts against its 500kb cap → ~365kb decoded
+  const wantAttach = image && image.b64 && (!image.bytes || image.bytes<=365000);
+  try{
+    const params={...base};
+    if(wantAttach){ params.attachment=image.b64; params.attachment_name=_safeFile(subject)+((image.mime==='application/pdf')?'.pdf':'.jpg'); }
+    await emailjs.send(DB.emailjs.serviceId, DB.notify.templateId, params);
+    try{ logAudit('notify_sent', subject+' → '+toList.join(', ')+(wantAttach?' [+file]':'')); }catch(e){}
+    return true;
+  }catch(e){
+    console.error('notify send failed',e);
+    // the file is ALSO linked in the body — if the attachment was the problem, resend without it
+    if(wantAttach){
+      try{
+        await emailjs.send(DB.emailjs.serviceId, DB.notify.templateId, base);
+        try{ logAudit('notify_sent', subject+' → '+toList.join(', ')+' [attachment skipped — link in body]'); }catch(e2){}
+        return 'link-only';
+      }catch(e2){ console.error('notify retry (no attach) also failed',e2); return false; }
+    }
+    return false;
+  }
+}
+// Snap → parse a fruiting sheet → prefill the form + labor gate (labor logged even though fruiting isn't emailed)
+async function snapFruiting(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('fr-snap-status');
+  const show=(h)=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Cleaning + reading the sheet…');
+  try{
+    const r=await processScan(file,'fruiting'); const d=r.data;
+    _lastSnap={kind:'fruiting',url:r.imageUrl,name:'fruiting-sheet.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
+    // shared header
+    if(d.container){ const c=document.getElementById('fr-cid'); if(c){ c.value=d.container; if(typeof onFrContainer==='function') onFrContainer(); } }
+    const iso=_toISO(d.date); if(iso){ const dt=document.getElementById('fr-dt'); if(dt) dt.value=iso; }
+    // crew ripped off the labor row → pre-fills (hard-merges into) the mandatory labor gate at submit
+    _scanLabor=Array.isArray(d.crew)?d.crew.map(c=>({emp:(c.name||'').trim(),min:parseInt(c.minutes)||0})).filter(c=>c.emp||c.min):null;
+    // one row per lot: first fills the form, the rest are staged (each with its own lot/variety/blocks)
+    const bcOf=x=>parseInt(x.blocksUsed!=null?x.blocksUsed:x.blockCount)||0;
+    const rows=(Array.isArray(d.rows)?d.rows:[]).filter(x=>x&&(x.lot||x.strain||x.variety||bcOf(x)));
+    if(rows[0]){
+      const l=document.getElementById('fr-lot'); if(l && rows[0].lot){ l.value=rows[0].lot; if(typeof onLotInput==='function') onLotInput(); }
+      const v=document.getElementById('fr-variety'); if(v && (rows[0].strain||rows[0].variety)) v.value=rows[0].strain||rows[0].variety;
+      const b=document.getElementById('fr-bc'); if(b && bcOf(rows[0])) b.value=bcOf(rows[0]);
+    }
+    const con=document.getElementById('fr-cid')?.value||'', dt2=document.getElementById('fr-dt')?.value||tday();
+    let staged=0;
+    for(let i=1;i<rows.length;i++){ const rr=rows[i]; const lot=(rr.lot||'').trim(), variety=(rr.strain||rr.variety||'').trim(); if(!(lot||variety)) continue;
+      const match=onHandReceivings().find(x=>(x.lotNumber||'').trim().toLowerCase()===lot.toLowerCase());
+      const info=(typeof detectLot==='function')?detectLot(lot):null;
+      _fruitingQueue.push({ date:dt2, containerID:con, lotNumber:lot, variety:variety,
+        source: match?(match.source==='internal'?'internal':'supplier'):((info&&info.vendor==='In-house')?'internal':'supplier'),
+        vendor: (match?match.vendor:(info?info.vendor:''))||'',
+        blockCount: bcOf(rr),
+        blockWeightLb: (match?match.blockWeightLb:(info?info.blockWeightLb:0))||0,
+        rateLbPerBlock: LBSPERBLOCK, receivingId: match?match.id:'', unusable:0, notes:'from scan' });
+      staged++;
+    }
+    renderFruitingQueue();
+    if(typeof updateFruitingPreview==='function') updateFruitingPreview();
+    let extra='';
+    if(staged) extra+=` <span style="color:var(--gold)">· ${staged} more lot(s) staged below (edit anything)</span>`;
+    if(_scanLabor&&_scanLabor.length) extra+=` <span style="color:var(--fern)">· crew: ${_scanLabor.map(c=>`${c.emp||'?'} ${c.min}m`).join(', ')} (auto-fills at Log)</span>`;
+    show(`✓ Read <b>${rows.length} lot(s)</b> @ ${d.container||'?'}${d.location?' ('+d.location+')':''} — <b>verify &amp; set block weight</b>, then Log.${extra}`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+// Resend the notification for an already-logged record
+function resendHarvest(id){ const h=DB.harvests.find(x=>x.id===id); if(!h) return; openEmailDispatch('harvest', notifySubject('harvest',h), {label:'Harvest '+(h.lotNumber||''), resend:true, data:{prime:h, rows:[h], crew:[], imageUrl:h.scanUrl||''}}); }
+// compile & email today's block/container relocations (from records tagged relocatedFrom, dated today)
+function emailMovesReport(){
+  const today=tday();
+  const moves=(DB.fruitings||[]).filter(f=>f.relocatedFrom && (f.date===today || (f.createdAt||'').slice(0,10)===today));
+  if(!moves.length){ alert('No block relocations logged today.'); return; }
+  const origin=(moves.find(f=>f.relocatedFrom)||{}).relocatedFrom||'';
+  const total=moves.reduce((s,f)=>s+(parseInt(f.blockCount)||0),0);
+  const rows=moves.map(f=>({dest:f.containerID,variety:f.variety,lot:f.lotNumber,blockCount:parseInt(f.blockCount)||0}));
+  openEmailDispatch('relocation', notifySubject('relocation',{date:today}), {label:'Block Moves '+_mm_dd_yy(today),
+    data:{date:today,origin,total,rows}});
+}
+function resendFruiting(id){ const f=DB.fruitings.find(x=>x.id===id); if(!f) return;
+  const facility=(getActiveContainers().find(c=>c.code===f.containerID)||{}).facility||'';
+  openEmailDispatch('fruiting', notifySubject('fruiting',{container:f.containerID,facility,date:f.date}), {label:'Fruiting '+(f.containerID||''), resend:true,
+    data:{prime:{container:f.containerID,date:f.date}, rows:[{lotNumber:f.lotNumber,variety:f.variety,blockCount:f.blockCount}], crew:[], imageUrl:f.scanUrl||''}}); }
+
+// ── LAB: SPAWN log snap → parse → prefill the Grain Spawn form ──
+async function snapSpawn(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('sp-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Cleaning + reading the spawn log…');
+  try{
+    const r=await processScan(file,'spawn'); const d=r.data;
+    _lastSnap={kind:'spawn',url:r.imageUrl,name:'spawn-log.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
+    const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null&&v!=='') e.value=v; };
+    set('sp-pdate',_toISO(d.productionDate)); set('sp-lotcode',d.lotCode); set('sp-subbatch',d.substrateBatch); set('sp-batchno',d.batch);
+    set('sp-grain',d.grainType); set('sp-grainwt',d.grainWeight); set('sp-grainlot',d.grainLot); if(d.bags) set('sp-bags',d.bags);
+    set('sp-additives',d.additives); set('sp-subnotes',d.subNotes);
+    set('sp-sterdate',_toISO(d.sterDate)); set('sp-actemp',d.autoclaveTemp); set('sp-cookhrs',d.cookHrs); set('sp-cookstart',d.cookStart); set('sp-cookend',d.cookEnd); set('sp-sternotes',d.sterNotes);
+    set('sp-inocdate',_toISO(d.inocDate)); set('sp-strain',d.strain); set('sp-method',d.method); set('sp-graintemp',d.grainTemp);
+    set('sp-culsource',d.cultureSource); set('sp-lclot',(d.strainLots&&d.strainLots.length?d.strainLots.join(', '):d.lcLot)); set('sp-spawnqty',d.spawnQty); set('sp-inocnotes',d.inocNotes);
+    show(`✓ Read spawn log <b>${d.lotCode||''}</b> · ${d.grainType||''}${d.strain?' / '+d.strain:''} — <b>verify (set Strain if blank)</b>, then Log.`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+// ── LAB: BLOCK PRODUCTION log snap → parse → prefill form + per-strain variety lines ──
+async function snapBlock(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('pl-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Cleaning + reading the block log…');
+  try{
+    const r=await processScan(file,'block'); const d=r.data;
+    _lastSnap={kind:'block',url:r.imageUrl,name:'block-log.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
+    const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null&&v!=='') e.value=v; };
+    set('pl-pdate',_toISO(d.productionDate)); set('pl-lot',d.lotCode); set('pl-sbatch',d.substrateBatch); set('pl-batchnum',d.batch); set('pl-order',d.order);
+    if(d.subLbs) set('pl-sublbs',d.subLbs); if(d.buckets) set('pl-buckets',d.buckets); if(d.gallons) set('pl-gallons',d.gallons);
+    set('pl-wstart',d.waterStart); set('pl-wend',d.waterEnd); set('pl-mixtime',d.mixTime); set('pl-prodnotes',d.prodNotes);
+    set('pl-sdate',_toISO(d.sterDate)); set('pl-actemp',d.autoclaveTemp); set('pl-cooktime',d.cookTime); set('pl-cookstart',d.cookStart); set('pl-cookend',d.cookEnd); set('pl-sternotes',d.sterNotes);
+    // per-strain block lines → the pl-varieties list
+    const rows=(Array.isArray(d.rows)?d.rows:[]).filter(x=>x&&(x.strain||x.blockCount));
+    if(rows.length && typeof plVarieties!=='undefined'){
+      plVarieties=rows.map(x=>({...blankPlVar(), variety:(x.strain||'').trim(), blockCount:x.blockCount||'', spawnLot:(x.spawnLot||'').trim(), spawnDate:_toISO(d.spawnDate)||'', spawnQuantity:d.spawnQty||'', spawnSource:d.spawnSource||'', rack:d.rackLocation||''}));
+      if(typeof paintPlVarieties==='function') paintPlVarieties();
+    }
+    show(`✓ Read block log <b>${d.lotCode||''}</b> — <b>${rows.length} strain(s)</b> populated below — verify, then Log.`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+
+// ── RECEIVING snap → parse → prefill form ──
+async function snapReceiving(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('rc-snap-status');
+  const show=(h)=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Cleaning + reading the sheet…');
+  try{
+    const r=await processScan(file,'receiving'); const d=r.data;
+    _lastSnap={kind:'receiving',url:r.imageUrl,name:'receiving-sheet.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
+    const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null&&v!=='') e.value=v; };
+    const iso=_toISO(d.date); if(iso) set('rc-date',iso);
+    if(d.source){ const s=document.getElementById('rc-source'); if(s){ s.value=(d.source==='internal'?'internal':'vendor'); if(typeof onRecSourceChange==='function') onRecSourceChange(); } }
+    set('rc-vendor',d.vendor); set('rc-variety',d.variety); set('rc-lot',d.lot);
+    if(d.blockCount) set('rc-bc',d.blockCount); if(d.blockWeightLb) set('rc-bw',d.blockWeightLb);
+    if(d.notes) set('rc-notes',d.notes);
+    show(`✓ Read ${d.variety||'?'} / Lot ${d.lot||'?'} (${d.blockCount||'?'} blocks) — <b>verify below</b>, then Log.`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+// all lots from the same delivery (same date + vendor + PO) — a multi-lot receiving is one report
+function _recvSiblings(r){ return (DB.receivings||[]).filter(x=>x.date===r.date && (x.vendor||'')===(r.vendor||'') && (x.poNum||'')===(r.poNum||'') && (x.source||'')===(r.source||'')); }
+function resendReceiving(id, updated){ const r=DB.receivings.find(x=>x.id===id); if(!r) return;
+  const sibs=_recvSiblings(r);
+  let subj=notifySubject('receiving',{vendor:r.vendor,source:r.source,lot:(sibs.length===1?r.lotNumber:''),date:r.date});
+  if(updated) subj='UPDATED: '+subj;
+  openEmailDispatch('receiving', subj, {label:(updated?'UPDATED — ':'')+'Receiving '+(r.vendor||r.source||''), resend:true,
+    data:{date:r.date,vendor:r.vendor,source:r.source,poNum:r.poNum,temperature:r.temperature,tempLogUrl:r.tempLogUrl,invoiceUrl:r.invoiceUrl,imageUrl:r.scanUrl||'',
+      rows:sibs.map(x=>({variety:x.variety,lot:x.lotNumber,blockCount:x.blockCount,blockWeightLb:x.blockWeightLb}))}}); }
+// attach an invoice/packing slip AFTER the fact, then re-send an UPDATED report — invoice applies to the whole delivery
+function rcAddInvoice(id){
+  const r=DB.receivings.find(x=>x.id===id); if(!r) return;
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*,application/pdf,.pdf';
+  inp.onchange=async()=>{ const file=inp.files&&inp.files[0]; if(!file) return;
+    try{ const url=await storePhoto(file,'receiving-invoice');
+      const sibs=_recvSiblings(r);
+      for(const s of sibs){ s.invoiceUrl=url; await FS.update('receivings',s.id,{invoiceUrl:url}); }
+      resendReceiving(id,true); }
+    catch(e){ alert('Invoice upload failed: '+(e.message||e)); } };
+  inp.click();
+}
+function resendSlip(id){ const o=DB.orders.find(x=>x.id===id); if(!o) return;
+  const items=ALL_PRODS.filter(p=>o[p.dataKey]>0).map(p=>({code:p.code,name:p.name,qty:o[p.dataKey]}));
+  const shipIso=_toISO((o.packedAt||'').slice(0,10))||(o.packedAt||'').slice(0,10);
+  openEmailDispatch('slip', notifySubject('slip',{client:o.client,soNum:o.soNum,shipDate:shipIso}), {label:'Packing Slip '+(o.soNum?'SO '+o.soNum:o.client), resend:true,
+    data:{client:o.client,soNum:o.soNum||'',poNum:(String(o.notes||'').match(/PO\s*(\S+)/i)||[])[1]||'',shipDate:shipIso,items,lots:o.usedLots||[],imageUrl:o.scanUrl||''}}); }
+
+// ── PACKING SLIP snap → parse → prefill the Pack→Order form ──
+async function snapSlip(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('po-snap-status');
+  const show=(h)=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Cleaning + reading the packing slip…');
+  try{
+    const r=await processScan(file,'slip'); const d=r.data;
+    _lastSnap={kind:'slip',url:r.imageUrl,name:'packing-slip.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes,shipDate:d.shipDate||d.date||'',poNum:d.poNum||''};
+    const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null&&v!=='') e.value=v; };
+    set('po-so',d.soNum); set('po-client',d.client);
+    // ship date → delivery-day dropdown
+    const iso=_toISO(d.shipDate||d.date); if(iso){ const wd=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(iso+'T12:00:00').getDay()]; const sel=document.getElementById('po-day'); if(sel&&wd) sel.value=wd; }
+    if(d.poNum){ const n=document.getElementById('po-notes'); if(n&&!n.value) n.value='PO '+d.poNum; }
+    // map slip item codes → product qty inputs
+    let matched=0, unmatched=[];
+    (d.items||[]).forEach(it=>{
+      const code=(it.code||'').trim().toUpperCase();
+      const qty=parseInt(it.shipped)||parseInt(it.ordered)||0; if(!qty) return;
+      const prod=ALL_PRODS.find(p=>p.code.toUpperCase()===code);
+      if(prod){ set('po-'+prod.dataKey,qty); matched++; } else unmatched.push(`${it.code||'?'}×${qty}`);
+    });
+    // pre-check lots that match on-hand lot checkboxes
+    const slipLots=(d.lots||[]).map(l=>(l.lot||'').trim()).filter(Boolean);
+    let lotHits=0, lotMiss=[];
+    slipLots.forEach(lot=>{ const cb=[...document.querySelectorAll('.po-lot-chk')].find(c=>c.value.toUpperCase()===lot.toUpperCase()); if(cb){ cb.checked=true; lotHits++; } else lotMiss.push(lot); });
+    let notes=`✓ Read SO ${d.soNum||'?'} · ${d.client||'?'} — ${matched} item(s) filled`;
+    if(unmatched.length) notes+=`; <span style="color:var(--gold)">unmatched code(s): ${unmatched.join(', ')} — enter manually</span>`;
+    if(lotHits) notes+=`; ${lotHits} lot(s) checked`;
+    if(lotMiss.length) notes+=`; <span style="color:var(--gold)">lot(s) not on hand: ${lotMiss.join(', ')}</span>`;
+    show(notes+`. <b>Verify, then Generate.</b>`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+
 function rHarvest(el){
   const s=sByKey('harvest',[...DB.harvests].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')),{date:h=>h.date,container:h=>h.container,facility:h=>h.facility||'',lotNumber:h=>h.lotNumber||'',variety:h=>h.variety,grade:h=>h.grade||'',weight:h=>h.weight||0,usedWeight:h=>h.usedWeight||0});
   const activeContainers=getActiveContainers();
@@ -4294,6 +5196,14 @@ function rHarvest(el){
   ].filter(Boolean))].sort();
   el.innerHTML=`
     <div class="ph"><div class="ph-t">Harvest Log</div><div class="ph-s">Record each lot from the grow room</div></div>
+    ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
+      <div class="card-t">📸 Snap / Upload Harvest Sheet</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the handwritten tote label — the app cleans it into a crisp PDF, reads it, and fills the form below. You verify, set the grade, then Log.</div>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
+        <input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapHarvest(this)">
+      </label>
+      <div id="hl-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+    </div>`:''}
     ${canEdit()?'<div class="card"><div class="card-t">Log a Harvest</div>':'<div style="display:none"><div>'}
     <div class="fg2">
       <div class="fgl"><label>Date</label><input class="fi" type="date" id="hl-dt" value="${tday()}"></div>
@@ -4350,7 +5260,7 @@ function rHarvest(el){
             <td class="mn">${h.weight?h.weight+' lb':'—'}</td>
             <td class="mn" style="font-weight:700;color:${col}">${onHand.toFixed(1)} lb</td>
             <td style="font-size:11px;color:var(--text3)">${h.notes||'—'}</td>
-            ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditHarvest('${h.id}')">✎ Edit</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delHarvest('${h.id}')">✕</button>`:''}</td>`:''}
+            ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditHarvest('${h.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendHarvest('${h.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delHarvest('${h.id}')">✕</button>`:''}</td>`:''}
           </tr>`}).join('')
       }</tbody>
     </table></div>
@@ -4525,16 +5435,33 @@ function addHarvestRow(){
   const lh=document.getElementById('hl-lot'); if(lh) lh.focus();
 }
 function removeHarvestRow(i){ _harvestQueue.splice(i,1); renderHarvestQueue(); }
+function updateHarvestRow(i, field, value){ if(_harvestQueue[i]){ _harvestQueue[i][field] = (field==='weight') ? (parseFloat(value)||0) : (value||'').trim(); } }
+// staged-lot tie-in: match the typed lot to a known lot code + auto-fill variety
+function updateHarvestRowLot(i, value){
+  const r=_harvestQueue[i]; if(!r) return;
+  r.lotNumber=(value||'').trim();
+  const info=(typeof detectLot==='function')?detectLot(r.lotNumber):null;
+  if(info && info.variety && !r.variety){ r.variety=info.variety; renderHarvestQueue(); }
+}
 function renderHarvestQueue(){
   const c=document.getElementById('hl-queue');
-  if(c) c.innerHTML = _harvestQueue.length ? `<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;">STAGED — ${_harvestQueue.length} LOT(S) READY TO LOG</div>`+
-    _harvestQueue.map((r,i)=>`<div style="display:flex;align-items:center;gap:10px;background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:7px 12px;margin-bottom:6px;font-size:12px;">
-      <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);">${r.lotNumber}</span>
-      <span style="font-weight:600;">${r.variety}</span>
-      <span class="bdg ${r.grade==='A'?'bc':r.grade==='B'?'bad':'bp'}">${r.grade}</span>
-      <span class="mn">${r.weight} lb</span>
-      <span style="color:var(--text3);font-size:11px;">${r.container}</span>
-      <button class="btn b-r b-sm" style="margin-left:auto;" onclick="removeHarvestRow(${i})">✕</button>
+  if(c) c.innerHTML = _harvestQueue.length ? `<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:14px 0 8px;">＋ ${_harvestQueue.length} MORE LOT(S) FROM THE SCAN — VERIFY EACH BELOW</div>`+
+    _harvestQueue.map((r,i)=>`<div style="background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <span style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--gold);">LOT ${i+2}${r.container?' · '+r.container:''}${r.facility?' @ '+r.facility:''}</span>
+        <button class="btn b-r b-sm" onclick="removeHarvestRow(${i})">✕ Remove</button>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Lot Number <span style="color:var(--text3);font-size:9px;">type to match known lots</span></label><input class="fi" list="hl-lotl" value="${attrEsc(r.lotNumber)}" onchange="updateHarvestRowLot(${i},this.value)" autocomplete="off"></div>
+        <div class="fgl"><label>Variety</label><input class="fi" list="hl-v-dl" value="${attrEsc(r.variety)}" onchange="updateHarvestRow(${i},'variety',this.value)"></div>
+        <div class="fgl"><label>Grade</label><select class="fs" onchange="updateHarvestRow(${i},'grade',this.value)">
+          <option value="A" ${r.grade==='A'?'selected':''}>A — Premium</option>
+          <option value="B" ${r.grade==='B'?'selected':''}>B — Good</option>
+          <option value="C" ${r.grade==='C'?'selected':''}>C — Seconds</option>
+        </select></div>
+        <div class="fgl"><label>Weight (lbs)</label><input class="fi" type="number" step="0.1" min="0" value="${r.weight}" onchange="updateHarvestRow(${i},'weight',this.value)"></div>
+        <div class="fgl"><label>Notes</label><input class="fi" value="${attrEsc(r.notes||'')}" onchange="updateHarvestRow(${i},'notes',this.value)"></div>
+      </div>
     </div>`).join('') : '';
   const cur=_readHarvestRow();
   const n=_harvestQueue.length+((cur.lotNumber&&cur.variety)?1:0);
@@ -4552,21 +5479,29 @@ async function logHarv(){
   // Hard-block: must log who worked + how long before the session saves
   const primeCon=(rows.find(r=>r.container)||{}).container||'';
   const primeDate=(rows[0]||{}).date||tday();
-  openSessionLaborGate('harvest', primeCon, primeDate, 'Harvesting', ()=>_doHarvestCommit(rows));
+  openSessionLaborGate('harvest', primeCon, primeDate, 'Harvesting', (crew)=>_doHarvestCommit(rows, crew));
 }
-async function _doHarvestCommit(rows){
-  let n=0;
+async function _doHarvestCommit(rows, crew){
+  let n=0; const createdIds=[];
   for(const r of rows){
     if(r.variety) addVariety(r.variety); // persist any typed-in variety
-    const hData={date:r.date,container:r.container,facility:r.facility,lotNumber:r.lotNumber,variety:r.variety,grade:r.grade,weight:r.weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes:r.notes,createdAt:new Date().toISOString()};
+    const hData={date:r.date,container:r.container,facility:r.facility,lotNumber:r.lotNumber,variety:r.variety,grade:r.grade,weight:r.weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes:r.notes,scanUrl:(_lastSnap&&_lastSnap.kind==='harvest'?_lastSnap.url:'')||'',createdAt:new Date().toISOString()};
     const hId=await FS.add('harvests',hData);
-    DB.harvests.push({id:hId,...hData});
+    DB.harvests.push({id:hId,...hData}); createdIds.push(hId);
     logAudit('harvest_logged',`Logged ${r.weight}lb ${r.variety} — Lot ${r.lotNumber} — ${r.container} @ ${r.facility}`);
     n++;
   }
   _harvestQueue=[];
+  // capture the session's primary identity for the notification subject BEFORE re-render
+  const prime=rows.find(r=>r.container)||rows[0]||{};
   toast('hl-t', n>1?`✓ ${n} harvests recorded`:'✓ Harvest recorded');
   rHarvest(document.getElementById('main-views'));
+  // fire the auto-email dispatcher (subject = "LOC CONTAINER MMDDYY" + full report body + photo)
+  const snapUrl=(_lastSnap&&_lastSnap.kind==='harvest')?_lastSnap.url:'';
+  openEmailDispatch('harvest', notifySubject('harvest',prime), {label:'Harvest '+(prime.container||''),
+    edit:{kind:'harvest',col:'harvests',containerField:'container',ids:createdIds,container:prime.container,date:prime.date,facility:prime.facility},
+    data:{prime,rows,crew:crew||[],imageUrl:snapUrl}, image:(_lastSnap&&_lastSnap.kind==='harvest'&&_lastSnap.b64)?_lastSnap:null});
+  _lastSnap=null;
 }
 
 // ── EDIT / DELETE a harvest (fix mistakes) ──
@@ -7292,6 +8227,7 @@ function dlTraceCSV(){
 // ── CLEANING & CONTAINER FLIP — deep clean, container cycle, spent-block removal ──
 const CLEAN_TYPES=['Deep Clean','Quick Flip','Sanitize'];
 function rCleaning(el){
+  _wasteQueue=[]; // fresh waste staging when the merged tab renders
   const activeC=getActiveContainers();
   const flips=[...(DB.containerFlips||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
   const conOpts=activeC.map(c=>`<option value="${c.code}">${c.code} · ${c.farm} (${c.facility})</option>`).join('');
@@ -7303,80 +8239,111 @@ function rCleaning(el){
     <td style="font-size:11px;color:var(--text3);">${f.notes||''}</td>
     ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFlip('${f.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delFlip('${f.id}')">✕</button>`:''}</td>`:''}
   </tr>`).join(''):`<tr><td colspan="${canEdit()?8:7}" class="empty">No container flips logged yet.</td></tr>`;
+  const disp=[...(DB.blockDisposals||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.timestamp||'').localeCompare(a.timestamp||''));
+  const totalWasted=disp.reduce((s,dd)=>s+(parseInt(dd.blockCount)||0),0);
   el.innerHTML=`
-    <div class="ph"><div class="ph-t">🧽 Cleaning &amp; Container Flip</div><div class="ph-s">Deep clean · container cycle · remove spent blocks from inventory</div></div>
-    ${canEdit()?`<div class="card">
-      <div class="card-t">Log a Container Flip / Clean</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:14px;">Records the clean, removes spent blocks from inventory (as waste), and requires crew + time. Pick the container to see its active lots to flip out.</div>
+    <div class="ph"><div class="ph-t">🧽 Clean · Flip · Waste</div><div class="ph-s">One form — clean/flip a container &amp; log the spent / wasted blocks · deducts from inventory · reports to orders@</div></div>
+    <div class="stats" style="margin-bottom:22px;">
+      <div class="sc r"><div class="sc-l">Blocks Wasted</div><div class="sc-v">${totalWasted}</div><div class="sc-n">all-time</div></div>
+      <div class="sc g"><div class="sc-l">Flips / Cleans</div><div class="sc-v">${flips.length}</div><div class="sc-n">logged</div></div>
+      <div class="sc"><div class="sc-l">Disposal Records</div><div class="sc-v">${disp.length}</div><div class="sc-n">ledger entries</div></div>
+    </div>
+    ${canEdit()?`<div class="card" style="border-color:rgba(184,76,32,.28);">
+      <div class="card-t">Log Clean · Flip · Waste</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Pick a container, set how many blocks to remove per lot (or snap the sheet's waste column), choose a clean type, add crew — one submit deducts inventory, records the clean, and emails the waste report.</div>
+      <div style="background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.25);border-radius:6px;padding:11px 13px;margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:600;color:var(--fern);margin-bottom:8px;">📸 Snap the harvest/fruiting sheet — reads the Post-Harvest Waste &amp; Spoilage columns and fills the counts below</div>
+        <label class="btn b-g" style="cursor:pointer;display:inline-block;">📷 Choose photo / PDF<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapWaste(this)"></label>
+        <div id="wb-snap-status" style="display:none;margin-top:10px;font-size:12px;padding:8px 12px;background:var(--white);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+      </div>
       <div class="fg2">
         <div class="fgl"><label>Date</label><input class="fi" type="date" id="cf-date" value="${tday()}"></div>
         <div class="fgl"><label>Container</label><select class="fs" id="cf-con" onchange="onFlipContainer()"><option value="">Select container…</option>${conOpts}</select></div>
-        <div class="fgl"><label>Clean Type</label><select class="fs" id="cf-type">${CLEAN_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>
+        <div class="fgl"><label>Clean Type</label><select class="fs" id="cf-type">${CLEAN_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}<option value="">— none (waste only) —</option></select></div>
       </div>
       <div id="cf-lots-wrap" style="margin-top:12px;"></div>
       <div class="fg2" style="margin-top:12px;">
-        <div class="fgl"><label>Extra spent blocks removed <span style="color:var(--text3);font-size:9px;">(not tied to a lot)</span></label><input class="fi" type="number" min="0" id="cf-extra" placeholder="0"></div>
-        <div class="fgl"><label>Reason for spent removal</label><input class="fi" id="cf-reason" list="cf-reasonl" placeholder="spent / contaminated / end of cycle"><datalist id="cf-reasonl"><option value="spent"><option value="contaminated"><option value="end of cycle"></datalist></div>
+        <div class="fgl"><label>Reason</label><select class="fs" id="cf-reason">${WASTE_REASONS.map(x=>`<option value="${x}">${x}</option>`).join('')}</select></div>
+        <div class="fgl"><label>Extra spent blocks <span style="color:var(--text3);font-size:9px;">(not tied to a lot)</span></label><input class="fi" type="number" min="0" id="cf-extra" placeholder="0"></div>
       </div>
-      <div class="fgl" style="margin-top:12px;"><label>Notes / Condition</label><textarea class="fta" id="cf-notes" placeholder="Observations, chemicals used, issues…"></textarea></div>
+      <div class="fgl" style="margin-top:10px;"><label>Notes / Condition</label><textarea class="fta" id="cf-notes" placeholder="Chemicals used, condition, observations…"></textarea></div>
       <div class="form-acts" style="margin-top:14px;">
-        <button class="btn b-m b-lg" onclick="saveContainerFlip()">Log Flip &amp; Clean</button>
+        <button class="btn b-m b-lg" onclick="saveClean()">Log &amp; Send Waste Report</button>
         <button class="btn b-g" onclick="rCleaning(document.getElementById('main-views'))">Clear</button>
       </div>
-      <div class="toast" id="cf-t">✓ Flip logged</div>
+      <div class="toast" id="cf-t">✓ Logged</div>
     </div>`:''}
     <div class="sh" style="margin-top:24px;"><span>Flip &amp; Clean History</span><span class="bdg bc">${flips.length}</span></div>
     <div class="tw"><table>
       <thead><tr><th>Date</th><th>Container</th><th>Type</th><th>Spent Blks</th><th>Lots</th><th>Crew</th><th>Notes</th>${canEdit()?'<th>Actions</th>':''}</tr></thead>
       <tbody>${histRows}</tbody>
+    </table></div>
+    <div class="sh" style="margin-top:28px;"><span>🗑 Block Waste / Disposal Ledger</span><span class="bdg bc">${disp.length}</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Date</th><th>Stage</th><th>Container</th><th>Lot</th><th>Variety</th><th>Blocks</th><th>Reason</th><th>Notes</th>${canEdit()?'<th></th>':''}</tr></thead>
+      <tbody>${disp.length?disp.map(dd=>`<tr>
+        <td class="mn">${fDate(dd.date)}</td><td class="mn"><span class="bdg bp" style="font-size:8px;">${dd.stage||'—'}</span></td>
+        <td class="mn">${dd.container||'—'}</td><td class="mn" style="color:var(--gold);">${dd.cookLot||dd.lotNumber||'—'}</td>
+        <td>${dd.variety||'—'}</td><td class="mn" style="color:var(--rust);font-weight:700;">${dd.blockCount||0}</td>
+        <td class="mn">${dd.reason||'—'}</td><td style="font-size:11px;color:var(--text3);">${dd.notes||''}</td>
+        ${canEdit()?`<td>${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delWaste('${dd.id}')">✕</button>`:''}</td>`:''}
+      </tr>`).join(''):`<tr><td colspan="${canEdit()?9:8}" class="empty">No disposals logged yet.</td></tr>`}</tbody>
     </table></div>`;
 }
 function onFlipContainer(){
   const con=document.getElementById('cf-con')?.value;
   const wrap=document.getElementById('cf-lots-wrap'); if(!wrap) return;
-  const lots=DB.fruitings.filter(f=>f.containerID===con && f.status==='fruiting');
-  if(!con||!lots.length){ wrap.innerHTML=con?`<div style="font-size:11px;color:var(--text3);">No active fruiting lots in ${con} — use the spent-block count below if flipping leftovers.</div>`:''; return; }
-  wrap.innerHTML=`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px;">FLIP OUT SPENT LOTS IN ${con} — check to remove from inventory</div>
-    <div style="display:flex;flex-direction:column;gap:6px;">${lots.map(f=>`
-      <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:12px;">
-        <input type="checkbox" class="cf-lot-chk" value="${f.id}" data-lot="${(f.lotNumber||'').replace(/"/g,'&quot;')}" data-var="${(f.variety||'').replace(/"/g,'&quot;')}" data-blocks="${f.blockCount||0}">
-        <span><strong>${f.variety}</strong> · Lot ${f.lotNumber} · ${f.blockCount||0} blocks</span>
-      </label>`).join('')}</div>`;
+  const lots=(DB.fruitings||[]).filter(f=>f.containerID===con && (f.status==='fruiting'||f.status==='harvested') && fruitingRemaining(f)>0);
+  if(!con){ wrap.innerHTML=''; return; }
+  if(!lots.length){ wrap.innerHTML=`<div style="font-size:11px;color:var(--text3);margin:6px 0;">No blocks on hand in ${con} — use "extra spent blocks" below for untied leftovers.</div>`; return; }
+  wrap.innerHTML=`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:6px 0 8px;">BLOCKS IN ${con} — SET # TO REMOVE PER LOT (blank/0 = leave · "all" = flip the whole lot)</div>
+    ${lots.map(f=>{ const rem=fruitingRemaining(f); return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:5px;margin-bottom:6px;font-size:12px;flex-wrap:wrap;">
+      <span style="flex:1;min-width:180px;"><strong>${f.variety}</strong> · Lot <span style="color:var(--gold);">${f.lotNumber}</span> · <span style="color:var(--fern);">${rem} on hand</span></span>
+      <button class="btn b-g b-sm" onclick="document.getElementById('cf-rem-${f.id}').value=${rem}">all</button>
+      <input class="fi cf-rem" type="number" min="0" max="${rem}" id="cf-rem-${f.id}" placeholder="0" style="width:96px;" data-lot="${(f.lotNumber||'').replace(/"/g,'&quot;')}" data-var="${(f.variety||'').replace(/"/g,'&quot;')}" data-rem="${rem}">
+    </div>`;}).join('')}`;
 }
-function saveContainerFlip(){
+function saveClean(){
   const con=document.getElementById('cf-con')?.value;
   const date=document.getElementById('cf-date')?.value||tday();
-  const cleanType=document.getElementById('cf-type')?.value||'Deep Clean';
-  if(!con){ alert('Select a container.'); return; }
-  const checked=[...document.querySelectorAll('.cf-lot-chk:checked')];
-  const extra=parseInt(document.getElementById('cf-extra')?.value)||0;
-  const reason=(document.getElementById('cf-reason')?.value||'').trim()||'spent';
+  const cleanType=document.getElementById('cf-type')?.value||'';
+  const reason=document.getElementById('cf-reason')?.value||'post-harvest';
   const notes=(document.getElementById('cf-notes')?.value||'').trim();
-  const lotBlocks=checked.reduce((s,c)=>s+(parseInt(c.getAttribute('data-blocks'))||0),0);
-  const flipData={con,date,cleanType,reason,notes,extra,spentBlocks:lotBlocks+extra,
-    lots:checked.map(c=>({fruitingId:c.value,lotNumber:c.getAttribute('data-lot'),variety:c.getAttribute('data-var'),blocks:parseInt(c.getAttribute('data-blocks'))||0}))};
-  // hard-block: crew + time required, then commit
-  openSessionLaborGate('flip', con, date, 'Cleaning', (crew)=>_doFlipCommit(flipData, crew));
+  const extra=parseInt(document.getElementById('cf-extra')?.value)||0;
+  if(!con){ alert('Select a container.'); return; }
+  const removals=[];
+  document.querySelectorAll('.cf-rem').forEach(inp=>{ const n=parseInt(inp.value)||0; if(n>0){ const rem=parseInt(inp.getAttribute('data-rem'))||n; removals.push({fruitingId:inp.id.replace('cf-rem-',''),lotNumber:inp.getAttribute('data-lot'),variety:inp.getAttribute('data-var'),blocks:Math.min(n,rem)}); } });
+  if(!removals.length && extra<=0){ alert('Set how many blocks to remove (per lot), or an extra spent count.'); return; }
+  const spentBlocks=removals.reduce((s,r)=>s+r.blocks,0)+extra;
+  const data={con,date,cleanType,reason,notes,extra,spentBlocks,lots:removals};
+  openSessionLaborGate('flip', con, date, 'Cleaning', (crew)=>_doCleanCommit(data, crew));
 }
-async function _doFlipCommit(d, crew){
+async function _doCleanCommit(d, crew){
   const c=CONTAINERS.find(x=>x.code===d.con);
-  const spentLots=[];
+  const spentLots=[]; const emailRows=[]; const stage=d.cleanType?'spent':'post-harvest';
   for(const lot of d.lots){
-    const dData={date:d.date,stage:'spent',container:d.con,cookLot:lot.lotNumber||'',labBatchId:'',variety:lot.variety,source:'',supplier:'',blockCount:lot.blocks,reason:d.reason,notes:`Flipped out of ${d.con} — ${d.cleanType}${d.notes?(' · '+d.notes):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+    const fr=DB.fruitings.find(x=>x.id===lot.fruitingId);
+    const dData={date:d.date,stage,container:d.con,cookLot:lot.lotNumber||'',lotNumber:lot.lotNumber||'',labBatchId:'',variety:lot.variety,source:'',supplier:'',blockCount:lot.blocks,reason:d.reason,notes:`${d.cleanType?('Flipped/cleaned — '+d.cleanType):'Wasted'} from ${d.con}${d.notes?(' · '+d.notes):''}`,fruitingId:lot.fruitingId||'',deducted:lot.blocks,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+    if(fr) dData.prevStatus=fr.status;
     const did=await FS.add('blockDisposals',dData); dData.id=did; DB.blockDisposals.push(dData);
     if(lot.lotNumber) spentLots.push(lot.lotNumber);
-    const fr=DB.fruitings.find(x=>x.id===lot.fruitingId);
-    if(fr){ fr.status='removed'; fr.removedAt=d.date; try{ await FS.update('fruitings',fr.id,{status:'removed',removedAt:d.date}); }catch(e){} }
+    emailRows.push({lotNumber:lot.lotNumber,variety:lot.variety,container:d.con,blockCount:lot.blocks,reason:d.reason});
+    if(fr){ fr.spentBlocks=(fr.spentBlocks||0)+lot.blocks; const upd={spentBlocks:fr.spentBlocks}; if(fruitingRemaining(fr)<=0){ fr.status=d.cleanType?'removed':'spent'; upd.status=fr.status; upd.removedAt=d.date; } try{ await FS.update('fruitings',fr.id,upd); }catch(e){} }
   }
   if(d.extra>0){
-    const dData={date:d.date,stage:'spent',container:d.con,cookLot:'',labBatchId:'',variety:'',source:'',supplier:'',blockCount:d.extra,reason:d.reason,notes:`Spent blocks flipped from ${d.con} — ${d.cleanType}${d.notes?(' · '+d.notes):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+    const dData={date:d.date,stage,container:d.con,cookLot:'',lotNumber:'',labBatchId:'',variety:'',source:'',supplier:'',blockCount:d.extra,reason:d.reason,notes:`Extra spent from ${d.con}${d.cleanType?(' — '+d.cleanType):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
     const did=await FS.add('blockDisposals',dData); dData.id=did; DB.blockDisposals.push(dData);
+    emailRows.push({lotNumber:'',variety:'(untied)',container:d.con,blockCount:d.extra,reason:d.reason});
   }
-  const flip={date:d.date,container:d.con,facility:c?.facility||'',cleanType:d.cleanType,spentBlocks:d.spentBlocks,spentLots,extra:d.extra,reason:d.reason,notes:d.notes,crew:crew||[],loggedBy:S.name||S.role,createdAt:new Date().toISOString()};
-  const fid=await FS.add('containerFlips',flip); flip.id=fid; (DB.containerFlips=DB.containerFlips||[]).push(flip);
-  logAudit('container_flip',`Flip/clean ${d.con} — ${d.cleanType} — ${d.spentBlocks} spent block(s)${spentLots.length?(' · lots '+spentLots.join(', ')):''}`);
-  toast('cf-t','✓ Flip & clean logged');
-  renderC();
+  if(d.cleanType){
+    const flip={date:d.date,container:d.con,facility:c?.facility||'',cleanType:d.cleanType,spentBlocks:d.spentBlocks,spentLots,extra:d.extra,reason:d.reason,notes:d.notes,crew:crew||[],loggedBy:S.name||S.role,createdAt:new Date().toISOString()};
+    const fid=await FS.add('containerFlips',flip); flip.id=fid; (DB.containerFlips=DB.containerFlips||[]).push(flip);
+  }
+  logAudit('clean_waste',`${d.cleanType?('Flip/clean '+d.con+' — '+d.cleanType+' — '):'Waste '+d.con+' — '}${d.spentBlocks} spent block(s)${spentLots.length?(' · lots '+spentLots.join(', ')):''}`);
+  toast('cf-t','✓ '+(d.cleanType?'Clean/flip':'Waste')+' logged — '+d.spentBlocks+' blocks');
+  rCleaning(document.getElementById('main-views'));
+  openEmailDispatch('waste', notifySubject('waste',{date:d.date}), {label:'Block Waste '+_mm_dd_yy(d.date),
+    data:{date:d.date,rows:emailRows}});
 }
 function openEditFlip(id){
   const f=(DB.containerFlips||[]).find(x=>x.id===id); if(!f) return;
@@ -7696,7 +8663,141 @@ let _substrateQ = '';
 function onSubstrateSearch(v){ _substrateQ=v; clearTimeout(window._subST); window._subST=setTimeout(()=>rLab(document.getElementById('main-views')),250); }
 
 function setLabSub(s){ _labSub=s; rLab(document.getElementById('main-views')); }
+// ============ BLOCK WASTE (spent / spoiled blocks) ============
+const WASTE_REASONS=['post-harvest','spoilage','spent','contaminated','other'];
+function fruitingRemaining(f){ return Math.max(0,(f.blockCount||0)-(f.spentBlocks||0)); }
+function wasteableLots(){ return (DB.fruitings||[]).filter(f=>fruitingRemaining(f)>0).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
+let _wasteQueue=[];
+function _readWasteRow(){
+  const lotv=(document.getElementById('wb-lot')?.value||'').trim();
+  const m=wasteableLots().find(f=>(f.lotNumber||'').trim().toLowerCase()===lotv.toLowerCase());
+  return { lotNumber:lotv, variety:(document.getElementById('wb-variety')?.value||'').trim(), container:(document.getElementById('wb-container')?.value||'').trim(),
+    blockCount:parseInt(document.getElementById('wb-cnt')?.value)||0, reason:document.getElementById('wb-reason')?.value||'post-harvest',
+    notes:(document.getElementById('wb-notes')?.value||'').trim(), fruitingId:m?m.id:'' };
+}
+function onWasteLot(){
+  const lotv=(document.getElementById('wb-lot')?.value||'').trim();
+  const m=wasteableLots().find(f=>(f.lotNumber||'').trim().toLowerCase()===lotv.toLowerCase());
+  const hint=document.getElementById('wb-lot-hint');
+  if(m){ const v=document.getElementById('wb-variety'); if(v&&!v.value) v.value=m.variety||''; const c=document.getElementById('wb-container'); if(c&&!c.value) c.value=m.containerID||''; if(hint){ hint.style.color='var(--fern)'; hint.textContent=`✓ ${m.variety} @ ${m.containerID} · ${fruitingRemaining(m)} BLOCKS REMAINING`; } }
+  else if(hint){ hint.style.color='var(--text3)'; hint.textContent=lotv?'⚠ NOT IN FRUITING INVENTORY — LOGS TO LEDGER ONLY':'TYPE TO MATCH A FRUITING LOT'; }
+}
+function addWasteRow(){ const r=_readWasteRow(); if(!r.blockCount){ alert('Enter how many blocks.'); return; } _wasteQueue.push(r); renderWasteQueue(); ['wb-lot','wb-variety','wb-container','wb-cnt','wb-notes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';}); const h=document.getElementById('wb-lot-hint'); if(h)h.textContent=''; }
+function removeWasteRow(i){ _wasteQueue.splice(i,1); renderWasteQueue(); }
+function updateWasteRow(i,field,value){ const r=_wasteQueue[i]; if(!r)return; r[field]=(field==='blockCount')?(parseInt(value)||0):(value||'').trim(); if(field==='lotNumber'){ const m=wasteableLots().find(f=>(f.lotNumber||'').trim().toLowerCase()===r.lotNumber.toLowerCase()); r.fruitingId=m?m.id:''; if(m){ if(!r.variety) r.variety=m.variety; if(!r.container) r.container=m.containerID; } renderWasteQueue(); } }
+function renderWasteQueue(){
+  const c=document.getElementById('wb-queue'); if(!c) return;
+  c.innerHTML=_wasteQueue.length?`<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:14px 0 8px;">＋ ${_wasteQueue.length} STAGED WASTE LINE(S) — VERIFY EACH</div>`+
+    _wasteQueue.map((r,i)=>{ const m=wasteableLots().find(f=>f.id===r.fruitingId); const rem=m?fruitingRemaining(m):null;
+      return `<div style="background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"><span style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--gold);">#${i+1}${rem!=null?' · '+rem+' remaining':(r.lotNumber?' · ⚠ not in fruiting':'')}</span><button class="btn b-r b-sm" onclick="removeWasteRow(${i})">✕ Remove</button></div>
+      <div class="fg2">
+        <div class="fgl"><label>Fruiting Lot</label><input class="fi" list="wb-lotl" value="${attrEsc(r.lotNumber)}" onchange="updateWasteRow(${i},'lotNumber',this.value)"></div>
+        <div class="fgl"><label>Variety</label><input class="fi" list="hl-v-dl" value="${attrEsc(r.variety)}" onchange="updateWasteRow(${i},'variety',this.value)"></div>
+        <div class="fgl"><label>Container</label><input class="fi" value="${attrEsc(r.container)}" onchange="updateWasteRow(${i},'container',this.value)"></div>
+        <div class="fgl"><label># Blocks Wasted</label><input class="fi" type="number" min="1" value="${r.blockCount}" onchange="updateWasteRow(${i},'blockCount',this.value)"></div>
+        <div class="fgl"><label>Reason</label><select class="fs" onchange="updateWasteRow(${i},'reason',this.value)">${WASTE_REASONS.map(x=>`<option value="${x}" ${r.reason===x?'selected':''}>${x}</option>`).join('')}</select></div>
+      </div></div>`;}).join(''):'';
+  const btn=document.getElementById('wb-logbtn'); if(btn) btn.textContent=_wasteQueue.length?`🗑 Log Waste & Send Report (${_wasteQueue.length+((_readWasteRow().blockCount)?1:0)})`:'🗑 Log Waste & Send Report';
+}
+function wasteSectionHTML(){
+  const disp=[...(DB.blockDisposals||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.timestamp||'').localeCompare(a.timestamp||''));
+  const totalWasted=disp.reduce((s,d)=>s+(parseInt(d.blockCount)||0),0);
+  const wl=wasteableLots();
+  return `
+    <div class="sh" style="margin-top:32px;"><span>🗑 Spent / Wasted Blocks</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">DEDUCTS FROM FRUITING · AUTO-REPORTS TO ORDERS@</span></div>
+    <div class="stats" style="margin-bottom:24px;">
+      <div class="sc r"><div class="sc-l">Blocks Wasted</div><div class="sc-v">${totalWasted}</div><div class="sc-n">all-time</div></div>
+      <div class="sc"><div class="sc-l">Fruiting Lots w/ Blocks</div><div class="sc-v">${wl.length}</div><div class="sc-n">available to waste</div></div>
+      <div class="sc g"><div class="sc-l">Log Entries</div><div class="sc-v">${disp.length}</div><div class="sc-n">disposal records</div></div>
+    </div>
+    ${canEdit()?`<div class="card" style="border-color:rgba(184,76,32,.3);background:rgba(184,76,32,.03);">
+      <div class="card-t">📸 Snap / Upload Waste Column</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the harvest/fruiting sheet — AI reads the <b>Post-Harvest Waste</b> &amp; <b>Blocks Spoilage</b> columns and stages the wasted lots below.</div>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / PDF<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapWaste(this)"></label>
+      <div id="wb-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+    </div>`:''}
+    ${canEdit()?`<div class="card"><div class="card-t">Log Spent / Wasted Blocks</div>
+      <datalist id="wb-lotl">${wl.map(f=>`<option value="${attrEsc(f.lotNumber)}">${f.variety} · ${f.containerID} · ${fruitingRemaining(f)} left</option>`).join('')}</datalist>
+      <div class="fg2">
+        <div class="fgl"><label>Date</label><input class="fi" type="date" id="wb-date" value="${tday()}"></div>
+        <div class="fgl"><label>Reason</label><select class="fs" id="wb-reason">${WASTE_REASONS.map(x=>`<option value="${x}">${x}</option>`).join('')}</select></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Fruiting Lot <span style="color:var(--text3);font-size:9px;">type to match blocks in fruiting</span></label><input class="fi" id="wb-lot" list="wb-lotl" autocomplete="off" oninput="onWasteLot()" placeholder="Type to search fruiting lots…"><div id="wb-lot-hint" style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:1px;">${wl.length?wl.length+' LOT(S) WITH BLOCKS ON HAND':'NO FRUITING BLOCKS ON HAND'}</div></div>
+        <div class="fgl"><label>Variety</label><input class="fi" id="wb-variety" list="hl-v-dl" autocomplete="off"></div>
+        <div class="fgl"><label>Container</label><input class="fi" id="wb-container"></div>
+        <div class="fgl"><label># Blocks Wasted</label><input class="fi" type="number" min="1" id="wb-cnt" placeholder="blocks"></div>
+      </div>
+      <div class="fgl" style="margin-top:4px;"><label>Notes</label><input class="fi" id="wb-notes" placeholder="Optional"></div>
+      <div id="wb-queue" style="margin-bottom:12px;"></div>
+      <div class="form-acts"><button class="btn b-g b-lg" onclick="addWasteRow()">+ Add another lot</button><button class="btn b-m b-lg" id="wb-logbtn" onclick="logWaste()">🗑 Log Waste &amp; Send Report</button></div>
+      <div class="toast" id="wb-t">✓ Waste logged</div>
+    </div>`:''}
+    <div class="sh"><span>Block Waste Ledger</span><span class="bdg bc">${disp.length}</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Date</th><th>Stage</th><th>Container</th><th>Lot</th><th>Variety</th><th>Blocks</th><th>Reason</th><th>Notes</th>${canEdit()?'<th></th>':''}</tr></thead>
+      <tbody>${disp.length?disp.map(d=>`<tr>
+        <td class="mn">${fDate(d.date)}</td><td class="mn"><span class="bdg bp" style="font-size:8px;">${d.stage||'—'}</span></td>
+        <td class="mn">${d.container||'—'}</td><td class="mn" style="color:var(--gold);">${d.cookLot||d.lotNumber||'—'}</td>
+        <td>${d.variety||'—'}</td><td class="mn" style="color:var(--rust);font-weight:700;">${d.blockCount||0}</td>
+        <td class="mn">${d.reason||'—'}</td><td style="font-size:11px;color:var(--text3);">${d.notes||''}</td>
+        ${canEdit()?`<td style="white-space:nowrap;">${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delWaste('${d.id}')">✕</button>`:''}</td>`:''}
+      </tr>`).join(''):`<tr><td colspan="${canEdit()?9:8}" class="empty">No waste logged yet.</td></tr>`}</tbody>
+    </table></div>`;
+}
+// merged into the Clean & Flip tab — any 'waste' route renders the combined tab
+function rWaste(el){ rCleaning(el||document.getElementById('main-views')); }
+async function logWaste(){
+  const date=document.getElementById('wb-date')?.value||tday();
+  const rows=[..._wasteQueue];
+  const cur=_readWasteRow();
+  if(cur.blockCount||cur.lotNumber){ if(!cur.blockCount){ alert('Enter how many blocks for the lot in the form.'); return; } rows.push(cur); }
+  if(!rows.length){ alert('Add at least one lot to waste.'); return; }
+  const createdIds=[]; let deductedTotal=0, spentLots=0;
+  for(const r of rows){
+    if(r.variety) addVariety(r.variety);
+    const f=r.fruitingId?DB.fruitings.find(x=>x.id===r.fruitingId):(DB.fruitings||[]).find(x=>(x.lotNumber||'').trim().toLowerCase()===(r.lotNumber||'').trim().toLowerCase()&&fruitingRemaining(x)>0);
+    const data={date,stage:'post-harvest',container:r.container||(f&&f.containerID)||'',cookLot:r.lotNumber,lotNumber:r.lotNumber,labBatchId:'',variety:r.variety||(f&&f.variety)||'',source:'',supplier:'',blockCount:r.blockCount,reason:r.reason||'post-harvest',notes:r.notes||'',fruitingId:(f&&f.id)||'',loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+    if(f){ data.prevStatus=f.status; f.spentBlocks=(f.spentBlocks||0)+r.blockCount; const upd={spentBlocks:f.spentBlocks}; if(fruitingRemaining(f)<=0 && f.status==='fruiting'){ f.status='spent'; upd.status='spent'; upd.spentAt=date; spentLots++; } try{ await FS.update('fruitings',f.id,upd); }catch(e){ console.warn('fruiting waste deduct',e); } data.deducted=r.blockCount; }
+    const id=await FS.add('blockDisposals',data); data.id=id; DB.blockDisposals.push(data); createdIds.push(id); deductedTotal+=r.blockCount;
+  }
+  logAudit('block_waste',`Wasted ${deductedTotal} blocks across ${rows.length} lot(s)`);
+  _wasteQueue=[];
+  toast('wb-t',`✓ ${deductedTotal} blocks wasted${spentLots?` · ${spentLots} lot(s) marked spent`:''}`);
+  rWaste(document.getElementById('main-views'));
+  openEmailDispatch('waste', notifySubject('waste',{date}), {label:'Block Waste '+_mm_dd_yy(date),
+    edit:{kind:'waste',col:'blockDisposals',ids:createdIds,date},
+    data:{date,rows:rows.map(r=>({lotNumber:r.lotNumber,variety:r.variety,container:r.container,blockCount:r.blockCount,reason:r.reason}))}});
+}
+function delWaste(id){ const d=(DB.blockDisposals||[]).find(x=>x.id===id); if(!d||!confirm('Delete this waste entry? Restores its blocks to the fruiting lot.')) return;
+  if(d.fruitingId&&d.deducted){ const f=DB.fruitings.find(x=>x.id===d.fruitingId); if(f){ f.spentBlocks=Math.max(0,(f.spentBlocks||0)-d.deducted); const upd={spentBlocks:f.spentBlocks}; if(f.status==='spent'&&fruitingRemaining(f)>0){ f.status=d.prevStatus||'fruiting'; upd.status=f.status; } FS.update('fruitings',f.id,upd); } }
+  DB.blockDisposals=DB.blockDisposals.filter(x=>x.id!==id); FS.del('blockDisposals',id); rWaste(document.getElementById('main-views'));
+}
+async function snapWaste(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('wb-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Cleaning + reading the waste column…');
+  try{
+    const r=await processScan(file,'waste'); const d=r.data;
+    _lastSnap={kind:'waste',url:r.imageUrl,name:'waste-log.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
+    const iso=_toISO(d.date); if(iso){ const dt=document.getElementById('cf-date'); if(dt) dt.value=iso; }
+    // select the container + populate its lots, then fill the per-lot remove counts
+    if(d.container){ const cs=document.getElementById('cf-con'); if(cs){ cs.value=d.container; onFlipContainer(); } }
+    const norm=x=>String(x||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    let filled=0; const unmatched=[];
+    (Array.isArray(d.rows)?d.rows:[]).forEach(rr=>{
+      const lot=(rr.lot||'').trim(); const waste=(parseInt(rr.postHarvestWaste)||0)+(parseInt(rr.spoilage)||0); if(waste<=0) return;
+      const inp=[...document.querySelectorAll('.cf-rem')].find(x=>norm(x.getAttribute('data-lot'))===norm(lot));
+      if(inp){ inp.value=waste; filled++; } else unmatched.push(lot+'×'+waste);
+    });
+    show(`✓ Read waste — <b>${filled}</b> lot(s) filled${unmatched.length?`; <span style="color:var(--gold)">not on-hand in ${d.container||'container'}: ${unmatched.join(', ')} — use "extra spent" or fix inventory</span>`:''}. Verify, set clean type, then Log.`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+
 function rLab(el){
+  _shipQueue=[]; // fresh shipment staging each render
   const tabs=[['substrate','🧱 Substrate (Blocks)'],['spawn','🌾 Spawn'],['cultures','🧬 Cultures'],['send','📤 Send to Hydes'],['waste','🗑️ Waste (pre-Hydes)']];
   el.innerHTML=`
     <div class="ph"><div class="ph-t">🧫 Lab — Carthage</div><div class="ph-s">Cultures → Spawn → Substrate (blocks) · production pipeline</div></div>
@@ -7721,7 +8822,7 @@ function rLabSend(el){
     <td class="mn">${s.blockCount||0}</td><td class="mn">${s.blockWeightLb?s.blockWeightLb+' lb':'—'}</td>
     <td>${stBadge(s)}${s.status==='received'?`<div style="font-size:10px;color:var(--text3);">${s.receivedCount!=null?s.receivedCount+' recv':''} ${s.receivedAt?fDate(s.receivedAt):''}</div>`:''}</td>
     <td style="font-size:11px;color:var(--text3);">${s.carrier||''}${s.carrier&&s.notes?' · ':''}${s.notes||''}</td>
-    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditShipment('${s.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delShipment('${s.id}')">✕</button>`:''}</td>`:''}
+    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditShipment('${s.id}')">✎</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send packing report for this day's shipment" onclick="resendShipmentReport('${s.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delShipment('${s.id}')">✕</button>`:''}</td>`:''}
   </tr>`).join(''):`<tr><td colspan="${canEdit()?8:7}" class="empty">No shipments logged yet.</td></tr>`;
   el.innerHTML=`
     <div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.6;">Log blocks shipped from <strong>Carthage → Hyde's Ferry</strong>. Each shipment shows at Hydes as <strong>awaiting receipt</strong> until someone confirms it in the 📥 Receiving tab (they can adjust the count on arrival). Received shipments land in the Hydes placement pool.</div>
@@ -7743,8 +8844,12 @@ function rLabSend(el){
         <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="sh-bw" placeholder="e.g. 5.5"></div>
         <div class="fgl"><label>Truck / Carrier</label><input class="fi" id="sh-carrier" placeholder="who's hauling"></div>
       </div>
-      <div class="fgl" style="margin-top:4px;"><label>Notes</label><input class="fi" id="sh-notes" placeholder="Condition, count discrepancies, etc."></div>
-      <div class="form-acts"><button class="btn b-m b-lg" onclick="logShipment()">📤 Log Shipment</button></div>
+      <div class="fgl" style="margin-top:4px;"><label>Notes <span style="color:var(--text3);font-size:9px;">shared across the whole shipment</span></label><input class="fi" id="sh-notes" placeholder="Condition, count discrepancies, etc."></div>
+      <div id="sh-queue" style="margin-bottom:12px;"></div>
+      <div class="form-acts">
+        <button class="btn b-g b-lg" onclick="addShipRow()">+ Add another lot</button>
+        <button class="btn b-m b-lg" id="sh-logbtn" onclick="logShipment()">📤 Log Shipment &amp; Send Report</button>
+      </div>
       <div class="toast" id="sh-t">✓ Shipment logged</div>
     </div>`:''}
     <div class="sh" style="margin-top:24px;"><span>Shipment Log</span><span class="bdg bc">${ships.length}</span></div>
@@ -7753,23 +8858,66 @@ function rLabSend(el){
       <tbody>${rows}</tbody>
     </table></div>`;
 }
+let _shipQueue=[];
+function _readShipRow(){
+  return { cookLot:(document.getElementById('sh-lot')?.value||'').trim(),
+    variety:(document.getElementById('sh-variety')?.value||'').trim(),
+    blockCount:parseInt(document.getElementById('sh-cnt')?.value)||0,
+    blockWeightLb:parseFloat(document.getElementById('sh-bw')?.value)||0 };
+}
+function addShipRow(){
+  const r=_readShipRow();
+  if(!r.variety){ alert('Variety is required.'); return; }
+  if(r.blockCount<1){ alert('Enter how many blocks for this lot.'); return; }
+  _shipQueue.push(r); renderShipQueue();
+  ['sh-lot','sh-variety','sh-cnt','sh-bw'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  document.getElementById('sh-lot')?.focus();
+}
+function removeShipRow(i){ _shipQueue.splice(i,1); renderShipQueue(); }
+function updateShipRow(i,field,value){ const r=_shipQueue[i]; if(!r) return; r[field]=(field==='blockCount')?(parseInt(value)||0):(field==='blockWeightLb')?(parseFloat(value)||0):(value||'').trim(); }
+function renderShipQueue(){
+  const c=document.getElementById('sh-queue'); if(!c) return;
+  c.innerHTML = _shipQueue.length ? `<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:14px 0 8px;">＋ ${_shipQueue.length} MORE LOT(S) ON THIS SHIPMENT — VERIFY EACH BELOW</div>`+
+    _shipQueue.map((r,i)=>`<div style="background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"><span style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--gold);">LOT ${i+2}</span><button class="btn b-r b-sm" onclick="removeShipRow(${i})">✕ Remove</button></div>
+      <div class="fg2">
+        <div class="fgl"><label>Cook Lot / Batch</label><input class="fi" list="sh-lotl" value="${attrEsc(r.cookLot)}" onchange="updateShipRow(${i},'cookLot',this.value)"></div>
+        <div class="fgl"><label>Variety</label><input class="fi" list="sh-vdl" value="${attrEsc(r.variety)}" onchange="updateShipRow(${i},'variety',this.value)"></div>
+        <div class="fgl"><label># of Blocks</label><input class="fi" type="number" min="1" value="${r.blockCount}" onchange="updateShipRow(${i},'blockCount',this.value)"></div>
+        <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" value="${r.blockWeightLb||''}" placeholder="e.g. 5.5" onchange="updateShipRow(${i},'blockWeightLb',this.value)"></div>
+      </div></div>`).join('') : '';
+  const btn=document.getElementById('sh-logbtn'); if(btn) btn.textContent=_shipQueue.length?`📤 Log Shipment & Send Report (${_shipQueue.length+((_readShipRow().variety)?1:0)} lots)`:'📤 Log Shipment & Send Report';
+}
 async function logShipment(){
   const date=document.getElementById('sh-date')?.value||tday();
-  const cookLot=(document.getElementById('sh-lot')?.value||'').trim();
-  let variety=(document.getElementById('sh-variety')?.value||'').trim();
-  const cnt=parseInt(document.getElementById('sh-cnt')?.value)||0;
-  const bw=parseFloat(document.getElementById('sh-bw')?.value)||0;
   const carrier=(document.getElementById('sh-carrier')?.value||'').trim();
   const notes=(document.getElementById('sh-notes')?.value||'').trim();
-  if(cnt<1){ alert('Enter how many blocks are shipping.'); return; }
-  if(!variety){ alert('Variety is required.'); return; }
-  { const vg={variety}; if(!normalizeRowVarieties([vg])) return; variety=vg.variety; addVariety(variety); }
-  const data={date,from:'Carthage',to:"Hyde's Ferry Pike",cookLot,labBatchId:'',variety,blockCount:cnt,blockWeightLb:bw||null,carrier,notes,status:'in-transit',sentBy:S.name||S.role,createdAt:new Date().toISOString()};
-  const id=await FS.add('shipments',data); data.id=id; (DB.shipments=DB.shipments||[]).push(data);
-  logAudit('shipment_sent',`Shipped ${cnt} blocks ${variety} to Hyde's Ferry${cookLot?' · lot '+cookLot:''}`);
-  toast('sh-t','✓ Shipment logged — awaiting receipt at Hydes');
+  const rows=[..._shipQueue];
+  const cur=_readShipRow();
+  if(cur.variety||cur.blockCount||cur.cookLot){ if(!cur.variety){ alert('Variety is required.'); return; } if(cur.blockCount<1){ alert('Enter how many blocks are shipping.'); return; } rows.push(cur); }
+  if(!rows.length){ alert('Add at least one lot to ship.'); return; }
+  if(!normalizeRowVarieties(rows)) return;
+  rows.forEach(r=>addVariety(r.variety));
+  const createdIds=[];
+  for(const r of rows){
+    const data={date,from:'Carthage',to:"Hyde's Ferry Pike",cookLot:r.cookLot,labBatchId:'',variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb||null,carrier,notes,status:'in-transit',sentBy:S.name||S.role,createdAt:new Date().toISOString()};
+    const id=await FS.add('shipments',data); data.id=id; (DB.shipments=DB.shipments||[]).push(data); createdIds.push(id);
+  }
+  const totalBlocks=rows.reduce((s,r)=>s+r.blockCount,0);
+  logAudit('shipment_sent',`Shipped ${rows.length} lot(s) / ${totalBlocks} blocks to Hyde's Ferry`);
+  _shipQueue=[];
+  toast('sh-t',`✓ ${rows.length} lot(s) · ${totalBlocks} blocks logged — awaiting receipt at Hydes`);
   rLab(document.getElementById('main-views'));
+  // compiled packing report → orders@ (Katherine) + team, through the same dispatcher (editable + resend)
+  openEmailDispatch('shipment', notifySubject('shipment',{date}), {label:'Block Shipment '+_mm_dd_yy(date),
+    edit:{kind:'shipment',col:'shipments',ids:createdIds,date},
+    data:{date,carrier,notes,rows:rows.map(r=>({variety:r.variety,cookLot:r.cookLot,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb}))}});
 }
+function resendShipmentReport(id){ const s=(DB.shipments||[]).find(x=>x.id===id); if(!s) return;
+  // gather sibling lots shipped the same day/carrier for a full report
+  const sibs=(DB.shipments||[]).filter(x=>x.date===s.date && (x.carrier||'')===(s.carrier||'') && x.from===s.from);
+  openEmailDispatch('shipment', notifySubject('shipment',{date:s.date}), {label:'Block Shipment '+_mm_dd_yy(s.date), resend:true,
+    data:{date:s.date,carrier:s.carrier,notes:s.notes,rows:sibs.map(x=>({variety:x.variety,cookLot:x.cookLot,blockCount:x.blockCount,blockWeightLb:x.blockWeightLb}))}}); }
 function openEditShipment(id){
   const s=(DB.shipments||[]).find(x=>x.id===id); if(!s) return;
   document.getElementById('em-title').textContent='Edit Shipment — '+fDate(s.date);
@@ -8109,6 +9257,11 @@ async function logSpawn(){
   if(cult&&cult.status==='viable'){ cult.status='in-use'; try{FS.update('cultures',cult.id,{status:'in-use'});}catch(e){} }
   logAudit('spawn_logged',`Grain spawn ${data.lotCode||spawnLot} — ${strain} on ${data.grain||'grain'} (${bagCount} bags)`);
   toast('sp-t'); setTimeout(()=>rLab(document.getElementById('main-views')),600);
+  // auto-email the lab (orders + joel/Mat/Allen/Ashley)
+  const snapUrl=(_lastSnap&&_lastSnap.kind==='spawn')?_lastSnap.url:'';
+  const snapImg=(_lastSnap&&_lastSnap.kind==='spawn'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
+  openEmailDispatch('spawn', notifySubject('spawn',{lotCode:data.lotCode,spawnLot,date:pdate}), {label:'Spawn '+(data.lotCode||spawnLot),
+    data:{lotCode:data.lotCode,spawnLot,date:pdate,strain,grain:data.grain,grainWeight:data.totalGrainWeight,bags:bagCount,substrateBatch:data.substrateBatch,cultureSource:data.cultureSource,crewText:data.crew||'',imageUrl:snapUrl}, image:snapImg});
 }
 function clrSpawn(){ ['sp-lotcode','sp-subbatch','sp-order','sp-batchno','sp-grainwt','sp-additives','sp-grainlot','sp-bags','sp-subnotes','sp-actemp','sp-cookhrs','sp-cookstart','sp-cookend','sp-sternotes','sp-strain','sp-culture','sp-culsource','sp-graintemp','sp-lclot','sp-spawnqty','sp-inocnotes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';}); }
 // ── EDIT / DELETE a grain spawn run (all fields) ──
@@ -8247,6 +9400,12 @@ function rLabSpawn(el){
       <div class="sc g"><div class="sc-l">Spawn Bags On Hand</div><div class="sc-v">${totalBags}</div><div class="sc-n">${onHand.length} run${onHand.length===1?'':'s'} available</div></div>
       <div class="sc"><div class="sc-l">Spawn Runs</div><div class="sc-v">${(DB.spawnRuns||[]).length}</div><div class="sc-n">all-time</div></div>
     </div>
+    ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
+      <div class="card-t">📸 Snap / Upload Grain Spawn Log</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph or upload the spawn production sheet — AI fills the form below. Verify (set Strain if blank), then Log.</div>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / PDF<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapSpawn(this)"></label>
+      <div id="sp-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+    </div>`:''}
     ${canEdit()?`<div class="card"><div class="card-t">Grain Spawn Production Log</div>
       ${sec('Header')}
       <div class="fg2">
@@ -8350,6 +9509,12 @@ function rLabSubstrate(el){
   el.innerHTML=`
     <div class="sh" style="margin-bottom:16px;"><span>Substrate / Block Production</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">MIX · STERILIZE · INOCULATE</span></div>
 
+    ${!editBatch&&canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
+      <div class="card-t">📸 Snap / Upload Block Production Log</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph or upload the block log — AI fills the form AND the per-strain block lines below. Verify, then Log.</div>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / PDF<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapBlock(this)"></label>
+      <div id="pl-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+    </div>`:''}
     <!-- ══ PRODUCTION LOG FORM ══ -->
     <div class="card"${editBatch?' style="border:2px solid var(--gold);"':''}>
       <div class="card-t" style="font-size:15px;letter-spacing:1px;">${editBatch?`✎ Edit Production Log — ${attrEsc(editBatch.batchNum||editBatch.id)}`:'New Production Log'}</div>
@@ -8620,6 +9785,11 @@ async function logProductionBatch(){
   logAudit('lab_production_log',`${batchNum} — ${totalBlocks} blocks · ${varieties.length} variety(ies): ${data.strain}`);
   toast('pl-t');
   setTimeout(()=>renderC(),900);
+  // auto-email the lab (orders + joel/Mat/Allen/Ashley)
+  const snapUrl=(_lastSnap&&_lastSnap.kind==='block')?_lastSnap.url:'';
+  const snapImg=(_lastSnap&&_lastSnap.kind==='block'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
+  openEmailDispatch('block', notifySubject('block',{lotCode:data.lotCode,date:productionDate}), {label:'Block '+(data.lotCode||batchNum),
+    data:{lotCode:data.lotCode,date:productionDate,subLbs:data.substrateLbs,buckets:data.buckets,gallons:data.gallonsWater,crewText:[data.sterCrew,data.inocCrew].filter(Boolean).join(' / '),rows:varieties.map(v=>({strain:v.variety,blockCount:v.blockCount,spawnLot:v.spawnLot})),imageUrl:snapUrl}, image:snapImg});
 }
 
 // Draw produced spawn down as block production consumes it (create path only).
@@ -9150,7 +10320,25 @@ function rAdmin(el){
         <div style="margin-top:6px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);line-height:1.8;">
           Alert email variables: <code style="color:var(--gold);">{{to_email}}</code> · <code style="color:var(--gold);">{{account_name}}</code> · <code style="color:var(--gold);">{{account_email}}</code> · <code style="color:var(--gold);">{{role}}</code> · <code style="color:var(--gold);">{{login_time}}</code> · <code style="color:var(--gold);">{{login_ip}}</code> · <code style="color:var(--gold);">{{login_location}}</code> · <code style="color:var(--gold);">{{login_browser}}</code> · <code style="color:var(--gold);">{{login_os}}</code> · <code style="color:var(--gold);">{{device_status}}</code> · <code style="color:var(--gold);">{{yes_link}}</code> · <code style="color:var(--gold);">{{no_link}}</code> · <code style="color:var(--gold);">{{from_name}}</code>
         </div>
-        <div class="tog" style="margin-top:16px;">
+        <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin:20px 0 10px;border-top:1px solid var(--border);padding-top:16px;">📨 Auto-Email Notifications <span style="color:var(--gold);font-size:8px;">(Harvest / Packing / Receiving / Lab → Katherine)</span></div>
+        <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);line-height:1.7;margin-bottom:10px;">
+          Create ONE EmailJS template — <b>To&nbsp;Email</b> = <code style="color:var(--gold);">{{to_email}}</code> · <b>Subject</b> = <code style="color:var(--gold);">{{email_subject}}</code> · <b>Content/Body</b> = <code style="color:var(--gold);">{{message}}</code> (the full report). To attach the scanned photo, add a <b>Variable Attachment</b> → Content <code style="color:var(--gold);">{{attachment}}</code> (encoding <b>Base64</b>), filename <code style="color:var(--gold);">{{attachment_name}}</code> <span style="color:var(--fern);">(photos auto-compressed under 500kb — Personal plan supports this)</span>. Paste the Template ID here.
+        </div>
+        <div class="fg2">
+          <div class="fgl"><label>Notification Template ID</label><input class="fi" id="notify-tpl" value="${DB.notify.templateId||''}" placeholder="e.g. template_xxxxxxx"></div>
+        </div>
+        <div class="tog" style="margin-top:12px;">
+          <label class="tsw"><input type="checkbox" id="notify-en" ${DB.notify.enabled!==false?'checked':''}><div class="ttr"></div></label>
+          <label for="notify-en" style="font-size:13px;color:var(--text2);">Send auto-emails on submit <span style="color:var(--text3);font-size:11px;">(turn OFF during testing — you'll still get the recipient picker, just no send)</span></label>
+        </div>
+        <div style="margin-top:10px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);line-height:1.9;background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:10px 12px;">
+          Default recipients &amp; subject formats:<br>
+          • <b style="color:var(--fern);">Harvest / Packing / Receiving</b> → orders@ · Allen@ · Mat@ · Ashley@<br>
+          • <b style="color:var(--fern);">Lab (spawn/block)</b> → orders@ · joel@ · Mat@ · Allen@ · Ashley@<br>
+          <span style="color:var(--text2);">Harvest subj:</span> <code style="color:var(--gold);">OHF GH-01-01 071726</code> &nbsp; <span style="color:var(--text2);">Slip subj:</span> <code style="color:var(--gold);">Fungus Ranch Packing Slip SO 382 07-08-26</code><br>
+          <span style="color:var(--text3);">You confirm/edit subject &amp; who-to-send on every submit, and can ✉ Re-send from any logged row.</span>
+        </div>
+        <div class="tog" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
           <label class="tsw"><input type="checkbox" id="ejs-en" ${DB.emailjs.enabled?'checked':''}><div class="ttr"></div></label>
           <label for="ejs-en" style="font-size:13px;color:var(--text2);">Enable EmailJS (welcome + login alert emails)</label>
         </div>

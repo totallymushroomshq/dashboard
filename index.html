@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #32</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #33</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -3758,37 +3758,74 @@ function receivingOnHand(r){ return Math.max(0,(r.blockCount||0)-(r.placedCount|
 function onHandReceivings(){ return DB.receivings.filter(r=>receivingOnHand(r)>0).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')); }
 function onRecSourceChange(){ const src=document.getElementById('rc-source')?.value; const vEl=document.getElementById('rc-vendor'); if(vEl && !vEl.value && src==='internal') vEl.value='In-house Production'; }
 
+// ── multi-lot receiving: stage several lots in one delivery, one email ──
+let _recvQueue=[];
+function _readRecvRow(){
+  return { variety:(document.getElementById('rc-variety')?.value||'').trim(),
+    lotNumber:(document.getElementById('rc-lot')?.value||'').trim(),
+    blockCount:parseInt(document.getElementById('rc-bc')?.value)||0,
+    blockWeightLb:parseFloat(document.getElementById('rc-bw')?.value)||0 };
+}
+function _validRecvRow(r){
+  if(!r.variety){ alert('Variety is required.'); return false; }
+  if(!r.lotNumber){ alert('Lot / block number is required.'); return false; }
+  if(r.blockCount<1){ alert('Block count must be at least 1.'); return false; }
+  return true;
+}
+function addRecvRow(){
+  const r=_readRecvRow(); if(!_validRecvRow(r)) return;
+  _recvQueue.push(r); renderRecvQueue();
+  ['rc-variety','rc-lot','rc-bc','rc-bw'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  document.getElementById('rc-variety')?.focus();
+}
+function removeRecvRow(i){ _recvQueue.splice(i,1); renderRecvQueue(); }
+function updateRecvRow(i,field,value){ const r=_recvQueue[i]; if(!r) return; r[field]=(field==='blockCount')?(parseInt(value)||0):(field==='blockWeightLb')?(parseFloat(value)||0):(value||'').trim(); }
+function renderRecvQueue(){
+  const c=document.getElementById('rc-queue'); if(!c) return;
+  c.innerHTML=_recvQueue.length?`<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:12px 0 8px;">＋ ${_recvQueue.length} MORE LOT(S) THIS DELIVERY — VERIFY EACH</div>`+
+    _recvQueue.map((r,i)=>`<div style="background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"><span style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--gold);">LOT ${i+2}</span><button class="btn b-r b-sm" onclick="removeRecvRow(${i})">✕ Remove</button></div>
+      <div class="fg2">
+        <div class="fgl"><label>Variety</label><input class="fi" list="rc-variety-dl" value="${attrEsc(r.variety)}" onchange="updateRecvRow(${i},'variety',this.value)"></div>
+        <div class="fgl"><label>Lot / Block #</label><input class="fi" value="${attrEsc(r.lotNumber)}" onchange="updateRecvRow(${i},'lotNumber',this.value)"></div>
+        <div class="fgl"><label># of Blocks</label><input class="fi" type="number" min="1" value="${r.blockCount}" onchange="updateRecvRow(${i},'blockCount',this.value)"></div>
+        <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" value="${r.blockWeightLb||''}" onchange="updateRecvRow(${i},'blockWeightLb',this.value)"></div>
+      </div></div>`).join(''):'';
+  const btn=document.getElementById('rc-logbtn'); if(btn){ const cur=_readRecvRow(); const n=_recvQueue.length+((cur.variety||cur.lotNumber||cur.blockCount)?1:0); btn.textContent=_recvQueue.length?`Log ${n} Lots & Send Report`:'Log Received Blocks'; }
+}
 async function logReceiving(){
   const date=document.getElementById('rc-date')?.value||tday();
   const source=document.getElementById('rc-source')?.value||'vendor';
   const vendor=document.getElementById('rc-vendor')?.value.trim()||(source==='internal'?'In-house Production':'');
-  const variety=document.getElementById('rc-variety')?.value||'';
-  const lotNumber=document.getElementById('rc-lot')?.value.trim()||'';
-  const blockCount=parseInt(document.getElementById('rc-bc')?.value)||0;
-  const blockWeightLb=parseFloat(document.getElementById('rc-bw')?.value)||0;
   const receivedBy=document.getElementById('rc-by')?.value.trim()||(S.name||'');
   const poNum=document.getElementById('rc-po')?.value.trim()||'';
   const cost=parseFloat(document.getElementById('rc-cost')?.value)||null;
   const notes=document.getElementById('rc-notes')?.value.trim()||'';
-  if(!variety){ alert('Variety is required.'); return }
-  if(!lotNumber){ alert('Lot / block number is required.'); return }
-  if(blockCount<1){ alert('Block count must be at least 1.'); return }
-  const _vg={variety}; if(!normalizeRowVarieties([_vg])) return; const vCanon=_vg.variety; // standardize variety + warn on new
-  addVariety(vCanon);
-  if(source!=='internal' && vendor) addSupplier(vendor); // remember the supplier
   const temperature=document.getElementById('rc-temp')?.value.trim()||'';
+  const rows=[..._recvQueue];
+  const cur=_readRecvRow();
+  if(cur.variety||cur.lotNumber||cur.blockCount){ if(!_validRecvRow(cur)) return; rows.push(cur); }
+  if(!rows.length){ alert('Enter at least one lot to receive.'); return; }
+  if(!normalizeRowVarieties(rows)) return; // standardize each variety + warn on new
+  rows.forEach(r=>addVariety(r.variety));
+  if(source!=='internal' && vendor) addSupplier(vendor);
   const snapUrl=(_lastSnap&&_lastSnap.kind==='receiving')?_lastSnap.url:'';
   const tempLogUrl=_rcTempUrl, invoiceUrl=_rcInvoiceUrl;
-  const rData={date,facility:'Hydes Ferry',source,vendor,variety:vCanon,lotNumber,blockCount,blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,temperature,scanUrl:snapUrl,tempLogUrl,invoiceUrl,status:'on-hand',createdAt:new Date().toISOString()};
-  const rId=await FS.add('receivings',rData);
-  DB.receivings.push({id:rId,...rData});
-  logAudit('blocks_received',`Received ${blockCount} ${variety} blocks — Lot ${lotNumber} from ${vendor||source} @ Hydes Ferry`);
-  toast('rc-t'); clrReceiving(); _rcTempUrl=''; _rcInvoiceUrl=''; renderC();
+  const createdIds=[];
+  for(const r of rows){
+    const rData={date,facility:'Hydes Ferry',source,vendor,variety:r.variety,lotNumber:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,temperature,scanUrl:snapUrl,tempLogUrl,invoiceUrl,status:'on-hand',createdAt:new Date().toISOString()};
+    const rId=await FS.add('receivings',rData); DB.receivings.push({id:rId,...rData}); createdIds.push(rId);
+  }
+  const totalBlocks=rows.reduce((s,r)=>s+r.blockCount,0);
+  logAudit('blocks_received',`Received ${rows.length} lot(s) / ${totalBlocks} blocks from ${vendor||source} @ Hydes Ferry`);
+  toast('rc-t',`✓ ${rows.length} lot(s) · ${totalBlocks} blocks received`); clrReceiving(); _rcTempUrl=''; _rcInvoiceUrl=''; _recvQueue=[]; renderC();
   const snapImg=(_lastSnap&&_lastSnap.kind==='receiving'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
-  openEmailDispatch('receiving', notifySubject('receiving',{vendor,source,lot:lotNumber,date}), {label:'Receiving '+lotNumber,
-    data:{date,vendor,source,variety:vCanon,lot:lotNumber,blockCount,blockWeightLb,poNum,temperature,tempLogUrl,invoiceUrl,imageUrl:snapUrl}, image:snapImg});
+  // ONE compiled receiving report for the whole delivery
+  openEmailDispatch('receiving', notifySubject('receiving',{vendor,source,lot:(rows.length===1?rows[0].lotNumber:''),date}), {label:'Receiving '+(vendor||source),
+    edit:{kind:'receiving',col:'receivings',ids:createdIds,date},
+    data:{date,vendor,source,poNum,temperature,tempLogUrl,invoiceUrl,imageUrl:snapUrl,rows:rows.map(r=>({variety:r.variety,lot:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb}))}, image:snapImg});
 }
-function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); const v=document.getElementById('rc-variety'); if(v) v.value=''; }
+function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes','rc-temp'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); const v=document.getElementById('rc-variety'); if(v) v.value=''; _recvQueue=[]; renderRecvQueue(); }
 
 function buildIncomingShipments(){
   const inc=(DB.shipments||[]).filter(s=>s.status==='in-transit').sort((a,b)=>(a.date||'').localeCompare(b.date||''));
@@ -3806,7 +3843,7 @@ function buildIncomingShipments(){
     </table></div>`;
 }
 function rReceiving(el){
-  _rcTempUrl=''; _rcInvoiceUrl=''; // fresh doc uploads each render
+  _rcTempUrl=''; _rcInvoiceUrl=''; _recvQueue=[]; // fresh doc uploads + lot queue each render
   const onHand=onHandReceivings();
   const history=[...DB.receivings].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
   const totalOnHand=onHand.reduce((s,r)=>s+receivingOnHand(r),0);
@@ -3850,6 +3887,9 @@ function rReceiving(el){
         <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="rc-bw" placeholder="e.g. 5.5"></div>
         <div class="fgl"><label>Received By</label><input class="fi" id="rc-by" value="${(S.name||'').replace(/"/g,'&quot;')}"></div>
       </div>
+      <div id="rc-queue" style="margin-bottom:8px;"></div>
+      <button class="btn b-g" onclick="addRecvRow()" style="margin-bottom:14px;">+ Add another lot</button>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">Same delivery, multiple lots? Add each — they log together and send Katherine <b>one</b> receiving report (not one per lot). Date, vendor, temp &amp; invoice are shared.</div>
       <div class="fg2">
         <div class="fgl"><label>PO # <span style="color:var(--text3);font-size:9px;">(vendor, optional)</span></label><input class="fi" id="rc-po" placeholder="Purchase order #"></div>
         <div class="fgl"><label>Cost $ <span style="color:var(--text3);font-size:9px;">(vendor, optional)</span></label><input class="fi" type="number" min="0" step="0.01" id="rc-cost" placeholder="Total cost"></div>
@@ -3870,7 +3910,7 @@ function rReceiving(el){
       </div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">📎 No invoice yet? Log now — you can attach it later and re-send an <b>UPDATED</b> report from the Receiving History row.</div>
       <div class="form-acts">
-        <button class="btn b-m b-lg" onclick="logReceiving()">Log Received Blocks</button>
+        <button class="btn b-m b-lg" id="rc-logbtn" onclick="logReceiving()">Log Received Blocks</button>
         <button class="btn b-g" onclick="clrReceiving()">Clear</button>
       </div>
       <div class="toast" id="rc-t">✓ Blocks received</div>
@@ -4631,9 +4671,17 @@ function notifyReport(kind, subject, data){
   } else if(kind==='receiving'){
     L.push('Date:    '+(_mm_dd_yy(data.date)||data.date||''));
     L.push('Source:  '+((data.source==='internal'?'Internal':'Vendor')+(data.vendor?' — '+data.vendor:'')));
-    L.push('Variety: '+(data.variety||''));
-    L.push('Lot:     '+(data.lot||data.lotNumber||''));
-    L.push('Blocks:  '+(data.blockCount||0)+(data.blockWeightLb?' @ '+data.blockWeightLb+' lb/block':''));
+    const rrows=(data.rows&&data.rows.length)?data.rows:[{variety:data.variety,lot:(data.lot||data.lotNumber),blockCount:data.blockCount,blockWeightLb:data.blockWeightLb}];
+    if(rrows.length>1){
+      L.push(''); L.push('BLOCKS RECEIVED ('+rrows.length+' lots)');
+      let tb=0; rrows.forEach(r=>{ tb+=(parseInt(r.blockCount)||0); L.push('  • '+(r.variety||'')+' — Lot '+(r.lot||'')+' — '+(r.blockCount||0)+' blocks'+(r.blockWeightLb?' @ '+r.blockWeightLb+' lb/block':'')); });
+      L.push(''); L.push('TOTAL:   '+tb+' blocks across '+rrows.length+' lots');
+    } else {
+      const r=rrows[0]||{};
+      L.push('Variety: '+(r.variety||''));
+      L.push('Lot:     '+(r.lot||''));
+      L.push('Blocks:  '+(r.blockCount||0)+(r.blockWeightLb?' @ '+r.blockWeightLb+' lb/block':''));
+    }
     if(data.temperature) L.push('Temp:    '+data.temperature);
     if(data.poNum) L.push('PO #:    '+data.poNum);
     if(data.tempLogUrl){ L.push(''); L.push('🌡 Temperature log: '+data.tempLogUrl); }
@@ -5067,17 +5115,24 @@ async function snapReceiving(input){
   }catch(e){ show('⚠ '+e.message); }
   finally{ input.value=''; }
 }
+// all lots from the same delivery (same date + vendor + PO) — a multi-lot receiving is one report
+function _recvSiblings(r){ return (DB.receivings||[]).filter(x=>x.date===r.date && (x.vendor||'')===(r.vendor||'') && (x.poNum||'')===(r.poNum||'') && (x.source||'')===(r.source||'')); }
 function resendReceiving(id, updated){ const r=DB.receivings.find(x=>x.id===id); if(!r) return;
-  let subj=notifySubject('receiving',{vendor:r.vendor,source:r.source,lot:r.lotNumber,date:r.date});
+  const sibs=_recvSiblings(r);
+  let subj=notifySubject('receiving',{vendor:r.vendor,source:r.source,lot:(sibs.length===1?r.lotNumber:''),date:r.date});
   if(updated) subj='UPDATED: '+subj;
-  openEmailDispatch('receiving', subj, {label:(updated?'UPDATED — ':'')+'Receiving '+(r.lotNumber||''), resend:true,
-    data:{date:r.date,vendor:r.vendor,source:r.source,variety:r.variety,lot:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,poNum:r.poNum,temperature:r.temperature,tempLogUrl:r.tempLogUrl,invoiceUrl:r.invoiceUrl,imageUrl:r.scanUrl||''}}); }
-// attach an invoice/packing slip AFTER the fact, then re-send an UPDATED report
+  openEmailDispatch('receiving', subj, {label:(updated?'UPDATED — ':'')+'Receiving '+(r.vendor||r.source||''), resend:true,
+    data:{date:r.date,vendor:r.vendor,source:r.source,poNum:r.poNum,temperature:r.temperature,tempLogUrl:r.tempLogUrl,invoiceUrl:r.invoiceUrl,imageUrl:r.scanUrl||'',
+      rows:sibs.map(x=>({variety:x.variety,lot:x.lotNumber,blockCount:x.blockCount,blockWeightLb:x.blockWeightLb}))}}); }
+// attach an invoice/packing slip AFTER the fact, then re-send an UPDATED report — invoice applies to the whole delivery
 function rcAddInvoice(id){
   const r=DB.receivings.find(x=>x.id===id); if(!r) return;
   const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*,application/pdf,.pdf';
   inp.onchange=async()=>{ const file=inp.files&&inp.files[0]; if(!file) return;
-    try{ const url=await storePhoto(file,'receiving-invoice'); r.invoiceUrl=url; await FS.update('receivings',id,{invoiceUrl:url}); resendReceiving(id,true); }
+    try{ const url=await storePhoto(file,'receiving-invoice');
+      const sibs=_recvSiblings(r);
+      for(const s of sibs){ s.invoiceUrl=url; await FS.update('receivings',s.id,{invoiceUrl:url}); }
+      resendReceiving(id,true); }
     catch(e){ alert('Invoice upload failed: '+(e.message||e)); } };
   inp.click();
 }
