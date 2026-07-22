@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #34</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #35</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4598,15 +4598,15 @@ async function snapHarvest(input){
 // ============ AUTO-EMAIL NOTIFICATION DISPATCHER (shared) ============
 // Default recipients per protocol (editable at Admin → Email; overrides live in DB.notify.to)
 const NOTIFY_TO = {
-  harvest:  ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
-  fruiting: ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
-  slip:     ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
-  receiving:['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
-  lab:      ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
-  spawn:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
-  block:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
-  shipment: ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
-  waste:    ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  harvest:  ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
+  fruiting: ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
+  slip:     ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
+  receiving:['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
+  lab:      ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
+  spawn:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
+  block:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
+  shipment: ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
+  waste:    ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
   relocation:['orders@totallymushrooms.com','Allen@totallymushrooms.com']
 };
 function notifyRecips(kind){ return (DB.notify.to&&DB.notify.to[kind]&&DB.notify.to[kind].length)?DB.notify.to[kind]:(NOTIFY_TO[kind]||[]); }
