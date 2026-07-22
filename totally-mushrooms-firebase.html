@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #39</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #40</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5091,7 +5091,7 @@ async function snapBlock(input){
     const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null&&v!=='') e.value=v; };
     set('pl-pdate',_toISO(d.productionDate)); set('pl-lot',d.lotCode); set('pl-sbatch',d.substrateBatch); set('pl-batchnum',d.batch); set('pl-order',d.order);
     if(d.subLbs) set('pl-sublbs',d.subLbs); if(d.buckets) set('pl-buckets',d.buckets); if(d.gallons) set('pl-gallons',d.gallons);
-    set('pl-wstart',d.waterStart); set('pl-wend',d.waterEnd); set('pl-mixtime',d.mixTime); set('pl-prodnotes',d.prodNotes);
+    set('pl-wmin', (_minsBetween(d.waterStart,d.waterEnd)||_num(d.waterMinutes)||'')); set('pl-mixtime', _num(d.mixTime)); set('pl-prodnotes',d.prodNotes);
     set('pl-sdate',_toISO(d.sterDate)); set('pl-actemp',d.autoclaveTemp); set('pl-cooktime',d.cookTime); set('pl-cookstart',d.cookStart); set('pl-cookend',d.cookEnd); set('pl-sternotes',d.sterNotes);
     // per-cook-lot block lines → the pl-varieties list
     const rows=(Array.isArray(d.rows)?d.rows:[]).filter(x=>x&&(x.strain||x.blockCount));
@@ -7965,7 +7965,7 @@ function dlBlockProductionCSV(fromDate, toDate){
 
   const headers = [
     'Batch #','Production Date','Cook Lot','Lot (with suffix)','Strain / Variety','Substrate Batch','Order / Run #','Substrate Supplier / Origin',
-    'Substrate Lbs','Buckets','Gallons Water','Add Water Start','Add Water End','Mix Time','Blocks',
+    'Substrate Lbs','Buckets','Gallons Water','Add Water (min)','Mix (min)','Blocks',
     'Sterilization Date','Autoclave Temp (F)','Cook Hours','Cook Start','Cook End','Sterilization Crew','Inoculation Crew',
     'Spawn Date','Spawn Type','Spawn Supplier / Origin','Spawn Qty / Rate','Spawn Lot #',
     'Rack Location','Expected Colonization (days)','Variety Notes','Created By','Timestamp'
@@ -7980,7 +7980,7 @@ function dlBlockProductionCSV(fromDate, toDate){
         b.batchNum||'', b.productionDate||b.date||'', b.lotCode||'', fullLot, v.variety||'',
         b.substrateBatch||'', b.order||'', b.substrateOrigin||'',
         b.substrateLbs||0, b.buckets||0, b.gallonsWater||0,
-        b.waterStartTime||'', b.waterEndTime||'', b.mixTime||'', v.blockCount||0,
+        _waterMin(b), _mixMin(b), v.blockCount||0,
         b.sterilizationDate||'', b.autoclaveTemp||'', b.cookTimeHours||'',
         b.cookTimeStart||'', b.cookTimeEnd||'', b.sterCrew||'', b.inocCrew||'',
         v.spawnDate||'', v.spawnSource||'', v.spawnSupplier||'', v.spawnQuantity||'', v.spawnLot||'',
@@ -8555,6 +8555,12 @@ const SPAWN_SOURCES = ['Grain Spawn','Agar Culture','Liquid Culture (LC)','Grain
 let plVarieties = [];
 let editingLabId = null;  // when set, the Production Log form is editing an existing record (admin only)
 function plSuffix(i){ return String.fromCharCode(65+i); } // 0→A, 1→B …
+// water/mix times are now plain minute figures (not clock-time gated). Helpers convert legacy/scanned values.
+function _num(s){ const m=String(s==null?'':s).match(/-?\d+(?:\.\d+)?/); return m?Math.round(parseFloat(m[0])):''; }
+function _minsBetween(a,b){ const p=t=>{ t=String(t||'').trim(); if(!t) return null; const m=t.match(/^(\d{1,2}):(\d{2})\s*([AaPp][Mm])?/); if(!m) return null; let h=parseInt(m[1]),mn=parseInt(m[2]); const ap=(m[3]||'').toLowerCase(); if(ap==='pm'&&h<12)h+=12; if(ap==='am'&&h===12)h=0; return h*60+mn; }; const s=p(a),e=p(b); if(s==null||e==null) return ''; let d=e-s; if(d<0)d+=1440; return d; }
+// legacy record → water/mix minutes (prefer new numeric fields, fall back to old clock strings)
+function _waterMin(b){ return (b&&b.waterMinutes!=null&&b.waterMinutes!=='')?b.waterMinutes:_minsBetween(b&&b.waterStartTime,b&&b.waterEndTime); }
+function _mixMin(b){ return (b&&b.mixMinutes!=null&&b.mixMinutes!=='')?b.mixMinutes:_num(b&&b.mixTime); }
 function blankPlVar(){ return {suffix:'',variety:'',generation:'',blockCount:'',spawnRunId:'',bagsUsed:'',spawnDate:'',spawnSource:'',spawnSupplier:'',spawnQuantity:'',spawnLot:'',rack:'',colDays:'',notes:''}; }
 function attrEsc(s){ return String(s==null?'':s).replace(/"/g,'&quot;'); }
 
@@ -9601,9 +9607,8 @@ function rLabSubstrate(el){
         <div class="fgl"><label>Gallons of Water</label><input class="fi" type="number" step="0.1" id="pl-gallons" value="${E.gallonsWater||''}" placeholder="e.g. 25"></div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Add Water START Time</label><input class="fi" type="time" id="pl-wstart" value="${attrEsc(E.waterStartTime||'')}"></div>
-        <div class="fgl"><label>Add Water END Time</label><input class="fi" type="time" id="pl-wend" value="${attrEsc(E.waterEndTime||'')}"></div>
-        <div class="fgl"><label>Mix Time</label><input class="fi" type="time" id="pl-mixtime" value="${attrEsc(E.mixTime||'')}" placeholder="HH:MM"></div>
+        <div class="fgl"><label>Add Water Time (min)</label><input class="fi" type="number" min="0" step="1" id="pl-wmin" value="${attrEsc(_waterMin(E))}" placeholder="e.g. 12"></div>
+        <div class="fgl"><label>Mix Time (min)</label><input class="fi" type="number" min="0" step="1" id="pl-mixtime" value="${attrEsc(_mixMin(E))}" placeholder="e.g. 35"></div>
       </div>
       <div class="fgl">
         <label>Production Notes</label>
@@ -9686,8 +9691,8 @@ function rLabSubstrate(el){
                   ${b.order?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Order: </span>${b.order}</div>`:''}
                   ${b.substrateLbs?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Substrate: </span>${b.substrateLbs} lbs${b.buckets?' / '+b.buckets+' buckets':''}</div>`:''}
                   ${b.gallonsWater?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Water: </span>${b.gallonsWater} gal</div>`:''}
-                  ${b.waterStartTime?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Water: </span>${b.waterStartTime} → ${b.waterEndTime||'?'}</div>`:''}
-                  ${b.mixTime?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Mix Time: </span>${b.mixTime}</div>`:''}
+                  ${_waterMin(b)!==''&&_waterMin(b)!=null?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Add Water: </span>${_waterMin(b)} min</div>`:''}
+                  ${_mixMin(b)!==''&&_mixMin(b)!=null?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Mix Time: </span>${_mixMin(b)} min</div>`:''}
                   ${totalBlocks?`<div style="font-size:12px;margin-bottom:4px;"><span style="color:var(--text3);">Total Blocks: </span><strong>${totalBlocks}</strong></div>`:''}
                   ${b.prodNotes?`<div style="font-size:11px;color:var(--text3);margin-top:4px;font-style:italic;">${b.prodNotes}</div>`:''}
                 </div>
@@ -9785,9 +9790,8 @@ async function logProductionBatch(){
     substrateLbs   : parseFloat(document.getElementById('pl-sublbs').value)||0,
     buckets        : parseInt(document.getElementById('pl-buckets').value)||0,
     gallonsWater   : parseFloat(document.getElementById('pl-gallons').value)||0,
-    waterStartTime : document.getElementById('pl-wstart').value,
-    waterEndTime   : document.getElementById('pl-wend').value,
-    mixTime        : document.getElementById('pl-mixtime').value,
+    waterMinutes   : parseInt(document.getElementById('pl-wmin').value)||0,
+    mixMinutes     : parseInt(document.getElementById('pl-mixtime').value)||0,
     prodNotes      : document.getElementById('pl-prodnotes').value.trim(),
     // Sterilization (shared across the cook)
     sterilizationDate : document.getElementById('pl-sdate').value,
