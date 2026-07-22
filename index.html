@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #27</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #28</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -548,6 +548,7 @@ const ALL_INTERNAL_TABS = [
   {id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},
   {id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},
   {id:'cleaning',l:'🧽 Clean & Flip'},
+  {id:'waste',l:'🗑 Block Waste'},
   {id:'trace',l:'🔍 Trace'},
   {id:'lab',l:'🧫 Lab'},
   {id:'cordyceps',l:'🐛 Cordyceps'},
@@ -557,11 +558,11 @@ const ALL_INTERNAL_TABS = [
   {id:'qb',l:'📒 QB',c:'at'}
 ];
 const DEFAULT_PERMS = {
-  admin: {today:true,week:true,'new-order':true,'email-parse':true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
-  staff: {today:true,week:true,'new-order':true,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
-  accountant: {today:true,week:true,'new-order':false,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:false,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
+  admin: {today:true,week:true,'new-order':true,'email-parse':true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
+  staff: {today:true,week:true,'new-order':true,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
+  accountant: {today:true,week:true,'new-order':false,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:false,waste:true,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
 };
-const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',lab:'Lab — Carthage',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
+const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',cleaning:'Clean & Flip',waste:'🗑 Block Waste',lab:'Lab — Carthage',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
 
 // ── FIREBASE CONFIG ──
 const FIREBASE_CONFIG = {
@@ -1961,7 +1962,7 @@ function buildNav(){
 
   const GROUPS=[
     {label:'Daily',       ids:['today','week','new-order','email-parse']},
-    {label:'Operations',  ids:['receiving','harvest','fruiting','inventory','preservation','cleaning','trace']},
+    {label:'Operations',  ids:['receiving','harvest','fruiting','inventory','preservation','cleaning','waste','trace']},
     {label:'Production',  ids:['lab','cordyceps']},
     {label:'Business',    ids:['analytics','orders-all','reports','qb'], cls:'drw-acct'},
     {label:'System',      ids:['admin','security'], cls:'drw-sys'},
@@ -1999,7 +2000,7 @@ function sw(id){
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,trace:rTrace,lab:rLab,cordyceps:rCordyceps,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTrace,lab:rLab,cordyceps:rCordyceps,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -4542,7 +4543,8 @@ const NOTIFY_TO = {
   lab:      ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
   spawn:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
   block:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
-  shipment: ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com']
+  shipment: ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','Ashley@totallymushrooms.com'],
+  waste:    ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','Ashley@totallymushrooms.com']
 };
 function notifyRecips(kind){ return (DB.notify.to&&DB.notify.to[kind]&&DB.notify.to[kind].length)?DB.notify.to[kind]:(NOTIFY_TO[kind]||[]); }
 // ── subject-line formatters ──
@@ -4567,12 +4569,13 @@ function notifySubject(kind, r){
   if(kind==='spawn')    return `Spawn ${r.lotCode||r.spawnLot||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
   if(kind==='block')    return `Block ${r.lotCode||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
   if(kind==='shipment') return `Block Shipment Carthage→Hydes ${_mm_dd_yy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='waste')    return `Block Waste ${_mm_dd_yy(r.date)}`.replace(/\s+/g,' ').trim();
   return '';
 }
 // ── glanceable plain-text report body (repeats subject + writes out every field) ──
 function notifyReport(kind, subject, data){
   data=data||{};
-  const head={harvest:'Harvest Log',slip:'Packing Slip',receiving:'Receiving',fruiting:'Fruiting Log',spawn:'Grain Spawn Log',block:'Block Production Log',shipment:'Block Shipment · Carthage → Hydes'}[kind]||kind;
+  const head={harvest:'Harvest Log',slip:'Packing Slip',receiving:'Receiving',fruiting:'Fruiting Log',spawn:'Grain Spawn Log',block:'Block Production Log',shipment:'Block Shipment · Carthage → Hydes',waste:'Block Waste'}[kind]||kind;
   const L=['TOTALLY MUSHROOMS — '+head.toUpperCase(), subject, '─────────────────────────', ''];
   if(kind==='harvest'){
     const rows=data.rows||[]; const crew=data.crew||[]; const p=data.prime||rows[0]||{};
@@ -4636,6 +4639,11 @@ function notifyReport(kind, subject, data){
     let tb=0; (data.rows||[]).forEach(r=>{ tb+=(parseInt(r.blockCount)||0); L.push(` • ${r.variety||''} — Lot ${r.cookLot||'—'} — ${r.blockCount||0} blocks${r.blockWeightLb?' @ '+r.blockWeightLb+' lb/block':''}`); });
     L.push(''); L.push('TOTAL: '+tb+' blocks across '+((data.rows||[]).length)+' lot'+(((data.rows||[]).length)!==1?'s':''));
     if(data.notes) L.push('Notes: '+data.notes);
+  } else if(kind==='waste'){
+    L.push('Date: '+(_mm_dd_yy(data.date)||data.date||''));
+    L.push(''); L.push('BLOCKS WASTED');
+    let tb=0; (data.rows||[]).forEach(r=>{ tb+=(parseInt(r.blockCount)||0); L.push(` • ${r.variety||''} — Lot ${r.lotNumber||'—'}${r.container?' @ '+r.container:''} — ${r.blockCount||0} blocks (${r.reason||'waste'})`); });
+    L.push(''); L.push('TOTAL: '+tb+' blocks wasted across '+((data.rows||[]).length)+' lot'+(((data.rows||[]).length)!==1?'s':''));
   } else if(data.lines){ data.lines.forEach(l=>L.push(l)); }
   if(data.imageUrl){ L.push(''); L.push('📎 Scanned sheet (click to view/download):'); L.push(data.imageUrl); }
   L.push(''); L.push('— Auto-generated by TM HQ from a scanned sheet.');
@@ -8488,6 +8496,139 @@ let _substrateQ = '';
 function onSubstrateSearch(v){ _substrateQ=v; clearTimeout(window._subST); window._subST=setTimeout(()=>rLab(document.getElementById('main-views')),250); }
 
 function setLabSub(s){ _labSub=s; rLab(document.getElementById('main-views')); }
+// ============ BLOCK WASTE (spent / spoiled blocks) ============
+const WASTE_REASONS=['post-harvest','spoilage','spent','contaminated','other'];
+function fruitingRemaining(f){ return Math.max(0,(f.blockCount||0)-(f.spentBlocks||0)); }
+function wasteableLots(){ return (DB.fruitings||[]).filter(f=>fruitingRemaining(f)>0).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
+let _wasteQueue=[];
+function _readWasteRow(){
+  const lotv=(document.getElementById('wb-lot')?.value||'').trim();
+  const m=wasteableLots().find(f=>(f.lotNumber||'').trim().toLowerCase()===lotv.toLowerCase());
+  return { lotNumber:lotv, variety:(document.getElementById('wb-variety')?.value||'').trim(), container:(document.getElementById('wb-container')?.value||'').trim(),
+    blockCount:parseInt(document.getElementById('wb-cnt')?.value)||0, reason:document.getElementById('wb-reason')?.value||'post-harvest',
+    notes:(document.getElementById('wb-notes')?.value||'').trim(), fruitingId:m?m.id:'' };
+}
+function onWasteLot(){
+  const lotv=(document.getElementById('wb-lot')?.value||'').trim();
+  const m=wasteableLots().find(f=>(f.lotNumber||'').trim().toLowerCase()===lotv.toLowerCase());
+  const hint=document.getElementById('wb-lot-hint');
+  if(m){ const v=document.getElementById('wb-variety'); if(v&&!v.value) v.value=m.variety||''; const c=document.getElementById('wb-container'); if(c&&!c.value) c.value=m.containerID||''; if(hint){ hint.style.color='var(--fern)'; hint.textContent=`✓ ${m.variety} @ ${m.containerID} · ${fruitingRemaining(m)} BLOCKS REMAINING`; } }
+  else if(hint){ hint.style.color='var(--text3)'; hint.textContent=lotv?'⚠ NOT IN FRUITING INVENTORY — LOGS TO LEDGER ONLY':'TYPE TO MATCH A FRUITING LOT'; }
+}
+function addWasteRow(){ const r=_readWasteRow(); if(!r.blockCount){ alert('Enter how many blocks.'); return; } _wasteQueue.push(r); renderWasteQueue(); ['wb-lot','wb-variety','wb-container','wb-cnt','wb-notes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';}); const h=document.getElementById('wb-lot-hint'); if(h)h.textContent=''; }
+function removeWasteRow(i){ _wasteQueue.splice(i,1); renderWasteQueue(); }
+function updateWasteRow(i,field,value){ const r=_wasteQueue[i]; if(!r)return; r[field]=(field==='blockCount')?(parseInt(value)||0):(value||'').trim(); if(field==='lotNumber'){ const m=wasteableLots().find(f=>(f.lotNumber||'').trim().toLowerCase()===r.lotNumber.toLowerCase()); r.fruitingId=m?m.id:''; if(m){ if(!r.variety) r.variety=m.variety; if(!r.container) r.container=m.containerID; } renderWasteQueue(); } }
+function renderWasteQueue(){
+  const c=document.getElementById('wb-queue'); if(!c) return;
+  c.innerHTML=_wasteQueue.length?`<div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:14px 0 8px;">＋ ${_wasteQueue.length} STAGED WASTE LINE(S) — VERIFY EACH</div>`+
+    _wasteQueue.map((r,i)=>{ const m=wasteableLots().find(f=>f.id===r.fruitingId); const rem=m?fruitingRemaining(m):null;
+      return `<div style="background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"><span style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--gold);">#${i+1}${rem!=null?' · '+rem+' remaining':(r.lotNumber?' · ⚠ not in fruiting':'')}</span><button class="btn b-r b-sm" onclick="removeWasteRow(${i})">✕ Remove</button></div>
+      <div class="fg2">
+        <div class="fgl"><label>Fruiting Lot</label><input class="fi" list="wb-lotl" value="${attrEsc(r.lotNumber)}" onchange="updateWasteRow(${i},'lotNumber',this.value)"></div>
+        <div class="fgl"><label>Variety</label><input class="fi" list="hl-v-dl" value="${attrEsc(r.variety)}" onchange="updateWasteRow(${i},'variety',this.value)"></div>
+        <div class="fgl"><label>Container</label><input class="fi" value="${attrEsc(r.container)}" onchange="updateWasteRow(${i},'container',this.value)"></div>
+        <div class="fgl"><label># Blocks Wasted</label><input class="fi" type="number" min="1" value="${r.blockCount}" onchange="updateWasteRow(${i},'blockCount',this.value)"></div>
+        <div class="fgl"><label>Reason</label><select class="fs" onchange="updateWasteRow(${i},'reason',this.value)">${WASTE_REASONS.map(x=>`<option value="${x}" ${r.reason===x?'selected':''}>${x}</option>`).join('')}</select></div>
+      </div></div>`;}).join(''):'';
+  const btn=document.getElementById('wb-logbtn'); if(btn) btn.textContent=_wasteQueue.length?`🗑 Log Waste & Send Report (${_wasteQueue.length+((_readWasteRow().blockCount)?1:0)})`:'🗑 Log Waste & Send Report';
+}
+function rWaste(el){
+  _wasteQueue=[];
+  const disp=[...(DB.blockDisposals||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.timestamp||'').localeCompare(a.timestamp||''));
+  const totalWasted=disp.reduce((s,d)=>s+(parseInt(d.blockCount)||0),0);
+  const wl=wasteableLots();
+  el.innerHTML=`
+    <div class="ph"><div class="ph-t">🗑 Block Waste</div><div class="ph-s">Spent / spoiled blocks · deducts from fruiting inventory · auto-reports to orders@</div></div>
+    <div class="stats" style="margin-bottom:24px;">
+      <div class="sc r"><div class="sc-l">Blocks Wasted</div><div class="sc-v">${totalWasted}</div><div class="sc-n">all-time</div></div>
+      <div class="sc"><div class="sc-l">Fruiting Lots w/ Blocks</div><div class="sc-v">${wl.length}</div><div class="sc-n">available to waste</div></div>
+      <div class="sc g"><div class="sc-l">Log Entries</div><div class="sc-v">${disp.length}</div><div class="sc-n">disposal records</div></div>
+    </div>
+    ${canEdit()?`<div class="card" style="border-color:rgba(184,76,32,.3);background:rgba(184,76,32,.03);">
+      <div class="card-t">📸 Snap / Upload Waste Column</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the harvest/fruiting sheet — AI reads the <b>Post-Harvest Waste</b> &amp; <b>Blocks Spoilage</b> columns and stages the wasted lots below.</div>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / PDF<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapWaste(this)"></label>
+      <div id="wb-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+    </div>`:''}
+    ${canEdit()?`<div class="card"><div class="card-t">Log Spent / Wasted Blocks</div>
+      <datalist id="wb-lotl">${wl.map(f=>`<option value="${attrEsc(f.lotNumber)}">${f.variety} · ${f.containerID} · ${fruitingRemaining(f)} left</option>`).join('')}</datalist>
+      <div class="fg2">
+        <div class="fgl"><label>Date</label><input class="fi" type="date" id="wb-date" value="${tday()}"></div>
+        <div class="fgl"><label>Reason</label><select class="fs" id="wb-reason">${WASTE_REASONS.map(x=>`<option value="${x}">${x}</option>`).join('')}</select></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Fruiting Lot <span style="color:var(--text3);font-size:9px;">type to match blocks in fruiting</span></label><input class="fi" id="wb-lot" list="wb-lotl" autocomplete="off" oninput="onWasteLot()" placeholder="Type to search fruiting lots…"><div id="wb-lot-hint" style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-top:4px;letter-spacing:1px;">${wl.length?wl.length+' LOT(S) WITH BLOCKS ON HAND':'NO FRUITING BLOCKS ON HAND'}</div></div>
+        <div class="fgl"><label>Variety</label><input class="fi" id="wb-variety" list="hl-v-dl" autocomplete="off"></div>
+        <div class="fgl"><label>Container</label><input class="fi" id="wb-container"></div>
+        <div class="fgl"><label># Blocks Wasted</label><input class="fi" type="number" min="1" id="wb-cnt" placeholder="blocks"></div>
+      </div>
+      <div class="fgl" style="margin-top:4px;"><label>Notes</label><input class="fi" id="wb-notes" placeholder="Optional"></div>
+      <div id="wb-queue" style="margin-bottom:12px;"></div>
+      <div class="form-acts"><button class="btn b-g b-lg" onclick="addWasteRow()">+ Add another lot</button><button class="btn b-m b-lg" id="wb-logbtn" onclick="logWaste()">🗑 Log Waste &amp; Send Report</button></div>
+      <div class="toast" id="wb-t">✓ Waste logged</div>
+    </div>`:''}
+    <div class="sh"><span>Block Waste Ledger</span><span class="bdg bc">${disp.length}</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Date</th><th>Stage</th><th>Container</th><th>Lot</th><th>Variety</th><th>Blocks</th><th>Reason</th><th>Notes</th>${canEdit()?'<th></th>':''}</tr></thead>
+      <tbody>${disp.length?disp.map(d=>`<tr>
+        <td class="mn">${fDate(d.date)}</td><td class="mn"><span class="bdg bp" style="font-size:8px;">${d.stage||'—'}</span></td>
+        <td class="mn">${d.container||'—'}</td><td class="mn" style="color:var(--gold);">${d.cookLot||d.lotNumber||'—'}</td>
+        <td>${d.variety||'—'}</td><td class="mn" style="color:var(--rust);font-weight:700;">${d.blockCount||0}</td>
+        <td class="mn">${d.reason||'—'}</td><td style="font-size:11px;color:var(--text3);">${d.notes||''}</td>
+        ${canEdit()?`<td style="white-space:nowrap;">${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delWaste('${d.id}')">✕</button>`:''}</td>`:''}
+      </tr>`).join(''):`<tr><td colspan="${canEdit()?9:8}" class="empty">No waste logged yet.</td></tr>`}</tbody>
+    </table></div>`;
+}
+async function logWaste(){
+  const date=document.getElementById('wb-date')?.value||tday();
+  const rows=[..._wasteQueue];
+  const cur=_readWasteRow();
+  if(cur.blockCount||cur.lotNumber){ if(!cur.blockCount){ alert('Enter how many blocks for the lot in the form.'); return; } rows.push(cur); }
+  if(!rows.length){ alert('Add at least one lot to waste.'); return; }
+  const createdIds=[]; let deductedTotal=0, spentLots=0;
+  for(const r of rows){
+    if(r.variety) addVariety(r.variety);
+    const f=r.fruitingId?DB.fruitings.find(x=>x.id===r.fruitingId):(DB.fruitings||[]).find(x=>(x.lotNumber||'').trim().toLowerCase()===(r.lotNumber||'').trim().toLowerCase()&&fruitingRemaining(x)>0);
+    const data={date,stage:'post-harvest',container:r.container||(f&&f.containerID)||'',cookLot:r.lotNumber,lotNumber:r.lotNumber,labBatchId:'',variety:r.variety||(f&&f.variety)||'',source:'',supplier:'',blockCount:r.blockCount,reason:r.reason||'post-harvest',notes:r.notes||'',fruitingId:(f&&f.id)||'',loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+    if(f){ data.prevStatus=f.status; f.spentBlocks=(f.spentBlocks||0)+r.blockCount; const upd={spentBlocks:f.spentBlocks}; if(fruitingRemaining(f)<=0 && f.status==='fruiting'){ f.status='spent'; upd.status='spent'; upd.spentAt=date; spentLots++; } try{ await FS.update('fruitings',f.id,upd); }catch(e){ console.warn('fruiting waste deduct',e); } data.deducted=r.blockCount; }
+    const id=await FS.add('blockDisposals',data); data.id=id; DB.blockDisposals.push(data); createdIds.push(id); deductedTotal+=r.blockCount;
+  }
+  logAudit('block_waste',`Wasted ${deductedTotal} blocks across ${rows.length} lot(s)`);
+  _wasteQueue=[];
+  toast('wb-t',`✓ ${deductedTotal} blocks wasted${spentLots?` · ${spentLots} lot(s) marked spent`:''}`);
+  rWaste(document.getElementById('main-views'));
+  openEmailDispatch('waste', notifySubject('waste',{date}), {label:'Block Waste '+_mm_dd_yy(date),
+    edit:{kind:'waste',col:'blockDisposals',ids:createdIds,date},
+    data:{date,rows:rows.map(r=>({lotNumber:r.lotNumber,variety:r.variety,container:r.container,blockCount:r.blockCount,reason:r.reason}))}});
+}
+function delWaste(id){ const d=(DB.blockDisposals||[]).find(x=>x.id===id); if(!d||!confirm('Delete this waste entry? Restores its blocks to the fruiting lot.')) return;
+  if(d.fruitingId&&d.deducted){ const f=DB.fruitings.find(x=>x.id===d.fruitingId); if(f){ f.spentBlocks=Math.max(0,(f.spentBlocks||0)-d.deducted); const upd={spentBlocks:f.spentBlocks}; if(f.status==='spent'&&fruitingRemaining(f)>0){ f.status=d.prevStatus||'fruiting'; upd.status=f.status; } FS.update('fruitings',f.id,upd); } }
+  DB.blockDisposals=DB.blockDisposals.filter(x=>x.id!==id); FS.del('blockDisposals',id); rWaste(document.getElementById('main-views'));
+}
+async function snapWaste(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('wb-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Cleaning + reading the waste column…');
+  try{
+    const r=await processScan(file,'waste'); const d=r.data;
+    _lastSnap={kind:'waste',url:r.imageUrl,name:'waste-log.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
+    const iso=_toISO(d.date); if(iso){ const dt=document.getElementById('wb-date'); if(dt) dt.value=iso; }
+    const container=d.container||'';
+    let staged=0;
+    (Array.isArray(d.rows)?d.rows:[]).forEach(rr=>{
+      const lot=(rr.lot||'').trim(), variety=(rr.strain||'').trim();
+      const match=wasteableLots().find(f=>(f.lotNumber||'').trim().toLowerCase()===lot.toLowerCase());
+      const phw=parseInt(rr.postHarvestWaste)||0, sp=parseInt(rr.spoilage)||0;
+      if(phw>0){ _wasteQueue.push({lotNumber:lot,variety:variety||(match&&match.variety)||'',container:container||(match&&match.containerID)||'',blockCount:phw,reason:'post-harvest',notes:'',fruitingId:(match&&match.id)||''}); staged++; }
+      if(sp>0){ _wasteQueue.push({lotNumber:lot,variety:variety||(match&&match.variety)||'',container:container||(match&&match.containerID)||'',blockCount:sp,reason:'spoilage',notes:'',fruitingId:(match&&match.id)||''}); staged++; }
+    });
+    renderWasteQueue();
+    show(staged?`✓ Read ${staged} waste line(s) @ ${container||'?'} — verify below, then Log.`:`No waste/spoilage numbers found on the sheet.`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+
 function rLab(el){
   _shipQueue=[]; // fresh shipment staging each render
   const tabs=[['substrate','🧱 Substrate (Blocks)'],['spawn','🌾 Spawn'],['cultures','🧬 Cultures'],['send','📤 Send to Hydes'],['waste','🗑️ Waste (pre-Hydes)']];
