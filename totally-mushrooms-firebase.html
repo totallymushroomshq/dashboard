@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #33</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #34</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -3823,6 +3823,7 @@ async function logReceiving(){
   // ONE compiled receiving report for the whole delivery
   openEmailDispatch('receiving', notifySubject('receiving',{vendor,source,lot:(rows.length===1?rows[0].lotNumber:''),date}), {label:'Receiving '+(vendor||source),
     edit:{kind:'receiving',col:'receivings',ids:createdIds,date},
+    mark:{col:'receivings',ids:createdIds},
     data:{date,vendor,source,poNum,temperature,tempLogUrl,invoiceUrl,imageUrl:snapUrl,rows:rows.map(r=>({variety:r.variety,lot:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb}))}, image:snapImg});
 }
 function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes','rc-temp'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); const v=document.getElementById('rc-variety'); if(v) v.value=''; _recvQueue=[]; renderRecvQueue(); }
@@ -3858,8 +3859,9 @@ function rReceiving(el){
     <td class="mn" style="color:var(--gold);">${r.lotNumber}</td><td class="mn">${r.blockCount}</td><td class="mn">${r.placedCount||0}</td>
     <td class="mn">${receivingOnHand(r)}</td><td class="mn" style="font-size:10px;color:var(--text3);">${r.poNum||''}${r.cost?` · $${r.cost}`:''}</td>
     <td style="font-size:11px;color:var(--text3);">${r.receivedBy||''}</td>
+    <td>${r.notifiedAt?`<span class="bdg" style="background:rgba(58,96,48,.13);color:var(--fern);border:1px solid rgba(58,96,48,.3);font-size:8px;white-space:nowrap;" title="Report emailed ${fDate((r.notifiedAt||'').slice(0,10))}">✓ SENT</span>`:`<span class="bdg" style="background:rgba(184,76,32,.1);color:#b84c20;border:1px solid rgba(184,76,32,.3);font-size:8px;white-space:nowrap;" title="No report emailed yet — use ✉ to send">✗ NOT SENT</span>`}</td>
     ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditReceiving('${r.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendReceiving('${r.id}')">✉</button> <button class="btn b-sm" style="background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.25);" title="${r.invoiceUrl?'Replace invoice + re-send UPDATED report':'Attach invoice/packing slip + re-send UPDATED report'}" onclick="rcAddInvoice('${r.id}')">🧾${r.invoiceUrl?'':' +'}</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
-  </tr>`).join('') : `<tr><td colspan="${canEdit()?10:9}" class="empty">No receivings logged yet.</td></tr>`;
+  </tr>`).join('') : `<tr><td colspan="${canEdit()?11:10}" class="empty">No receivings logged yet.</td></tr>`;
   el.innerHTML=`
     <div class="ph"><div class="ph-t">📥 Receiving</div><div class="ph-s">Blocks into Hydes Ferry · internal production or vendors → placed into fruiting</div></div>
     <div class="stats" style="margin-bottom:24px;">
@@ -3923,7 +3925,7 @@ function rReceiving(el){
     </table></div>
     <div class="sh"><span>Receiving History</span></div>
     <div class="tw"><table>
-      <thead><tr><th>Date</th><th>Source</th><th>Variety</th><th>Lot #</th><th>Received</th><th>Placed</th><th>Remaining</th><th>PO / Cost</th><th>By</th>${canEdit()?'<th>Actions</th>':''}</tr></thead>
+      <thead><tr><th>Date</th><th>Source</th><th>Variety</th><th>Lot #</th><th>Received</th><th>Placed</th><th>Remaining</th><th>PO / Cost</th><th>By</th><th>Report</th>${canEdit()?'<th>Actions</th>':''}</tr></thead>
       <tbody>${histRows}</tbody>
     </table></div>`;
 }
@@ -4870,7 +4872,7 @@ function openEmailDispatch(kind, subject, opts){
   const ready=master && DB.notify.templateId && DB.emailjs.serviceId && DB.emailjs.publicKey;
   const report=opts.data?notifyReport(kind, subject, opts.data):(opts.report||'');
   const image=opts.image||null;
-  _dispatch={kind, subject, report, image, data:opts.data||null, edit:opts.edit||null};
+  _dispatch={kind, subject, report, image, data:opts.data||null, edit:opts.edit||null, mark:opts.mark||null};
   document.getElementById('em-title').textContent=(opts.resend?'Re-send Notification — ':'Send Notification — ')+(opts.label||kind);
   document.getElementById('em-body').innerHTML=`
     ${!ready?`<div style="background:rgba(184,76,32,.09);border:1px solid rgba(184,76,32,.3);border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--rust,#b84c20);line-height:1.5;">
@@ -4962,9 +4964,20 @@ async function dispSend(){
   const image=(attachEl&&attachEl.checked&&_dispatch&&_dispatch.image)?_dispatch.image:null;
   const btn=document.getElementById('disp-send'); if(btn){ btn.disabled=true; btn.textContent='Sending…'; }
   const ok=await sendNotify(subj,to,report,image);
+  if(ok) await _dispMarkNotified();
   if(ok==='link-only'){ toast('disp-t','✓ Sent to '+to.length+' — file is the download link in the body (attachment not accepted)'); setTimeout(closeModal,1400); }
   else if(ok){ toast('disp-t','✓ Sent to '+to.length+' recipient'+(to.length>1?'s':'')); setTimeout(closeModal,900); }
   else { alert('Send failed — check Admin → Email (Notification Template ID + master toggle).'); if(btn){ btn.disabled=false; btn.textContent='✉ Send now'; } }
+}
+// after a successful send, flag the associated records as notified (drives the "Report" status column)
+async function _dispMarkNotified(){
+  const m=_dispatch&&_dispatch.mark; if(!m||!m.col||!Array.isArray(m.ids)||!m.ids.length) return;
+  const iso=new Date().toISOString();
+  for(const id of m.ids){
+    const rec=(DB[m.col]||[]).find(x=>x.id===id); if(rec){ rec.notified=true; rec.notifiedAt=iso; }
+    try{ await FS.update(m.col, id, {notified:true, notifiedAt:iso}); }catch(err){ console.warn('notify-mark failed',err); }
+  }
+  try{ if(typeof renderC==='function') renderC(); }catch(_){}
 }
 async function sendNotify(subject, toList, report, image){
   if(DB.notify.enabled===false){ console.warn('notify disabled — skipped'); return false; }
@@ -5122,6 +5135,7 @@ function resendReceiving(id, updated){ const r=DB.receivings.find(x=>x.id===id);
   let subj=notifySubject('receiving',{vendor:r.vendor,source:r.source,lot:(sibs.length===1?r.lotNumber:''),date:r.date});
   if(updated) subj='UPDATED: '+subj;
   openEmailDispatch('receiving', subj, {label:(updated?'UPDATED — ':'')+'Receiving '+(r.vendor||r.source||''), resend:true,
+    mark:{col:'receivings',ids:sibs.map(x=>x.id)},
     data:{date:r.date,vendor:r.vendor,source:r.source,poNum:r.poNum,temperature:r.temperature,tempLogUrl:r.tempLogUrl,invoiceUrl:r.invoiceUrl,imageUrl:r.scanUrl||'',
       rows:sibs.map(x=>({variety:x.variety,lot:x.lotNumber,blockCount:x.blockCount,blockWeightLb:x.blockWeightLb}))}}); }
 // attach an invoice/packing slip AFTER the fact, then re-send an UPDATED report — invoice applies to the whole delivery
