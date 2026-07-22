@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #35</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #36</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4078,11 +4078,6 @@ function rFruiting(el){
       <div class="sc ${overdueCount>0?'r':''}"><div class="sc-l">Past Window</div><div class="sc-v">${overdueCount}</div><div class="sc-n">overdue to harvest</div></div>
       <div class="sc"><div class="sc-l">Projected Yield</div><div class="sc-v" style="font-size:26px;">${totalProjLbs.toFixed(1)}<span style="font-size:14px"> lb</span></div><div class="sc-n">from active lots</div></div>
     </div>
-    ${canEdit()&&(DB.fruitings||[]).some(f=>f.relocatedFrom&&(f.date===tday()||(f.createdAt||'').slice(0,10)===tday()))?`<div style="background:rgba(46,109,164,.06);border:1px solid rgba(46,109,164,.28);border-radius:6px;padding:12px 15px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-      <div style="font-size:12px;color:var(--text2);">🔀 Block/container moves logged today — send Katherine the moves report.</div>
-      <button class="btn b-m" onclick="emailMovesReport()">📤 Email today's block-moves report</button>
-    </div>`:''}
-
     <!-- ── LOG FORM ── -->
     ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
       <div class="card-t">📸 Snap / Upload Fruiting Sheet</div>
