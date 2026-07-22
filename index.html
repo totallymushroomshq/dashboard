@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #28</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-20 #29</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -547,8 +547,7 @@ const ALL_INTERNAL_TABS = [
   {id:'receiving',l:'📥 Receiving'},
   {id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},
   {id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},
-  {id:'cleaning',l:'🧽 Clean & Flip'},
-  {id:'waste',l:'🗑 Block Waste'},
+  {id:'cleaning',l:'🧽 Clean · Flip · Waste'},
   {id:'trace',l:'🔍 Trace'},
   {id:'lab',l:'🧫 Lab'},
   {id:'cordyceps',l:'🐛 Cordyceps'},
@@ -562,7 +561,7 @@ const DEFAULT_PERMS = {
   staff: {today:true,week:true,'new-order':true,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
   accountant: {today:true,week:true,'new-order':false,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:false,waste:true,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
 };
-const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',cleaning:'Clean & Flip',waste:'🗑 Block Waste',lab:'Lab — Carthage',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
+const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',cleaning:'🧽 Clean · Flip · Waste',lab:'Lab — Carthage',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
 
 // ── FIREBASE CONFIG ──
 const FIREBASE_CONFIG = {
@@ -1962,7 +1961,7 @@ function buildNav(){
 
   const GROUPS=[
     {label:'Daily',       ids:['today','week','new-order','email-parse']},
-    {label:'Operations',  ids:['receiving','harvest','fruiting','inventory','preservation','cleaning','waste','trace']},
+    {label:'Operations',  ids:['receiving','harvest','fruiting','inventory','preservation','cleaning','trace']},
     {label:'Production',  ids:['lab','cordyceps']},
     {label:'Business',    ids:['analytics','orders-all','reports','qb'], cls:'drw-acct'},
     {label:'System',      ids:['admin','security'], cls:'drw-sys'},
@@ -8092,6 +8091,7 @@ function dlTraceCSV(){
 // ── CLEANING & CONTAINER FLIP — deep clean, container cycle, spent-block removal ──
 const CLEAN_TYPES=['Deep Clean','Quick Flip','Sanitize'];
 function rCleaning(el){
+  _wasteQueue=[]; // fresh waste staging when the merged tab renders
   const activeC=getActiveContainers();
   const flips=[...(DB.containerFlips||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
   const conOpts=activeC.map(c=>`<option value="${c.code}">${c.code} · ${c.farm} (${c.facility})</option>`).join('');
@@ -8104,7 +8104,7 @@ function rCleaning(el){
     ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFlip('${f.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delFlip('${f.id}')">✕</button>`:''}</td>`:''}
   </tr>`).join(''):`<tr><td colspan="${canEdit()?8:7}" class="empty">No container flips logged yet.</td></tr>`;
   el.innerHTML=`
-    <div class="ph"><div class="ph-t">🧽 Cleaning &amp; Container Flip</div><div class="ph-s">Deep clean · container cycle · remove spent blocks from inventory</div></div>
+    <div class="ph"><div class="ph-t">🧽 Clean · Flip · Waste</div><div class="ph-s">Deep clean · container cycle · log spent / wasted blocks — all deduct from inventory</div></div>
     ${canEdit()?`<div class="card">
       <div class="card-t">Log a Container Flip / Clean</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:14px;">Records the clean, removes spent blocks from inventory (as waste), and requires crew + time. Pick the container to see its active lots to flip out.</div>
@@ -8129,7 +8129,8 @@ function rCleaning(el){
     <div class="tw"><table>
       <thead><tr><th>Date</th><th>Container</th><th>Type</th><th>Spent Blks</th><th>Lots</th><th>Crew</th><th>Notes</th>${canEdit()?'<th>Actions</th>':''}</tr></thead>
       <tbody>${histRows}</tbody>
-    </table></div>`;
+    </table></div>
+    ${wasteSectionHTML()}`;
 }
 function onFlipContainer(){
   const con=document.getElementById('cf-con')?.value;
@@ -8533,13 +8534,12 @@ function renderWasteQueue(){
       </div></div>`;}).join(''):'';
   const btn=document.getElementById('wb-logbtn'); if(btn) btn.textContent=_wasteQueue.length?`🗑 Log Waste & Send Report (${_wasteQueue.length+((_readWasteRow().blockCount)?1:0)})`:'🗑 Log Waste & Send Report';
 }
-function rWaste(el){
-  _wasteQueue=[];
+function wasteSectionHTML(){
   const disp=[...(DB.blockDisposals||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.timestamp||'').localeCompare(a.timestamp||''));
   const totalWasted=disp.reduce((s,d)=>s+(parseInt(d.blockCount)||0),0);
   const wl=wasteableLots();
-  el.innerHTML=`
-    <div class="ph"><div class="ph-t">🗑 Block Waste</div><div class="ph-s">Spent / spoiled blocks · deducts from fruiting inventory · auto-reports to orders@</div></div>
+  return `
+    <div class="sh" style="margin-top:32px;"><span>🗑 Spent / Wasted Blocks</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">DEDUCTS FROM FRUITING · AUTO-REPORTS TO ORDERS@</span></div>
     <div class="stats" style="margin-bottom:24px;">
       <div class="sc r"><div class="sc-l">Blocks Wasted</div><div class="sc-v">${totalWasted}</div><div class="sc-n">all-time</div></div>
       <div class="sc"><div class="sc-l">Fruiting Lots w/ Blocks</div><div class="sc-v">${wl.length}</div><div class="sc-n">available to waste</div></div>
@@ -8580,6 +8580,8 @@ function rWaste(el){
       </tr>`).join(''):`<tr><td colspan="${canEdit()?9:8}" class="empty">No waste logged yet.</td></tr>`}</tbody>
     </table></div>`;
 }
+// merged into the Clean & Flip tab — any 'waste' route renders the combined tab
+function rWaste(el){ rCleaning(el||document.getElementById('main-views')); }
 async function logWaste(){
   const date=document.getElementById('wb-date')?.value||tday();
   const rows=[..._wasteQueue];
