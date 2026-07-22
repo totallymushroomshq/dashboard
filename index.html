@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #30</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #31</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -8158,81 +8158,111 @@ function rCleaning(el){
     <td style="font-size:11px;color:var(--text3);">${f.notes||''}</td>
     ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFlip('${f.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delFlip('${f.id}')">✕</button>`:''}</td>`:''}
   </tr>`).join(''):`<tr><td colspan="${canEdit()?8:7}" class="empty">No container flips logged yet.</td></tr>`;
+  const disp=[...(DB.blockDisposals||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.timestamp||'').localeCompare(a.timestamp||''));
+  const totalWasted=disp.reduce((s,dd)=>s+(parseInt(dd.blockCount)||0),0);
   el.innerHTML=`
-    <div class="ph"><div class="ph-t">🧽 Clean · Flip · Waste</div><div class="ph-s">Deep clean · container cycle · log spent / wasted blocks — all deduct from inventory</div></div>
-    ${canEdit()?`<div class="card">
-      <div class="card-t">Log a Container Flip / Clean</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:14px;">Records the clean, removes spent blocks from inventory (as waste), and requires crew + time. Pick the container to see its active lots to flip out.</div>
+    <div class="ph"><div class="ph-t">🧽 Clean · Flip · Waste</div><div class="ph-s">One form — clean/flip a container &amp; log the spent / wasted blocks · deducts from inventory · reports to orders@</div></div>
+    <div class="stats" style="margin-bottom:22px;">
+      <div class="sc r"><div class="sc-l">Blocks Wasted</div><div class="sc-v">${totalWasted}</div><div class="sc-n">all-time</div></div>
+      <div class="sc g"><div class="sc-l">Flips / Cleans</div><div class="sc-v">${flips.length}</div><div class="sc-n">logged</div></div>
+      <div class="sc"><div class="sc-l">Disposal Records</div><div class="sc-v">${disp.length}</div><div class="sc-n">ledger entries</div></div>
+    </div>
+    ${canEdit()?`<div class="card" style="border-color:rgba(184,76,32,.28);">
+      <div class="card-t">Log Clean · Flip · Waste</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Pick a container, set how many blocks to remove per lot (or snap the sheet's waste column), choose a clean type, add crew — one submit deducts inventory, records the clean, and emails the waste report.</div>
+      <div style="background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.25);border-radius:6px;padding:11px 13px;margin-bottom:14px;">
+        <div style="font-size:12px;font-weight:600;color:var(--fern);margin-bottom:8px;">📸 Snap the harvest/fruiting sheet — reads the Post-Harvest Waste &amp; Spoilage columns and fills the counts below</div>
+        <label class="btn b-g" style="cursor:pointer;display:inline-block;">📷 Choose photo / PDF<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapWaste(this)"></label>
+        <div id="wb-snap-status" style="display:none;margin-top:10px;font-size:12px;padding:8px 12px;background:var(--white);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
+      </div>
       <div class="fg2">
         <div class="fgl"><label>Date</label><input class="fi" type="date" id="cf-date" value="${tday()}"></div>
         <div class="fgl"><label>Container</label><select class="fs" id="cf-con" onchange="onFlipContainer()"><option value="">Select container…</option>${conOpts}</select></div>
-        <div class="fgl"><label>Clean Type</label><select class="fs" id="cf-type">${CLEAN_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}</select></div>
+        <div class="fgl"><label>Clean Type</label><select class="fs" id="cf-type">${CLEAN_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('')}<option value="">— none (waste only) —</option></select></div>
       </div>
       <div id="cf-lots-wrap" style="margin-top:12px;"></div>
       <div class="fg2" style="margin-top:12px;">
-        <div class="fgl"><label>Extra spent blocks removed <span style="color:var(--text3);font-size:9px;">(not tied to a lot)</span></label><input class="fi" type="number" min="0" id="cf-extra" placeholder="0"></div>
-        <div class="fgl"><label>Reason for spent removal</label><input class="fi" id="cf-reason" list="cf-reasonl" placeholder="spent / contaminated / end of cycle"><datalist id="cf-reasonl"><option value="spent"><option value="contaminated"><option value="end of cycle"></datalist></div>
+        <div class="fgl"><label>Reason</label><select class="fs" id="cf-reason">${WASTE_REASONS.map(x=>`<option value="${x}">${x}</option>`).join('')}</select></div>
+        <div class="fgl"><label>Extra spent blocks <span style="color:var(--text3);font-size:9px;">(not tied to a lot)</span></label><input class="fi" type="number" min="0" id="cf-extra" placeholder="0"></div>
       </div>
-      <div class="fgl" style="margin-top:12px;"><label>Notes / Condition</label><textarea class="fta" id="cf-notes" placeholder="Observations, chemicals used, issues…"></textarea></div>
+      <div class="fgl" style="margin-top:10px;"><label>Notes / Condition</label><textarea class="fta" id="cf-notes" placeholder="Chemicals used, condition, observations…"></textarea></div>
       <div class="form-acts" style="margin-top:14px;">
-        <button class="btn b-m b-lg" onclick="saveContainerFlip()">Log Flip &amp; Clean</button>
+        <button class="btn b-m b-lg" onclick="saveClean()">Log &amp; Send Waste Report</button>
         <button class="btn b-g" onclick="rCleaning(document.getElementById('main-views'))">Clear</button>
       </div>
-      <div class="toast" id="cf-t">✓ Flip logged</div>
+      <div class="toast" id="cf-t">✓ Logged</div>
     </div>`:''}
     <div class="sh" style="margin-top:24px;"><span>Flip &amp; Clean History</span><span class="bdg bc">${flips.length}</span></div>
     <div class="tw"><table>
       <thead><tr><th>Date</th><th>Container</th><th>Type</th><th>Spent Blks</th><th>Lots</th><th>Crew</th><th>Notes</th>${canEdit()?'<th>Actions</th>':''}</tr></thead>
       <tbody>${histRows}</tbody>
     </table></div>
-    ${wasteSectionHTML()}`;
+    <div class="sh" style="margin-top:28px;"><span>🗑 Block Waste / Disposal Ledger</span><span class="bdg bc">${disp.length}</span></div>
+    <div class="tw"><table>
+      <thead><tr><th>Date</th><th>Stage</th><th>Container</th><th>Lot</th><th>Variety</th><th>Blocks</th><th>Reason</th><th>Notes</th>${canEdit()?'<th></th>':''}</tr></thead>
+      <tbody>${disp.length?disp.map(dd=>`<tr>
+        <td class="mn">${fDate(dd.date)}</td><td class="mn"><span class="bdg bp" style="font-size:8px;">${dd.stage||'—'}</span></td>
+        <td class="mn">${dd.container||'—'}</td><td class="mn" style="color:var(--gold);">${dd.cookLot||dd.lotNumber||'—'}</td>
+        <td>${dd.variety||'—'}</td><td class="mn" style="color:var(--rust);font-weight:700;">${dd.blockCount||0}</td>
+        <td class="mn">${dd.reason||'—'}</td><td style="font-size:11px;color:var(--text3);">${dd.notes||''}</td>
+        ${canEdit()?`<td>${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delWaste('${dd.id}')">✕</button>`:''}</td>`:''}
+      </tr>`).join(''):`<tr><td colspan="${canEdit()?9:8}" class="empty">No disposals logged yet.</td></tr>`}</tbody>
+    </table></div>`;
 }
 function onFlipContainer(){
   const con=document.getElementById('cf-con')?.value;
   const wrap=document.getElementById('cf-lots-wrap'); if(!wrap) return;
-  const lots=DB.fruitings.filter(f=>f.containerID===con && f.status==='fruiting');
-  if(!con||!lots.length){ wrap.innerHTML=con?`<div style="font-size:11px;color:var(--text3);">No active fruiting lots in ${con} — use the spent-block count below if flipping leftovers.</div>`:''; return; }
-  wrap.innerHTML=`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:6px;">FLIP OUT SPENT LOTS IN ${con} — check to remove from inventory</div>
-    <div style="display:flex;flex-direction:column;gap:6px;">${lots.map(f=>`
-      <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid var(--border);border-radius:5px;cursor:pointer;font-size:12px;">
-        <input type="checkbox" class="cf-lot-chk" value="${f.id}" data-lot="${(f.lotNumber||'').replace(/"/g,'&quot;')}" data-var="${(f.variety||'').replace(/"/g,'&quot;')}" data-blocks="${f.blockCount||0}">
-        <span><strong>${f.variety}</strong> · Lot ${f.lotNumber} · ${f.blockCount||0} blocks</span>
-      </label>`).join('')}</div>`;
+  const lots=(DB.fruitings||[]).filter(f=>f.containerID===con && (f.status==='fruiting'||f.status==='harvested') && fruitingRemaining(f)>0);
+  if(!con){ wrap.innerHTML=''; return; }
+  if(!lots.length){ wrap.innerHTML=`<div style="font-size:11px;color:var(--text3);margin:6px 0;">No blocks on hand in ${con} — use "extra spent blocks" below for untied leftovers.</div>`; return; }
+  wrap.innerHTML=`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:6px 0 8px;">BLOCKS IN ${con} — SET # TO REMOVE PER LOT (blank/0 = leave · "all" = flip the whole lot)</div>
+    ${lots.map(f=>{ const rem=fruitingRemaining(f); return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:5px;margin-bottom:6px;font-size:12px;flex-wrap:wrap;">
+      <span style="flex:1;min-width:180px;"><strong>${f.variety}</strong> · Lot <span style="color:var(--gold);">${f.lotNumber}</span> · <span style="color:var(--fern);">${rem} on hand</span></span>
+      <button class="btn b-g b-sm" onclick="document.getElementById('cf-rem-${f.id}').value=${rem}">all</button>
+      <input class="fi cf-rem" type="number" min="0" max="${rem}" id="cf-rem-${f.id}" placeholder="0" style="width:96px;" data-lot="${(f.lotNumber||'').replace(/"/g,'&quot;')}" data-var="${(f.variety||'').replace(/"/g,'&quot;')}" data-rem="${rem}">
+    </div>`;}).join('')}`;
 }
-function saveContainerFlip(){
+function saveClean(){
   const con=document.getElementById('cf-con')?.value;
   const date=document.getElementById('cf-date')?.value||tday();
-  const cleanType=document.getElementById('cf-type')?.value||'Deep Clean';
-  if(!con){ alert('Select a container.'); return; }
-  const checked=[...document.querySelectorAll('.cf-lot-chk:checked')];
-  const extra=parseInt(document.getElementById('cf-extra')?.value)||0;
-  const reason=(document.getElementById('cf-reason')?.value||'').trim()||'spent';
+  const cleanType=document.getElementById('cf-type')?.value||'';
+  const reason=document.getElementById('cf-reason')?.value||'post-harvest';
   const notes=(document.getElementById('cf-notes')?.value||'').trim();
-  const lotBlocks=checked.reduce((s,c)=>s+(parseInt(c.getAttribute('data-blocks'))||0),0);
-  const flipData={con,date,cleanType,reason,notes,extra,spentBlocks:lotBlocks+extra,
-    lots:checked.map(c=>({fruitingId:c.value,lotNumber:c.getAttribute('data-lot'),variety:c.getAttribute('data-var'),blocks:parseInt(c.getAttribute('data-blocks'))||0}))};
-  // hard-block: crew + time required, then commit
-  openSessionLaborGate('flip', con, date, 'Cleaning', (crew)=>_doFlipCommit(flipData, crew));
+  const extra=parseInt(document.getElementById('cf-extra')?.value)||0;
+  if(!con){ alert('Select a container.'); return; }
+  const removals=[];
+  document.querySelectorAll('.cf-rem').forEach(inp=>{ const n=parseInt(inp.value)||0; if(n>0){ const rem=parseInt(inp.getAttribute('data-rem'))||n; removals.push({fruitingId:inp.id.replace('cf-rem-',''),lotNumber:inp.getAttribute('data-lot'),variety:inp.getAttribute('data-var'),blocks:Math.min(n,rem)}); } });
+  if(!removals.length && extra<=0){ alert('Set how many blocks to remove (per lot), or an extra spent count.'); return; }
+  const spentBlocks=removals.reduce((s,r)=>s+r.blocks,0)+extra;
+  const data={con,date,cleanType,reason,notes,extra,spentBlocks,lots:removals};
+  openSessionLaborGate('flip', con, date, 'Cleaning', (crew)=>_doCleanCommit(data, crew));
 }
-async function _doFlipCommit(d, crew){
+async function _doCleanCommit(d, crew){
   const c=CONTAINERS.find(x=>x.code===d.con);
-  const spentLots=[];
+  const spentLots=[]; const emailRows=[]; const stage=d.cleanType?'spent':'post-harvest';
   for(const lot of d.lots){
-    const dData={date:d.date,stage:'spent',container:d.con,cookLot:lot.lotNumber||'',labBatchId:'',variety:lot.variety,source:'',supplier:'',blockCount:lot.blocks,reason:d.reason,notes:`Flipped out of ${d.con} — ${d.cleanType}${d.notes?(' · '+d.notes):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+    const fr=DB.fruitings.find(x=>x.id===lot.fruitingId);
+    const dData={date:d.date,stage,container:d.con,cookLot:lot.lotNumber||'',lotNumber:lot.lotNumber||'',labBatchId:'',variety:lot.variety,source:'',supplier:'',blockCount:lot.blocks,reason:d.reason,notes:`${d.cleanType?('Flipped/cleaned — '+d.cleanType):'Wasted'} from ${d.con}${d.notes?(' · '+d.notes):''}`,fruitingId:lot.fruitingId||'',deducted:lot.blocks,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+    if(fr) dData.prevStatus=fr.status;
     const did=await FS.add('blockDisposals',dData); dData.id=did; DB.blockDisposals.push(dData);
     if(lot.lotNumber) spentLots.push(lot.lotNumber);
-    const fr=DB.fruitings.find(x=>x.id===lot.fruitingId);
-    if(fr){ fr.status='removed'; fr.removedAt=d.date; try{ await FS.update('fruitings',fr.id,{status:'removed',removedAt:d.date}); }catch(e){} }
+    emailRows.push({lotNumber:lot.lotNumber,variety:lot.variety,container:d.con,blockCount:lot.blocks,reason:d.reason});
+    if(fr){ fr.spentBlocks=(fr.spentBlocks||0)+lot.blocks; const upd={spentBlocks:fr.spentBlocks}; if(fruitingRemaining(fr)<=0){ fr.status=d.cleanType?'removed':'spent'; upd.status=fr.status; upd.removedAt=d.date; } try{ await FS.update('fruitings',fr.id,upd); }catch(e){} }
   }
   if(d.extra>0){
-    const dData={date:d.date,stage:'spent',container:d.con,cookLot:'',labBatchId:'',variety:'',source:'',supplier:'',blockCount:d.extra,reason:d.reason,notes:`Spent blocks flipped from ${d.con} — ${d.cleanType}${d.notes?(' · '+d.notes):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+    const dData={date:d.date,stage,container:d.con,cookLot:'',lotNumber:'',labBatchId:'',variety:'',source:'',supplier:'',blockCount:d.extra,reason:d.reason,notes:`Extra spent from ${d.con}${d.cleanType?(' — '+d.cleanType):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
     const did=await FS.add('blockDisposals',dData); dData.id=did; DB.blockDisposals.push(dData);
+    emailRows.push({lotNumber:'',variety:'(untied)',container:d.con,blockCount:d.extra,reason:d.reason});
   }
-  const flip={date:d.date,container:d.con,facility:c?.facility||'',cleanType:d.cleanType,spentBlocks:d.spentBlocks,spentLots,extra:d.extra,reason:d.reason,notes:d.notes,crew:crew||[],loggedBy:S.name||S.role,createdAt:new Date().toISOString()};
-  const fid=await FS.add('containerFlips',flip); flip.id=fid; (DB.containerFlips=DB.containerFlips||[]).push(flip);
-  logAudit('container_flip',`Flip/clean ${d.con} — ${d.cleanType} — ${d.spentBlocks} spent block(s)${spentLots.length?(' · lots '+spentLots.join(', ')):''}`);
-  toast('cf-t','✓ Flip & clean logged');
-  renderC();
+  if(d.cleanType){
+    const flip={date:d.date,container:d.con,facility:c?.facility||'',cleanType:d.cleanType,spentBlocks:d.spentBlocks,spentLots,extra:d.extra,reason:d.reason,notes:d.notes,crew:crew||[],loggedBy:S.name||S.role,createdAt:new Date().toISOString()};
+    const fid=await FS.add('containerFlips',flip); flip.id=fid; (DB.containerFlips=DB.containerFlips||[]).push(flip);
+  }
+  logAudit('clean_waste',`${d.cleanType?('Flip/clean '+d.con+' — '+d.cleanType+' — '):'Waste '+d.con+' — '}${d.spentBlocks} spent block(s)${spentLots.length?(' · lots '+spentLots.join(', ')):''}`);
+  toast('cf-t','✓ '+(d.cleanType?'Clean/flip':'Waste')+' logged — '+d.spentBlocks+' blocks');
+  rCleaning(document.getElementById('main-views'));
+  openEmailDispatch('waste', notifySubject('waste',{date:d.date}), {label:'Block Waste '+_mm_dd_yy(d.date),
+    data:{date:d.date,rows:emailRows}});
 }
 function openEditFlip(id){
   const f=(DB.containerFlips||[]).find(x=>x.id===id); if(!f) return;
@@ -8670,18 +8700,17 @@ async function snapWaste(input){
   try{
     const r=await processScan(file,'waste'); const d=r.data;
     _lastSnap={kind:'waste',url:r.imageUrl,name:'waste-log.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
-    const iso=_toISO(d.date); if(iso){ const dt=document.getElementById('wb-date'); if(dt) dt.value=iso; }
-    const container=d.container||'';
-    let staged=0;
+    const iso=_toISO(d.date); if(iso){ const dt=document.getElementById('cf-date'); if(dt) dt.value=iso; }
+    // select the container + populate its lots, then fill the per-lot remove counts
+    if(d.container){ const cs=document.getElementById('cf-con'); if(cs){ cs.value=d.container; onFlipContainer(); } }
+    const norm=x=>String(x||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+    let filled=0; const unmatched=[];
     (Array.isArray(d.rows)?d.rows:[]).forEach(rr=>{
-      const lot=(rr.lot||'').trim(), variety=(rr.strain||'').trim();
-      const match=wasteableLots().find(f=>(f.lotNumber||'').trim().toLowerCase()===lot.toLowerCase());
-      const phw=parseInt(rr.postHarvestWaste)||0, sp=parseInt(rr.spoilage)||0;
-      if(phw>0){ _wasteQueue.push({lotNumber:lot,variety:variety||(match&&match.variety)||'',container:container||(match&&match.containerID)||'',blockCount:phw,reason:'post-harvest',notes:'',fruitingId:(match&&match.id)||''}); staged++; }
-      if(sp>0){ _wasteQueue.push({lotNumber:lot,variety:variety||(match&&match.variety)||'',container:container||(match&&match.containerID)||'',blockCount:sp,reason:'spoilage',notes:'',fruitingId:(match&&match.id)||''}); staged++; }
+      const lot=(rr.lot||'').trim(); const waste=(parseInt(rr.postHarvestWaste)||0)+(parseInt(rr.spoilage)||0); if(waste<=0) return;
+      const inp=[...document.querySelectorAll('.cf-rem')].find(x=>norm(x.getAttribute('data-lot'))===norm(lot));
+      if(inp){ inp.value=waste; filled++; } else unmatched.push(lot+'×'+waste);
     });
-    renderWasteQueue();
-    show(staged?`✓ Read ${staged} waste line(s) @ ${container||'?'} — verify below, then Log.`:`No waste/spoilage numbers found on the sheet.`);
+    show(`✓ Read waste — <b>${filled}</b> lot(s) filled${unmatched.length?`; <span style="color:var(--gold)">not on-hand in ${d.container||'container'}: ${unmatched.join(', ')} — use "extra spent" or fix inventory</span>`:''}. Verify, set clean type, then Log.`);
   }catch(e){ show('⚠ '+e.message); }
   finally{ input.value=''; }
 }
