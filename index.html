@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #42</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #43</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -3868,24 +3868,30 @@ async function logReceiving(){
   if(!normalizeRowVarieties(rows)) return; // standardize each variety + warn on new
   rows.forEach(r=>addVariety(r.variety));
   if(source!=='internal' && vendor) addSupplier(vendor);
+  const soNum=document.getElementById('rc-so')?.value.trim()||'';
+  const receiptStatus=soNum?'closed':'open';
   const snapUrl=(_lastSnap&&_lastSnap.kind==='receiving')?_lastSnap.url:'';
   const tempLogUrl=_rcTempUrl, invoiceUrl=_rcInvoiceUrl;
   const createdIds=[];
   for(const r of rows){
-    const rData={date,facility:'Hydes Ferry',source,vendor,variety:r.variety,lotNumber:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,temperature,scanUrl:snapUrl,tempLogUrl,invoiceUrl,status:'on-hand',createdAt:new Date().toISOString()};
+    const rData={date,facility:'Hydes Ferry',source,vendor,soNum,receiptStatus,variety:r.variety,lotNumber:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,temperature,scanUrl:snapUrl,tempLogUrl,invoiceUrl,status:'on-hand',createdAt:new Date().toISOString()};
     const rId=await FS.add('receivings',rData); DB.receivings.push({id:rId,...rData}); createdIds.push(rId);
   }
   const totalBlocks=rows.reduce((s,r)=>s+r.blockCount,0);
-  logAudit('blocks_received',`Received ${rows.length} lot(s) / ${totalBlocks} blocks from ${vendor||source} @ Hydes Ferry`);
-  toast('rc-t',`✓ ${rows.length} lot(s) · ${totalBlocks} blocks received`); clrReceiving(); _rcTempUrl=''; _rcInvoiceUrl=''; _recvQueue=[]; renderC();
+  logAudit('blocks_received',`Received ${rows.length} lot(s) / ${totalBlocks} blocks from ${vendor||source} @ Hydes Ferry${soNum?' (SO '+soNum+')':' — NO SO (open receipt)'}`);
+  toast('rc-t',`✓ ${rows.length} lot(s) · ${totalBlocks} blocks received${soNum?'':' — OPEN (needs SO#)'}`); clrReceiving(); _rcTempUrl=''; _rcInvoiceUrl=''; _recvQueue=[]; renderC();
   const snapImg=(_lastSnap&&_lastSnap.kind==='receiving'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
+  // Subject: normal receiving report if we have an SO; otherwise an SO-# REQUEST to Katherine (blocks still logged)
+  const subj = soNum
+    ? notifySubject('receiving',{vendor,source,lot:(rows.length===1?rows[0].lotNumber:''),date})
+    : `SO # REQUEST — ${source==='internal'?'IN HOUSE':(vendor||'VENDOR').toUpperCase()} BLOCK RECEIPT — ${_mmddyy(date)}`;
   // ONE compiled receiving report for the whole delivery
-  openEmailDispatch('receiving', notifySubject('receiving',{vendor,source,lot:(rows.length===1?rows[0].lotNumber:''),date}), {label:'Receiving '+(vendor||source),
+  openEmailDispatch('receiving', subj, {label:(soNum?'Receiving ':'SO REQUEST — ')+(vendor||source),
     edit:{kind:'receiving',col:'receivings',ids:createdIds,date},
     mark:{col:'receivings',ids:createdIds},
-    data:{date,vendor,source,poNum,temperature,tempLogUrl,invoiceUrl,imageUrl:snapUrl,rows:rows.map(r=>({variety:r.variety,lot:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb}))}, image:snapImg});
+    data:{date,vendor,source,soNum,poNum,temperature,tempLogUrl,invoiceUrl,imageUrl:snapUrl,rows:rows.map(r=>({variety:r.variety,lot:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb}))}, image:snapImg});
 }
-function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes','rc-temp'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); const v=document.getElementById('rc-variety'); if(v) v.value=''; _recvQueue=[]; renderRecvQueue(); }
+function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes','rc-temp','rc-so'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); const v=document.getElementById('rc-variety'); if(v) v.value=''; _recvQueue=[]; renderRecvQueue(); }
 
 function buildIncomingShipments(){
   const inc=(DB.shipments||[]).filter(s=>s.status==='in-transit').sort((a,b)=>(a.date||'').localeCompare(b.date||''));
@@ -3901,6 +3907,31 @@ function buildIncomingShipments(){
       <thead><tr><th>Shipped</th><th>Variety</th><th>Cook Lot</th><th>Blocks</th><th>Blk Wt</th><th>Carrier</th><th>Action</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
+}
+// OPEN RECEIPTS — received blocks with NO S.O. # yet (in-house or vendor). Blocks are in inventory; just need an SO from Katherine.
+function buildOpenReceipts(){
+  const open=(DB.receivings||[]).filter(r=>!r.soNum && r.receiptStatus!=='closed' && (r.source==='pack'?false:true));
+  if(!open.length) return '';
+  const groups={};
+  open.forEach(r=>{ const k=[r.date,(r.vendor||''),(r.source||''),(r.poNum||'')].join('|'); (groups[k]=groups[k]||[]).push(r); });
+  const keys=Object.keys(groups).sort((a,b)=>(groups[b][0].date||'').localeCompare(groups[a][0].date||''));
+  const rows=keys.map(k=>{ const g=groups[k]; const r0=g[0];
+    const pieces=g.reduce((s,x)=>s+(parseInt(x.blockCount)||0),0);
+    const vend=r0.source==='internal'?('In-house'+(r0.vendor?' · '+r0.vendor:'')):(r0.vendor||'Vendor');
+    return `<tr style="background:rgba(184,76,32,.045);">
+      <td class="mn">${fDate(r0.date)}</td>
+      <td><span class="bdg" style="background:rgba(184,76,32,.12);color:#b84c20;border:1px solid rgba(184,76,32,.4);font-size:8px;white-space:nowrap;">● OPEN · NEEDS SO #</span></td>
+      <td>${vend}${g.length>1?` <span style="font-size:9px;color:var(--text3);">(${g.length} lots)</span>`:''}</td>
+      <td class="mn" style="font-weight:700;">${pieces}</td>
+      <td style="white-space:nowrap;">${canEdit()?`<button class="btn b-sm" style="background:rgba(184,130,10,.12);color:var(--gold);border:1px solid rgba(184,130,10,.4);font-weight:700;" onclick="addReceivingSO('${r0.id}')">✏ Add SO #</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="View / re-send the SO-request report" onclick="resendReceiving('${r0.id}')">✉ report</button>`:'—'}</td>
+    </tr>`;
+  }).join('');
+  const totalOpen=open.reduce((s,r)=>s+(parseInt(r.blockCount)||0),0);
+  return `<div class="sh" style="margin-top:8px;"><span>🚩 Open Receipts — Awaiting S.O. #</span><span class="bdg" style="background:rgba(184,76,32,.14);color:#b84c20;border:1px solid rgba(184,76,32,.35);">${keys.length} OPEN · ${totalOpen} blocks</span></div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">Blocks are already in inventory and usable — these just need an S.O. # from Katherine. Add it here to close the receipt (re-sends an UPDATED report).</div>
+    <div class="tw" style="margin-bottom:24px;"><table>
+      <thead><tr><th>Date Received</th><th>Open Status</th><th>Vendor / Source</th><th>Pieces</th><th>View / Edit Report</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
 }
 function rReceiving(el){
   _rcTempUrl=''; _rcInvoiceUrl=''; _recvQueue=[]; // fresh doc uploads + lot queue each render
@@ -3938,6 +3969,7 @@ function rReceiving(el){
     ${canEdit()?`<div class="card"><div class="card-t">Log Received Blocks</div>
       <div class="fg2">
         <div class="fgl"><label>Date Received</label><input class="fi" type="date" id="rc-date" value="${tday()}"></div>
+        <div class="fgl"><label>S.O. # <span style="color:var(--rust);font-size:9px;">blank = OPEN receipt · requests SO from Katherine</span></label><input class="fi" id="rc-so" placeholder="from the slip (or leave blank)"></div>
         <div class="fgl"><label>Source</label><select class="fs" id="rc-source" onchange="onRecSourceChange()"><option value="vendor">Outside Vendor</option><option value="internal">Internal Production</option></select></div>
         <div class="fgl"><label>Producer / Vendor</label><input class="fi" id="rc-vendor" placeholder="Vendor or in-house production co." list="rc-vendl" autocomplete="off"><datalist id="rc-vendl"><option value="In-house Production">${allSuppliers().map(s=>`<option value="${s.replace(/"/g,'&quot;')}">`).join('')}</datalist></div>
         <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:9px;">type or pick</span></label><input class="fi" id="rc-variety" list="rc-variety-dl" placeholder="Type or pick variety…" autocomplete="off"><datalist id="rc-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
@@ -3977,6 +4009,7 @@ function rReceiving(el){
       <div class="toast" id="rc-t">✓ Blocks received</div>
     </div>`:''}
     ${buildIncomingShipments()}
+    ${buildOpenReceipts()}
     <div class="sh" style="margin-top:24px;"><span>On Hand · Awaiting Placement</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:${totalOnHand>0?'var(--fern)':'var(--text3)'};">${totalOnHand} BLOCKS</span></div>
     <div class="tw" style="margin-bottom:24px;"><table>
       <thead><tr><th>Received</th><th>Source</th><th>Variety</th><th>Lot #</th><th>Received</th><th>Placed</th><th>Remaining</th></tr></thead>
@@ -4729,8 +4762,10 @@ function notifyReport(kind, subject, data){
     if(data.signedSlipUrl){ L.push('🖊 Signed client copy: '+data.signedSlipUrl); }
     else { L.push('🖊 Signed client copy: PENDING — awaiting signed slip upload'); }
   } else if(kind==='receiving'){
+    if(!data.soNum){ L.push('*** S.O. # REQUEST — the blocks below were RECEIVED and logged into inventory, but this receipt has NO S.O. number. Please assign an S.O. # and reply so we can close it. ***'); L.push(''); }
     L.push('Date:    '+(_mm_dd_yy(data.date)||data.date||''));
-    L.push('Source:  '+((data.source==='internal'?'Internal':'Vendor')+(data.vendor?' — '+data.vendor:'')));
+    L.push('S.O. #:  '+(data.soNum||'⚠ NONE — REQUESTED'));
+    L.push('Source:  '+((data.source==='internal'?'Internal (in-house)':'Vendor')+(data.vendor?' — '+data.vendor:'')));
     const rrows=(data.rows&&data.rows.length)?data.rows:[{variety:data.variety,lot:(data.lot||data.lotNumber),blockCount:data.blockCount,blockWeightLb:data.blockWeightLb}];
     if(rrows.length>1){
       L.push(''); L.push('BLOCKS RECEIVED ('+rrows.length+' lots)');
@@ -5184,24 +5219,47 @@ async function snapReceiving(input){
     _lastSnap={kind:'receiving',url:r.imageUrl,name:'receiving-sheet.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
     const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null&&v!=='') e.value=v; };
     const iso=_toISO(d.date); if(iso) set('rc-date',iso);
+    set('rc-so',d.soNum);
     if(d.source){ const s=document.getElementById('rc-source'); if(s){ s.value=(d.source==='internal'?'internal':'vendor'); if(typeof onRecSourceChange==='function') onRecSourceChange(); } }
-    set('rc-vendor',d.vendor); set('rc-variety',d.variety); set('rc-lot',d.lot);
-    if(d.blockCount) set('rc-bc',d.blockCount); if(d.blockWeightLb) set('rc-bw',d.blockWeightLb);
+    set('rc-vendor',d.vendor);
     if(d.notes) set('rc-notes',d.notes);
-    show(`✓ Read ${d.variety||'?'} / Lot ${d.lot||'?'} (${d.blockCount||'?'} blocks) — <b>verify below</b>, then Log.`);
+    // multi-lot: build rows (support new rows[] AND legacy single-lot shape)
+    const rows=(Array.isArray(d.rows)&&d.rows.length)?d.rows:[{variety:d.variety,lot:d.lot,blockCount:d.blockCount,blockWeightLb:d.blockWeightLb}];
+    const clean=rows.filter(x=>x&&(x.variety||x.lot||x.blockCount));
+    _recvQueue=[];
+    const first=clean[0]||{};
+    set('rc-variety',first.variety); set('rc-lot',first.lot);
+    if(first.blockCount) set('rc-bc',first.blockCount); if(first.blockWeightLb) set('rc-bw',first.blockWeightLb);
+    clean.slice(1).forEach(x=>_recvQueue.push({ variety:(x.variety||'').trim(), lotNumber:(x.lot||'').trim(), blockCount:parseInt(x.blockCount)||0, blockWeightLb:parseFloat(x.blockWeightLb)||0 }));
+    if(typeof renderRecvQueue==='function') renderRecvQueue();
+    const tb=clean.reduce((s,x)=>s+(parseInt(x.blockCount)||0),0);
+    show(`✓ Read <b>${clean.length} lot${clean.length!==1?'s':''}</b> · ${tb} blocks${d.soNum?' · SO '+d.soNum:' · <span style="color:#b84c20;font-weight:700;">NO SO — will open as a receipt</span>'} — <b>verify below</b>, then Log.`);
   }catch(e){ show('⚠ '+e.message); }
   finally{ input.value=''; }
 }
 // all lots from the same delivery (same date + vendor + PO) — a multi-lot receiving is one report
 function _recvSiblings(r){ return (DB.receivings||[]).filter(x=>x.date===r.date && (x.vendor||'')===(r.vendor||'') && (x.poNum||'')===(r.poNum||'') && (x.source||'')===(r.source||'')); }
 function resendReceiving(id, updated){ const r=DB.receivings.find(x=>x.id===id); if(!r) return;
-  const sibs=_recvSiblings(r);
-  let subj=notifySubject('receiving',{vendor:r.vendor,source:r.source,lot:(sibs.length===1?r.lotNumber:''),date:r.date});
+  const sibs=_recvSiblings(r); const so=r.soNum||'';
+  let subj = so
+    ? notifySubject('receiving',{vendor:r.vendor,source:r.source,lot:(sibs.length===1?r.lotNumber:''),date:r.date})
+    : `SO # REQUEST — ${r.source==='internal'?'IN HOUSE':((r.vendor||'VENDOR').toUpperCase())} BLOCK RECEIPT — ${_mmddyy(r.date)}`;
   if(updated) subj='UPDATED: '+subj;
-  openEmailDispatch('receiving', subj, {label:(updated?'UPDATED — ':'')+'Receiving '+(r.vendor||r.source||''), resend:true,
+  openEmailDispatch('receiving', subj, {label:(updated?'UPDATED — ':'')+(so?'Receiving ':'SO REQUEST — ')+(r.vendor||r.source||''), resend:true,
     mark:{col:'receivings',ids:sibs.map(x=>x.id)},
-    data:{date:r.date,vendor:r.vendor,source:r.source,poNum:r.poNum,temperature:r.temperature,tempLogUrl:r.tempLogUrl,invoiceUrl:r.invoiceUrl,imageUrl:r.scanUrl||'',
+    data:{date:r.date,vendor:r.vendor,source:r.source,soNum:so,poNum:r.poNum,temperature:r.temperature,tempLogUrl:r.tempLogUrl,invoiceUrl:r.invoiceUrl,imageUrl:r.scanUrl||'',
       rows:sibs.map(x=>({variety:x.variety,lot:x.lotNumber,blockCount:x.blockCount,blockWeightLb:x.blockWeightLb}))}}); }
+// assign an S.O. # to a whole delivery after Katherine replies → closes the open receipt + re-sends an UPDATED report
+async function addReceivingSO(id){
+  const r=DB.receivings.find(x=>x.id===id); if(!r) return;
+  const so=(prompt('Enter the S.O. # for this receipt (from Katherine):', r.soNum||'')||'').trim();
+  if(!so) return;
+  const sibs=_recvSiblings(r);
+  for(const s of sibs){ s.soNum=so; s.receiptStatus='closed'; try{ await FS.update('receivings',s.id,{soNum:so,receiptStatus:'closed'}); }catch(e){ console.warn(e); } }
+  logAudit('blocks_received',`S.O. # ${so} assigned to receipt — ${r.vendor||r.source} ${_mmddyy(r.date)} (${sibs.length} lot(s)) — closed`);
+  renderC();
+  resendReceiving(id, true);
+}
 // attach an invoice/packing slip AFTER the fact, then re-send an UPDATED report — invoice applies to the whole delivery
 function rcAddInvoice(id){
   const r=DB.receivings.find(x=>x.id===id); if(!r) return;
