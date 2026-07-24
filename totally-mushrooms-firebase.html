@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #41</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #42</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2104,6 +2104,7 @@ function rToday(el){
     <div class="inv-snap">${snapHTML}</div>
     ${(S.role==='admin'||S.role==='staff')?buildPackDaySection(DB.packSessions.filter(ps=>ps.date===tday()&&ps.status==='open'),DB.harvests.map(h=>({...h,onHand:packOnHand(h)})).filter(h=>h.onHand>0.05).sort((a,b)=>a.variety.localeCompare(b.variety)||b.date.localeCompare(a.date)),snapCards):''}
     ${(S.role==='admin'||S.role==='staff')?buildPackOrderCard():''}
+    ${(S.role==='admin'||S.role==='staff')?buildPackedOrdersList():''}
     <div class="sh"><span>Confirmed — Ready to Pack Today</span><span>${dk.toUpperCase()}</span></div>
     <div class="tw" style="margin-bottom:24px;">
       <table><thead><tr><th>Client</th><th>Items (codes)</th><th>Notes</th><th>Action</th></tr></thead>
@@ -2801,7 +2802,7 @@ function buildPackOrderCard(){
     <div class="card" style="margin-bottom:24px;border:2px solid var(--gold);">
       <div class="card-t">📦 Pack → Log Order (from SO#)</div>
       <div style="background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.3);border-radius:6px;padding:12px 14px;margin-bottom:14px;">
-        <div style="font-size:12px;font-weight:600;color:var(--fern);margin-bottom:8px;">📸 Snap / Upload the packing slip — AI fills this whole form</div>
+        <div style="font-size:12px;font-weight:600;color:var(--fern);margin-bottom:8px;">📸 Snap / Upload the <b>TM copy</b> — the packing slip with all lot data — AI fills this whole form</div>
         <label class="btn b-g" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
           <input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapSlip(this)">
         </label>
@@ -2812,6 +2813,7 @@ function buildPackOrderCard(){
         <div class="fgl"><label>S.O. # <span style="color:var(--text3);font-size:9px;">optional — add later</span></label><input class="fi" id="po-so" placeholder="from Accounting's slip (or blank)"></div>
         <div class="fgl"><label>Client <span style="color:var(--rust);">*</span></label><input class="fi" id="po-client" list="po-clientl" placeholder="Type or pick client…" autocomplete="off"><datalist id="po-clientl">${clientNames.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('')}</datalist></div>
         <div class="fgl"><label>Delivery Day</label><select class="fs" id="po-day">${days.map(d=>`<option value="${d}"${d===todayWd?' selected':''}>${d}</option>`).join('')}</select></div>
+        <div class="fgl"><label>Date Delivered</label><input class="fi" type="date" id="po-delivered" value="${tday()}"></div>
       </div>
       <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:14px 0 8px;">CASES / UNITS PACKED (by code)</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px;">${prodInputs}</div>
@@ -2869,10 +2871,12 @@ async function savePackOrder(){
   const usedHarvests=[...new Set(checked.map(c=>c.getAttribute('data-hid')).filter(Boolean))];
   const snapUrl=(_lastSnap&&_lastSnap.kind==='slip')?_lastSnap.url:'';
   const slipShip=(_lastSnap&&_lastSnap.kind==='slip')?_lastSnap.shipDate:'';
+  const deliveredAt=(document.getElementById('po-delivered')?.value||tday());
   const o={ clientId:cr?.id||null, client, day, status:'packed', receivedAt:new Date().toISOString(), packedAt:new Date().toISOString(),
     ...qtys, notes:(document.getElementById('po-notes')?.value||'').trim(),
     orderRef:nextHQOrderNum(), soNum:so, custom:false, isStanding:false, week:wkStart(),
-    usedHarvests, usedLots, scanUrl:snapUrl, source:'pack' };
+    usedHarvests, usedLots, scanUrl:snapUrl, tmSlipUrl:snapUrl, deliveredAt,
+    deliveryStatus:'open', signedSlipUrl:'', source:'pack' };
   // ── inventory deduction (mix rule: qty×unitLb split across checked varieties; session lots skipped) ──
   const checkedObjs=checked.map(c=>{ const hid=c.getAttribute('data-hid'); const h=DB.harvests.find(x=>x.id===hid); return h?{harvestId:hid,lotNumber:h.lotNumber,variety:h.variety,onHand:packOnHand(h)}:null; }).filter(Boolean);
   const ded=computeOrderDeductions(qtys, checkedObjs);
@@ -2898,11 +2902,66 @@ async function savePackOrder(){
   const snapImg=(_lastSnap&&_lastSnap.kind==='slip'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
   clrPackOrder(); renderC();
   openEmailDispatch('slip', notifySubject('slip',{client,soNum:so,shipDate:shipIso}), {label:'Packing Slip '+(so?'SO '+so:client),
-    data:{client,soNum:so,poNum:(o.notes.match(/PO\s*(\S+)/i)||[])[1]||'',shipDate:shipIso,items,lots:usedLots,imageUrl:snapUrl}, image:snapImg});
+    data:{client,soNum:so,poNum:(o.notes.match(/PO\s*(\S+)/i)||[])[1]||'',shipDate:shipIso,items,lots:usedLots,imageUrl:snapUrl,tmSlipUrl:snapUrl,signedSlipUrl:''}, image:snapImg});
 }
 function clrPackOrder(){
   ['po-so','po-client','po-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   ALL_PRODS.forEach(p=>{const el=document.getElementById('po-'+p.dataKey);if(el)el.value='';});
+}
+// ── PACKED ORDERS LOG — delivery + signed-slip tracking, collapsible month → week → day ──
+function orderCases(o){ return ALL_PRODS.reduce((s,p)=>s+(parseInt(o[p.dataKey])||0),0); }
+function orderLbs(o){ return ALL_PRODS.reduce((s,p)=>s+((parseInt(o[p.dataKey])||0)*(p.unitLb||3)),0); }
+function orderSlipOpen(o){ return o.deliveryStatus!=='closed'; }
+function buildPackedOrdersList(){
+  const packed=(DB.orders||[]).filter(o=>(o.source==='pack'||o.deliveryStatus)&&!o.isStanding);
+  if(!packed.length) return '';
+  const openCount=packed.filter(orderSlipOpen).length;
+  const money=n=>'$'+(Math.round((n||0)*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const isoOf=o=>((o.deliveredAt||o.packedAt||tday())+'').slice(0,10);
+  const wkOf=iso=>{ const d=new Date(iso+'T00:00:00'); const off=(d.getDay()+6)%7; d.setDate(d.getDate()-off); return d.toISOString().slice(0,10); };
+  const monLabel=mk=>{ const p=mk.split('-'); return new Date(+p[0],+p[1]-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'}); };
+  const dow=iso=>new Date(iso+'T00:00:00').toLocaleDateString('en-US',{weekday:'short'});
+  const sum=arr=>arr.reduce((a,o)=>{a.cases+=orderCases(o);a.lbs+=orderLbs(o);a.rev+=eRev(o);a.open+=orderSlipOpen(o)?1:0;a.n++;return a;},{cases:0,lbs:0,rev:0,open:0,n:0});
+  const byMonth={};
+  packed.forEach(o=>{ const iso=isoOf(o); const mk=iso.slice(0,7), wk=wkOf(iso), dk=iso;
+    const M=byMonth[mk]=byMonth[mk]||{weeks:{}}; const W=M.weeks[wk]=M.weeks[wk]||{days:{}}; (W.days[dk]=W.days[dk]||[]).push(o); });
+  const openBadge=o=>orderSlipOpen(o)
+    ? `<span class="bdg" style="background:rgba(184,76,32,.12);color:#b84c20;border:1px solid rgba(184,76,32,.38);font-size:8px;white-space:nowrap;">● OPEN · NEEDS SIGNED SLIP</span>`
+    : `<span class="bdg" style="background:rgba(58,96,48,.13);color:var(--fern);border:1px solid rgba(58,96,48,.3);font-size:8px;white-space:nowrap;">✓ CLOSED · SIGNED</span>`;
+  const rowFor=o=>{ const open=orderSlipOpen(o); return `<tr${open?' style="background:rgba(184,76,32,.035);"':''}>
+    <td class="mn">${fDate(isoOf(o))}</td>
+    <td>${o.client||'—'}${o.soNum?` <span style="font-size:9px;color:var(--text3);font-family:'Syne Mono',monospace;">SO ${o.soNum}</span>`:''}</td>
+    <td>${openBadge(o)}</td>
+    <td style="white-space:nowrap;">${canEdit()?(open
+      ? `<button class="btn b-sm" style="background:rgba(184,76,32,.12);color:#b84c20;border:1px solid rgba(184,76,32,.45);font-weight:700;" onclick="uploadSignedSlip('${o.id}')">🖊 Upload signed slip</button>`
+      : `${o.signedSlipUrl?`<a class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);text-decoration:none;" href="${o.signedSlipUrl}" target="_blank" rel="noopener">view signed</a> `:''}<button class="btn b-sm" style="background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.25);" title="Replace signed slip" onclick="uploadSignedSlip('${o.id}')">↻</button>`):'—'}
+      ${o.tmSlipUrl?`<a class="btn b-sm" style="background:var(--paper);color:var(--text3);border:1px solid var(--border);text-decoration:none;" href="${o.tmSlipUrl}" target="_blank" rel="noopener" title="TM copy — lot data">📎 TM</a>`:''}
+      ${canEdit()?`<button class="btn b-sm" style="background:rgba(58,96,48,.08);color:var(--fern);border:1px solid rgba(58,96,48,.2);" title="Re-send report email" onclick="resendSlip('${o.id}')">✉</button>`:''}</td>
+    <td class="mn">${orderCases(o)}</td>
+    <td class="mn">${orderLbs(o).toFixed(1)}</td>
+    <td class="mn" style="font-weight:700;color:var(--fern);">${money(eRev(o))}</td>
+  </tr>`; };
+  const smMonth='cursor:pointer;padding:10px 13px;background:var(--paper);border:1px solid var(--border);border-radius:6px;margin-top:8px;font-weight:700;font-size:13px;list-style:none;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center;';
+  const smWeek='cursor:pointer;padding:6px 12px;margin:6px 0 2px 12px;font-weight:600;font-size:12px;color:var(--text2);list-style:none;border-left:2px solid var(--border);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;';
+  const smDay='cursor:pointer;padding:5px 12px;margin:2px 0 2px 22px;font-size:11px;color:var(--text3);list-style:none;letter-spacing:.02em;';
+  const months=Object.keys(byMonth).sort().reverse();
+  const body=months.map((mk,mi)=>{ const M=byMonth[mk]; const weeks=Object.keys(M.weeks).sort().reverse();
+    const allM=weeks.reduce((acc,wk)=>acc.concat(Object.keys(M.weeks[wk].days).reduce((a2,dk)=>a2.concat(M.weeks[wk].days[dk]),[])),[]);
+    const ms=sum(allM);
+    const weeksHtml=weeks.map(wk=>{ const W=M.weeks[wk]; const days=Object.keys(W.days).sort().reverse();
+      const allW=days.reduce((a,dk)=>a.concat(W.days[dk]),[]); const ws=sum(allW);
+      const daysHtml=days.map(dk=>{ const list=W.days[dk].slice().sort((a,b)=>(b.packedAt||'').localeCompare(a.packedAt||'')); const ds=sum(list);
+        return `<details${ds.open>0?' open':''}><summary style="${smDay}">▸ ${fDate(dk)} · ${dow(dk)} — ${ds.n} order${ds.n!==1?'s':''}${ds.open?` · <span style="color:#b84c20;font-weight:700;">${ds.open} open</span>`:''} · ${ds.cases} cases · ${ds.lbs.toFixed(1)} lb · ${money(ds.rev)}</summary>
+          <div class="tw" style="margin:4px 0 8px 22px;"><table>
+            <thead><tr><th>Delivered</th><th>Customer</th><th>Order Status</th><th>Client / Signed Slip</th><th>Cases</th><th>Lbs</th><th>Total $</th></tr></thead>
+            <tbody>${list.map(rowFor).join('')}</tbody></table></div></details>`;
+      }).join('');
+      return `<details${ws.open>0?' open':''}><summary style="${smWeek}"><span>Week of ${fDate(wk)} — ${ws.n} order${ws.n!==1?'s':''}${ws.open?` · <span style="color:#b84c20;font-weight:700;">${ws.open} open</span>`:' · all closed'}</span><span style="font-family:'Syne Mono',monospace;">${ws.cases} cs · ${ws.lbs.toFixed(0)} lb · ${money(ws.rev)}</span></summary>${daysHtml}</details>`;
+    }).join('');
+    return `<details${mi===0?' open':''}><summary style="${smMonth}"><span>${monLabel(mk)} — ${ms.n} order${ms.n!==1?'s':''}${ms.open?` · <span style="color:#b84c20;">${ms.open} awaiting signed slip</span>`:' · all closed'}</span><span style="font-family:'Syne Mono',monospace;font-size:11px;">${ms.cases} cases · ${ms.lbs.toFixed(0)} lb · ${money(ms.rev)}</span></summary>${weeksHtml}</details>`;
+  }).join('');
+  return `<div class="sh" style="margin-top:8px;"><span>📋 Packed Orders — Delivery &amp; Signed-Slip Log</span>${openCount?`<span class="bdg" style="background:rgba(184,76,32,.14);color:#b84c20;border:1px solid rgba(184,76,32,.35);">${openCount} AWAITING SIGNED SLIP</span>`:`<span class="bdg bc">${packed.length} orders</span>`}</div>
+    <div style="margin-bottom:24px;">${body}</div>`;
 }
 
 function appOrd(id){ const o=DB.orders.find(x=>x.id===id); if(!o) return; o.status='confirmed'; FS.update('orders',id,{status:'confirmed'}); const c=DB.clients.find(x=>x.id===o.clientId); notify(o.clientId,`Hi ${c?.contact||'there'}, your ${o.day} order is confirmed! ${oSum(o)}.`,'approval'); logAudit('order_confirmed',`Confirmed order for ${o.client} — ${o.day}`); renderC() }
@@ -4665,6 +4724,10 @@ function notifyReport(kind, subject, data){
     L.push(''); L.push('PACKED');
     (data.items||[]).forEach(it=>L.push(` • ${it.code||''} ${it.name||''} × ${it.qty}`));
     if((data.lots||[]).length){ L.push(''); L.push('LOTS TIED FOR TRACEABILITY'); L.push(' • '+data.lots.join(', ')); }
+    if(data.tmSlipUrl||data.signedSlipUrl){ L.push(''); }
+    if(data.tmSlipUrl){ L.push('📎 TM copy (lot data): '+data.tmSlipUrl); }
+    if(data.signedSlipUrl){ L.push('🖊 Signed client copy: '+data.signedSlipUrl); }
+    else { L.push('🖊 Signed client copy: PENDING — awaiting signed slip upload'); }
   } else if(kind==='receiving'){
     L.push('Date:    '+(_mm_dd_yy(data.date)||data.date||''));
     L.push('Source:  '+((data.source==='internal'?'Internal':'Vendor')+(data.vendor?' — '+data.vendor:'')));
@@ -5151,11 +5214,27 @@ function rcAddInvoice(id){
     catch(e){ alert('Invoice upload failed: '+(e.message||e)); } };
   inp.click();
 }
-function resendSlip(id){ const o=DB.orders.find(x=>x.id===id); if(!o) return;
+function resendSlip(id, updated){ const o=DB.orders.find(x=>x.id===id); if(!o) return;
   const items=ALL_PRODS.filter(p=>o[p.dataKey]>0).map(p=>({code:p.code,name:p.name,qty:o[p.dataKey]}));
-  const shipIso=_toISO((o.packedAt||'').slice(0,10))||(o.packedAt||'').slice(0,10);
-  openEmailDispatch('slip', notifySubject('slip',{client:o.client,soNum:o.soNum,shipDate:shipIso}), {label:'Packing Slip '+(o.soNum?'SO '+o.soNum:o.client), resend:true,
-    data:{client:o.client,soNum:o.soNum||'',poNum:(String(o.notes||'').match(/PO\s*(\S+)/i)||[])[1]||'',shipDate:shipIso,items,lots:o.usedLots||[],imageUrl:o.scanUrl||''}}); }
+  const shipIso=_toISO((o.deliveredAt||o.packedAt||'').slice(0,10))||(o.deliveredAt||o.packedAt||'').slice(0,10);
+  let subj=notifySubject('slip',{client:o.client,soNum:o.soNum,shipDate:shipIso});
+  if(updated) subj='UPDATED: '+subj;
+  openEmailDispatch('slip', subj, {label:(updated?'UPDATED — ':'')+'Packing Slip '+(o.soNum?'SO '+o.soNum:o.client), resend:true,
+    data:{client:o.client,soNum:o.soNum||'',poNum:(String(o.notes||'').match(/PO\s*(\S+)/i)||[])[1]||'',shipDate:shipIso,items,lots:o.usedLots||[],imageUrl:o.scanUrl||'',tmSlipUrl:o.tmSlipUrl||o.scanUrl||'',signedSlipUrl:o.signedSlipUrl||''}}); }
+// upload the SIGNED client copy after delivery → closes the order (green) + re-sends an UPDATED report with the signed-slip link
+function uploadSignedSlip(id){
+  const o=DB.orders.find(x=>x.id===id); if(!o) return;
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*,application/pdf,.pdf';
+  inp.onchange=async()=>{ const file=inp.files&&inp.files[0]; if(!file) return;
+    try{ const url=await storePhoto(file,'signed-slip');
+      o.signedSlipUrl=url; o.deliveryStatus='closed'; o.signedAt=new Date().toISOString();
+      await FS.update('orders',id,{signedSlipUrl:url,deliveryStatus:'closed',signedAt:o.signedAt});
+      logAudit('order_status',`Signed client copy uploaded for ${o.client}${o.soNum?' SO#'+o.soNum:''} — order closed`);
+      renderC();
+      resendSlip(id,true); }
+    catch(e){ alert('Signed slip upload failed: '+(e.message||e)); } };
+  inp.click();
+}
 
 // ── PACKING SLIP snap → parse → prefill the Pack→Order form ──
 async function snapSlip(input){
