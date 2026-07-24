@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #43</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #44</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -3923,7 +3923,7 @@ function buildOpenReceipts(){
       <td><span class="bdg" style="background:rgba(184,76,32,.12);color:#b84c20;border:1px solid rgba(184,76,32,.4);font-size:8px;white-space:nowrap;">● OPEN · NEEDS SO #</span></td>
       <td>${vend}${g.length>1?` <span style="font-size:9px;color:var(--text3);">(${g.length} lots)</span>`:''}</td>
       <td class="mn" style="font-weight:700;">${pieces}</td>
-      <td style="white-space:nowrap;">${canEdit()?`<button class="btn b-sm" style="background:rgba(184,130,10,.12);color:var(--gold);border:1px solid rgba(184,130,10,.4);font-weight:700;" onclick="addReceivingSO('${r0.id}')">✏ Add SO #</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="View / re-send the SO-request report" onclick="resendReceiving('${r0.id}')">✉ report</button>`:'—'}</td>
+      <td style="white-space:nowrap;">${canEdit()?`<button class="btn b-sm" style="background:rgba(184,130,10,.12);color:var(--gold);border:1px solid rgba(184,130,10,.4);font-weight:700;" onclick="addReceivingSO('${r0.id}')">✏ Add SO #</button> <button class="btn b-sm" style="background:rgba(184,130,10,.08);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit the whole receiving session — lots, temp photo, signed copy" onclick="openEditReceivingSession('${r0.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.25);" title="${r0.signedSlipUrl?'Replace signed slip':'Upload signed packing slip'}" onclick="uploadReceivingSignedSlip('${r0.id}')">🖊${r0.signedSlipUrl?'':' +'}</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="View / re-send the SO-request report" onclick="resendReceiving('${r0.id}')">✉ report</button>`:'—'}</td>
     </tr>`;
   }).join('');
   const totalOpen=open.reduce((s,r)=>s+(parseInt(r.blockCount)||0),0);
@@ -3950,7 +3950,7 @@ function rReceiving(el){
     <td class="mn">${receivingOnHand(r)}</td><td class="mn" style="font-size:10px;color:var(--text3);">${r.poNum||''}${r.cost?` · $${r.cost}`:''}</td>
     <td style="font-size:11px;color:var(--text3);">${r.receivedBy||''}</td>
     <td>${r.notifiedAt?`<span class="bdg" style="background:rgba(58,96,48,.13);color:var(--fern);border:1px solid rgba(58,96,48,.3);font-size:8px;white-space:nowrap;" title="Report emailed ${fDate((r.notifiedAt||'').slice(0,10))}">✓ SENT</span>`:`<span class="bdg" style="background:rgba(184,76,32,.1);color:#b84c20;border:1px solid rgba(184,76,32,.3);font-size:8px;white-space:nowrap;" title="No report emailed yet — use ✉ to send">✗ NOT SENT</span>`}</td>
-    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditReceiving('${r.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendReceiving('${r.id}')">✉</button> <button class="btn b-sm" style="background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.25);" title="${r.invoiceUrl?'Replace invoice + re-send UPDATED report':'Attach invoice/packing slip + re-send UPDATED report'}" onclick="rcAddInvoice('${r.id}')">🧾${r.invoiceUrl?'':' +'}</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
+    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit the whole receiving session — all lots, temp photo, invoice &amp; signed copy" onclick="openEditReceivingSession('${r.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendReceiving('${r.id}')">✉</button> ${r.signedSlipUrl?`<a class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);text-decoration:none;" href="${r.signedSlipUrl}" target="_blank" rel="noopener">view signed</a> `:''}<button class="btn b-sm" style="background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.25);" title="${r.signedSlipUrl?'Replace signed packing slip + re-send UPDATED report':'Upload signed packing slip + re-send UPDATED report'}" onclick="uploadReceivingSignedSlip('${r.id}')">🖊${r.signedSlipUrl?'':' +'}</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
   </tr>`).join('') : `<tr><td colspan="${canEdit()?11:10}" class="empty">No receivings logged yet.</td></tr>`;
   el.innerHTML=`
     <div class="ph"><div class="ph-t">📥 Receiving</div><div class="ph-s">Blocks into Hydes Ferry · internal production or vendors → placed into fruiting</div></div>
@@ -4074,6 +4074,112 @@ async function saveReceivingEdit(id){
   logAudit('receiving_edited',`Edited receiving Lot ${upd.lotNumber} — ${upd.variety} (${bc} blocks)`);
   toast('er-t','✓ Receiving updated');
   setTimeout(()=>{ closeModal(); rReceiving(document.getElementById('main-views')); },800);
+}
+// ── EDIT THE WHOLE RECEIVING SESSION (all sibling lots + shared fields + temp/invoice/signed uploads) ──
+function openEditReceivingSession(id){
+  const r0=DB.receivings.find(x=>x.id===id); if(!r0) return;
+  const sibs=_recvSiblings(r0); const esc=attrEsc;
+  const perLot=sibs.map((s,i)=>`
+    <div class="plv-card" style="border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:10px;background:var(--paper);" data-rid="${s.id}">
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--fern);font-weight:700;margin-bottom:8px;">LOT ${i+1}${(s.placedCount||0)?` · ${s.placedCount} already placed`:''}</div>
+      <div class="fg2">
+        <div class="fgl"><label>Variety</label><input class="fi ers-variety" list="ers-vdl" value="${esc(s.variety)}"></div>
+        <div class="fgl"><label>Lot #</label><input class="fi ers-lot" value="${esc(s.lotNumber)}"></div>
+        <div class="fgl"><label># Blocks</label><input class="fi ers-bc" type="number" min="${s.placedCount||0}" value="${s.blockCount||0}"></div>
+        <div class="fgl"><label>Block Wt (lb)</label><input class="fi ers-bw" type="number" min="0" step="0.1" value="${s.blockWeightLb||''}"></div>
+      </div>
+    </div>`).join('');
+  const docBtn=(label,which,url)=>`<div>
+      <label class="btn b-g b-sm" style="cursor:pointer;display:inline-block;">${label}<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="_editRecvUploadDoc('${id}','${which}',this)"></label>
+      <div id="ers-${which}-status" style="margin-top:5px;font-size:11px;color:${url?'var(--fern)':'var(--text3)'};">${url?`✓ on file — <a href="${url}" target="_blank" rel="noopener">view</a>`:'none yet'}</div>
+    </div>`;
+  document.getElementById('em-title').textContent=`Edit Receiving — ${r0.vendor||r0.source||''} · ${_mmddyy(r0.date)} (${sibs.length} lot${sibs.length!==1?'s':''})`;
+  document.getElementById('em-body').innerHTML=`
+    <datalist id="ers-vdl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">Editing the whole delivery — the shared fields below apply to all ${sibs.length} lot(s). Add the temperature photo and signed packing slip at the bottom.</div>
+    <div class="fg2">
+      <div class="fgl"><label>Date Received</label><input class="fi" type="date" id="ers-date" value="${esc(r0.date)}"></div>
+      <div class="fgl"><label>S.O. # <span style="color:var(--rust);font-size:9px;">blank = stays OPEN</span></label><input class="fi" id="ers-so" value="${esc(r0.soNum)}"></div>
+      <div class="fgl"><label>Source</label><select class="fs" id="ers-source"><option value="vendor" ${r0.source!=='internal'?'selected':''}>Outside Vendor</option><option value="internal" ${r0.source==='internal'?'selected':''}>Internal Production</option></select></div>
+      <div class="fgl"><label>Vendor / Source</label><input class="fi" id="ers-vendor" value="${esc(r0.vendor)}"></div>
+    </div>
+    <div class="fg2">
+      <div class="fgl"><label>Received By</label><input class="fi" id="ers-by" value="${esc(r0.receivedBy)}"></div>
+      <div class="fgl"><label>PO #</label><input class="fi" id="ers-po" value="${esc(r0.poNum)}"></div>
+      <div class="fgl"><label>Cost $</label><input class="fi" type="number" min="0" step="0.01" id="ers-cost" value="${r0.cost!=null?r0.cost:''}"></div>
+      <div class="fgl"><label>Temperature</label><input class="fi" id="ers-temp" value="${esc(r0.temperature)}"></div>
+    </div>
+    <div class="fgl" style="margin:8px 0;"><label>Notes</label><textarea class="fta" id="ers-notes">${r0.notes||''}</textarea></div>
+    <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:10px 0 6px;">LOTS IN THIS DELIVERY</div>
+    ${perLot}
+    <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:12px 0 8px;">ATTACHMENTS — apply to the whole delivery</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;">
+      ${docBtn('🌡 Temperature Log','temp',r0.tempLogUrl)}
+      ${docBtn('🧾 Invoice / Packing Slip','invoice',r0.invoiceUrl)}
+      ${docBtn('🖊 Signed Packing Slip','signed',r0.signedSlipUrl)}
+    </div>
+    <div class="form-acts" style="margin-top:14px;">
+      <button class="btn b-m b-lg" onclick="saveReceivingSession('${id}')">Save Changes</button>
+      <button class="btn b-g" onclick="resendReceiving('${id}',true)">✉ Save first, then re-send UPDATED</button>
+      <button class="btn b-g" onclick="closeModal()">Close</button>
+    </div>
+    <div class="toast" id="ers-t">✓ Saved</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+// upload temp / invoice / signed inside the session editor → applies to every lot in the delivery
+async function _editRecvUploadDoc(id, which, input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const r0=DB.receivings.find(x=>x.id===id); if(!r0){ input.value=''; return; }
+  const st=document.getElementById('ers-'+which+'-status'); if(st){ st.innerHTML='⏳ uploading…'; st.style.color='var(--text3)'; }
+  const field=which==='temp'?'tempLogUrl':(which==='invoice'?'invoiceUrl':'signedSlipUrl');
+  try{
+    const url=await storePhoto(file,'receiving-'+which);
+    for(const s of _recvSiblings(r0)){ s[field]=url; await FS.update('receivings',s.id,{[field]:url}); }
+    if(st){ st.innerHTML=`✓ on file — <a href="${url}" target="_blank" rel="noopener">view</a>`; st.style.color='var(--fern)'; }
+  }catch(e){ if(st){ st.innerHTML='⚠ '+(e.message||e); st.style.color='var(--rust)'; } }
+  finally{ input.value=''; }
+}
+async function saveReceivingSession(id){
+  const r0=DB.receivings.find(x=>x.id===id); if(!r0) return;
+  const val=i=>(document.getElementById(i)?.value||'').trim();
+  const cost=parseFloat(document.getElementById('ers-cost')?.value);
+  const shared={ date:val('ers-date')||r0.date, soNum:val('ers-so'),
+    source:document.getElementById('ers-source')?.value||'vendor', vendor:val('ers-vendor'),
+    receivedBy:val('ers-by'), poNum:val('ers-po'), cost:isNaN(cost)?null:cost,
+    temperature:val('ers-temp'), notes:val('ers-notes') };
+  shared.receiptStatus = shared.soNum ? 'closed' : 'open';
+  const cards=[...document.querySelectorAll('#em-body .plv-card[data-rid]')];
+  for(const card of cards){
+    const rid=card.getAttribute('data-rid'); const rec=DB.receivings.find(x=>x.id===rid); if(!rec) continue;
+    const variety=(card.querySelector('.ers-variety')?.value||'').trim();
+    const lot=(card.querySelector('.ers-lot')?.value||'').trim();
+    const bc=parseInt(card.querySelector('.ers-bc')?.value)||0;
+    const bw=parseFloat(card.querySelector('.ers-bw')?.value)||0;
+    const placed=rec.placedCount||0;
+    if(!variety||!lot){ alert('Every lot needs a variety and a lot #.'); return; }
+    if(bc<placed){ alert(`Lot ${lot}: can't set blocks below ${placed} already placed into fruiting.`); return; }
+    const one={variety}; if(!normalizeRowVarieties([one])) return; addVariety(one.variety);
+    const upd={...shared, variety:one.variety, lotNumber:lot, blockCount:bc, blockWeightLb:bw, status:(placed>=bc)?'placed':'on-hand'};
+    Object.assign(rec,upd);
+    try{ await FS.update('receivings',rid,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  }
+  logAudit('receiving_edited',`Edited receiving session — ${shared.vendor||shared.source} ${_mmddyy(shared.date)} (${cards.length} lot(s))${shared.soNum?' · SO '+shared.soNum:' · OPEN'}`);
+  toast('ers-t','✓ Saved');
+  setTimeout(()=>{ closeModal(); rReceiving(document.getElementById('main-views')); },700);
+}
+// quick row action: upload the signed packing slip → applies to the whole delivery → re-sends UPDATED report
+function uploadReceivingSignedSlip(id){
+  const r=DB.receivings.find(x=>x.id===id); if(!r) return;
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*,application/pdf,.pdf';
+  inp.onchange=async()=>{ const file=inp.files&&inp.files[0]; if(!file) return;
+    try{ const url=await storePhoto(file,'receiving-signed');
+      const sibs=_recvSiblings(r);
+      for(const s of sibs){ s.signedSlipUrl=url; await FS.update('receivings',s.id,{signedSlipUrl:url}); }
+      logAudit('receiving_edited',`Signed packing slip uploaded — ${r.vendor||r.source} ${_mmddyy(r.date)} (${sibs.length} lot(s))`);
+      renderC();
+      resendReceiving(id,true); }
+    catch(e){ alert('Signed slip upload failed: '+(e.message||e)); } };
+  inp.click();
 }
 function delReceiving(id){
   const r=DB.receivings.find(x=>x.id===id); if(!r) return;
@@ -4781,6 +4887,7 @@ function notifyReport(kind, subject, data){
     if(data.poNum) L.push('PO #:    '+data.poNum);
     if(data.tempLogUrl){ L.push(''); L.push('🌡 Temperature log: '+data.tempLogUrl); }
     if(data.invoiceUrl){ L.push(''); L.push('🧾 Invoice / packing slip: '+data.invoiceUrl); }
+    if(data.signedSlipUrl){ L.push(''); L.push('🖊 Signed packing slip: '+data.signedSlipUrl); }
   } else if(kind==='spawn'){
     L.push('Lot Code:  '+(data.lotCode||''));
     L.push('Date:      '+(_mm_dd_yy(data.date)||data.date||''));
@@ -5247,7 +5354,7 @@ function resendReceiving(id, updated){ const r=DB.receivings.find(x=>x.id===id);
   if(updated) subj='UPDATED: '+subj;
   openEmailDispatch('receiving', subj, {label:(updated?'UPDATED — ':'')+(so?'Receiving ':'SO REQUEST — ')+(r.vendor||r.source||''), resend:true,
     mark:{col:'receivings',ids:sibs.map(x=>x.id)},
-    data:{date:r.date,vendor:r.vendor,source:r.source,soNum:so,poNum:r.poNum,temperature:r.temperature,tempLogUrl:r.tempLogUrl,invoiceUrl:r.invoiceUrl,imageUrl:r.scanUrl||'',
+    data:{date:r.date,vendor:r.vendor,source:r.source,soNum:so,poNum:r.poNum,temperature:r.temperature,tempLogUrl:r.tempLogUrl,invoiceUrl:r.invoiceUrl,signedSlipUrl:r.signedSlipUrl,imageUrl:r.scanUrl||'',
       rows:sibs.map(x=>({variety:x.variety,lot:x.lotNumber,blockCount:x.blockCount,blockWeightLb:x.blockWeightLb}))}}); }
 // assign an S.O. # to a whole delivery after Katherine replies → closes the open receipt + re-sends an UPDATED report
 async function addReceivingSO(id){
