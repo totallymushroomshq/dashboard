@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #44</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #45</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4355,7 +4355,7 @@ function rFruiting(el){
             <td>${canEdit()?`<div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button class="btn b-g b-sm" onclick="markFruitingHarvested('${f.id}')">Harvested ✓</button>
               <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button>
-              <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendFruiting('${f.id}')">✉</button>
+              <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send the whole fruiting SESSION report — every lot placed this date + container" onclick="resendFruiting('${f.id}')">✉ session</button>
               ${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}
             </div>`:'—'}</td>
           </tr>`;
@@ -4393,7 +4393,7 @@ function rFruiting(el){
           <td class="mn">${f.blockCount}</td>
           <td class="mn" style="color:var(--fern);">${((f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK)).toFixed(1)} lb</td>
           <td class="mn">${f.harvestedAt?fDate(f.harvestedAt):'—'}</td>
-          ${canEdit()?`<td><div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button><button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendFruiting('${f.id}')">✉</button>${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}</div></td>`:''}
+          ${canEdit()?`<td><div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button><button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send the whole fruiting SESSION report — every lot placed this date + container" onclick="resendFruiting('${f.id}')">✉ session</button>${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}</div></td>`:''}
         </tr>`).join('')}</tbody>
       </table>
     </div>`:''}
@@ -4536,13 +4536,14 @@ async function subFruiting(){
 }
 async function _doFruitingCommit(rows, crew){
   const snapUrl=(_lastSnap&&_lastSnap.kind==='fruiting')?_lastSnap.url:'';
+  const _frSession='frs-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); // one session id for this whole submit
   let n=0; const _frCreatedIds=[];
   for(const r of rows){
     let rec=null;
     if(r.receivingId){ rec=DB.receivings.find(x=>x.id===r.receivingId); if(rec && r.blockCount>receivingOnHand(rec)){ alert(`Skipped lot ${r.lotNumber}: only ${receivingOnHand(rec)} block(s) remain in its received batch.`); continue; } }
     if(r.variety) addVariety(r.variety);
     if(r.source==='supplier' && r.vendor) addSupplier(r.vendor); // remember the supplier
-    const fData={date:r.date,containerID:r.containerID,lotNumber:r.lotNumber,source:r.source,vendor:r.vendor,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,rateLbPerBlock:r.rateLbPerBlock,notes:r.notes,scanUrl:snapUrl,status:'fruiting',createdAt:new Date().toISOString()};
+    const fData={date:r.date,containerID:r.containerID,lotNumber:r.lotNumber,source:r.source,vendor:r.vendor,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,rateLbPerBlock:r.rateLbPerBlock,notes:r.notes,scanUrl:snapUrl,sessionId:_frSession,status:'fruiting',createdAt:new Date().toISOString()};
     if(r.lotNotInInventory){ fData.lotNotInInventory=true; fData.lotExplanation=r.lotExplanation||''; }
     if(r.receivingId) fData.receivingId=r.receivingId;
     const fId=await FS.add('fruitings',fData);
@@ -5263,10 +5264,18 @@ function emailMovesReport(){
   openEmailDispatch('relocation', notifySubject('relocation',{date:today}), {label:'Block Moves '+_mm_dd_yy(today),
     data:{date:today,origin,total,rows}});
 }
+// all lots placed in the same fruiting session (same submit) — by sessionId, or date+container for legacy records
+function _fruitingSiblings(f){
+  if(f.sessionId) return (DB.fruitings||[]).filter(x=>x.sessionId===f.sessionId);
+  return (DB.fruitings||[]).filter(x=>!x.sessionId && (x.date||'')===(f.date||'') && (x.containerID||'')===(f.containerID||''));
+}
+// re-send the WHOLE fruiting session's report (every lot placed that date/container), not a single lot
 function resendFruiting(id){ const f=DB.fruitings.find(x=>x.id===id); if(!f) return;
+  const sibs=_fruitingSiblings(f).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
   const facility=(getActiveContainers().find(c=>c.code===f.containerID)||{}).facility||'';
-  openEmailDispatch('fruiting', notifySubject('fruiting',{container:f.containerID,facility,date:f.date}), {label:'Fruiting '+(f.containerID||''), resend:true,
-    data:{prime:{container:f.containerID,date:f.date}, rows:[{lotNumber:f.lotNumber,variety:f.variety,blockCount:f.blockCount}], crew:[], imageUrl:f.scanUrl||''}}); }
+  openEmailDispatch('fruiting', notifySubject('fruiting',{container:f.containerID,facility,date:f.date}),
+    {label:'Fruiting '+(f.containerID||'')+' · '+_mmddyy(f.date)+(sibs.length>1?` (${sibs.length} lots)`:''), resend:true,
+    data:{prime:{container:f.containerID,date:f.date}, rows:sibs.map(x=>({lotNumber:x.lotNumber,variety:x.variety,blockCount:x.blockCount})), crew:[], imageUrl:f.scanUrl||''}}); }
 
 // ── LAB: SPAWN log snap → parse → prefill the Grain Spawn form ──
 async function snapSpawn(input){
