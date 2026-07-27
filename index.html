@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #45</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #46</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4332,36 +4332,55 @@ function rFruiting(el){
     <div class="toast" id="fr-t">✓ Fruiting block logged</div>
     </div>
 
-    <!-- ── ACTIVE BLOCKS TABLE ── -->
-    <div class="sh"><span>Active Fruiting Blocks</span>${active.length>0?`<span class="bdg bc">${active.length} active</span>`:''}</div>
-    <div class="tw" style="margin-bottom:24px;overflow-x:auto;">
-      <table>
-        <thead><tr>${thS('fruit-act','date','Date In')}${thS('fruit-act','daysIn','Days In')}${thS('fruit-act','containerID','Container')}${thS('fruit-act','lotNumber','Lot #')}${thS('fruit-act','vendor','Vendor')}${thS('fruit-act','variety','Variety')}${thS('fruit-act','blockCount','Blocks')}${thS('fruit-act','blockWeightLb','Blk Wt')}${thS('fruit-act','projLbs','Proj. Yield')}${thS('fruit-act','harvestMin','Harvest Window')}${thS('fruit-act','windowStatus','Status')}<th>Action</th></tr></thead>
-        <tbody>${fruitRows.length===0?'<tr><td colspan="12" class="empty">No active fruiting blocks — log one above</td></tr>':fruitRows.map(f=>{
-          const sc=f.windowStatus==='ready'?'var(--fern)':f.windowStatus==='overdue'?'var(--rust)':'var(--text3)';
-          const stLbl=f.windowStatus==='ready'?'\u2713 READY':f.windowStatus==='overdue'?'\u26a0 OVERDUE':'\u23f3 EARLY';
-          return `<tr>
-            <td class="mn">${fDate(f.date)}</td>
-            <td class="mn" style="font-weight:700;color:${sc};">${f.daysIn}d</td>
-            <td>${f.containerID}</td>
-            <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}</td>
-            <td style="font-size:11px;color:var(--text3);">${f.vendor}</td>
-            <td style="font-weight:500;">${f.variety}</td>
-            <td class="mn">${f.blockCount}</td>
-            <td class="mn">${f.blockWeightLb} lb</td>
-            <td class="mn" style="font-weight:700;color:var(--fern);">${f.projLbs.toFixed(1)} lb<div style="font-family:'Syne Mono',monospace;font-size:8px;font-weight:400;color:var(--text3);">${f.yieldN>0?`${f.projLow.toFixed(0)}–${f.projHigh.toFixed(0)} · n${f.yieldN}`:'est. (no history)'}</div></td>
-            <td style="font-size:11px;">${fmt(f.harvestMin)} – ${fmt(f.harvestMax)}</td>
-            <td><span style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;font-weight:700;color:${sc};">${stLbl}</span></td>
-            <td>${canEdit()?`<div style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button class="btn b-g b-sm" onclick="markFruitingHarvested('${f.id}')">Harvested ✓</button>
-              <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button>
-              <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send the whole fruiting SESSION report — every lot placed this date + container" onclick="resendFruiting('${f.id}')">✉ session</button>
-              ${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}
-            </div>`:'—'}</td>
-          </tr>`;
-        }).join('')}</tbody>
-      </table>
-    </div>
+    <!-- GROUPED BY FRUITING SESSION -->
+    <div class="sh"><span>Active Fruiting Blocks — by Session</span>${active.length>0?`<span class="bdg bc">${active.length} active</span>`:''}</div>
+    <div style="margin-bottom:24px;">${(()=>{
+      if(!fruitRows.length) return '<div class="empty" style="padding:18px;">No active fruiting blocks — log one above.</div>';
+      const groups=[], idx={};
+      fruitRows.forEach(f=>{ const k=f.sessionId||((f.date||'')+'|'+(f.containerID||'')); if(idx[k]==null){ idx[k]=groups.length; groups.push({key:k,date:f.date,container:f.containerID,rows:[]}); } groups[idx[k]].rows.push(f); });
+      return groups.map(g=>{
+        const totBlocks=g.rows.reduce((s,f)=>s+(f.blockCount||0),0);
+        const totProj=g.rows.reduce((s,f)=>s+(f.projLbs||0),0);
+        const varlist=[...new Set(g.rows.map(f=>f.variety))].join(' · ');
+        const anyReady=g.rows.some(f=>f.windowStatus==='ready'), anyOver=g.rows.some(f=>f.windowStatus==='overdue');
+        const hc=anyOver?'var(--rust)':anyReady?'var(--fern)':'var(--text3)';
+        const firstId=g.rows[0].id;
+        return `<details open style="border:1px solid var(--border);border-radius:8px;margin-bottom:12px;overflow:hidden;background:var(--paper);">
+          <summary style="cursor:pointer;list-style:none;padding:11px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:rgba(58,96,48,.06);border-left:4px solid ${hc};">
+            <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--fern);font-size:13px;">${fDate(g.date)}</span>
+            <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);font-size:13px;">${g.container||'—'}</span>
+            <span style="font-size:12px;color:var(--text2);">${g.rows.length} lot${g.rows.length!==1?'s':''} · ${totBlocks} blocks · <strong style="color:var(--fern);">${totProj.toFixed(1)} lb proj</strong></span>
+            <span style="font-size:11px;color:var(--text3);flex:1;min-width:100px;">${varlist}</span>
+            ${canEdit()?`<button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send this whole session's report" onclick="event.preventDefault();event.stopPropagation();resendFruiting('${firstId}')">✉ resend session</button>`:''}
+          </summary>
+          <div class="tw" style="overflow-x:auto;">
+            <table>
+              <thead><tr><th>Days In</th><th>Lot #</th><th>Vendor</th><th>Variety</th><th>Blocks</th><th>Blk Wt</th><th>Proj. Yield</th><th>Harvest Window</th><th>Status</th><th>Action</th></tr></thead>
+              <tbody>${g.rows.map(f=>{
+                const sc=f.windowStatus==='ready'?'var(--fern)':f.windowStatus==='overdue'?'var(--rust)':'var(--text3)';
+                const stLbl=f.windowStatus==='ready'?'✓ READY':f.windowStatus==='overdue'?'⚠ OVERDUE':'⏳ EARLY';
+                return `<tr>
+                  <td class="mn" style="font-weight:700;color:${sc};">${f.daysIn}d</td>
+                  <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}</td>
+                  <td style="font-size:11px;color:var(--text3);">${f.vendor}</td>
+                  <td style="font-weight:500;">${f.variety}</td>
+                  <td class="mn">${f.blockCount}</td>
+                  <td class="mn">${f.blockWeightLb} lb</td>
+                  <td class="mn" style="font-weight:700;color:var(--fern);">${f.projLbs.toFixed(1)} lb<div style="font-family:'Syne Mono',monospace;font-size:8px;font-weight:400;color:var(--text3);">${f.yieldN>0?`${f.projLow.toFixed(0)}–${f.projHigh.toFixed(0)} · n${f.yieldN}`:'est. (no history)'}</div></td>
+                  <td style="font-size:11px;">${fmt(f.harvestMin)} – ${fmt(f.harvestMax)}</td>
+                  <td><span style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;font-weight:700;color:${sc};">${stLbl}</span></td>
+                  <td>${canEdit()?`<div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <button class="btn b-g b-sm" onclick="markFruitingHarvested('${f.id}')">Harvested ✓</button>
+                    <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button>
+                    ${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}
+                  </div>`:'—'}</td>
+                </tr>`;
+              }).join('')}</tbody>
+            </table>
+          </div>
+        </details>`;
+      }).join('');
+    })()}</div>
 
     <!-- ── HARVEST FORECAST ── -->
     ${Object.keys(weekForecast).length>0?`
