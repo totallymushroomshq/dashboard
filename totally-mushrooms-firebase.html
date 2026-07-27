@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #46</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #47</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -864,7 +864,7 @@ const PACK_LB       = 0.25; // lbs per retail pack
 const PRODUCTS = [
   {code:'MO8',  name:'Mixed Oyster Box', desc:'Mix of all our farm oyster mushrooms (Blue, White, Italian, Black Pearl, ToT)', priceLb:8.00,  unitLb:3, dataKey:'oyster',     varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl']},
   {code:'CB09', name:'Shiitake',         desc:'Chonk Shiitake — dense meaty, exceptional texture and shelf life',             priceLb:10.00, unitLb:3, dataKey:'shiitake',   varieties:['Shiitake']},
-  {code:'CM5',  name:"Chef's Mix",       desc:"Culinary mix of all available — NO Lion's Mane, NO King Trumpet",              priceLb:9.00,  unitLb:3, dataKey:'chefs',      varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl','Chestnut','Shiitake','Lynx Paw','Coral Tooth']},
+  {code:'CM5',  name:"Chef's Mix",       desc:"Culinary mix of all available — NO Lion's Mane, NO King Trumpet",              priceLb:9.00,  unitLb:3, dataKey:'chefs',      varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl','Chestnut','Shiitake','Lynx Paw','Coral Tooth'], composition:[{label:'oyster',share:1/3,varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl','Cumberland Oyster']},{label:'shiitake',share:1/3,varieties:['Shiitake']},{label:'chestnut',share:1/3,varieties:['Chestnut']}]},
   {code:'CB07', name:'Black Pearl',      desc:'Black Pearl mushroom',                                                          priceLb:8.50,  unitLb:3, dataKey:'blackPearl', varieties:['Black Pearl']},
   {code:'CB08', name:"Lion's Mane",      desc:"Lion's Mane mushroom",                                                          priceLb:8.00,  unitLb:3, dataKey:'lions',      varieties:["Lion's Mane"]},
   {code:'CH01', name:'Chestnut #1',      desc:'TOP GRADE intact veil — youngest harvest',                                      priceLb:10.00, unitLb:3, dataKey:'chestnut1',  varieties:['Chestnut']},
@@ -875,7 +875,7 @@ const PRODUCTS = [
 ];
 const RETAIL_PACKS = [
   {code:'LRP', name:"Lion's Mane ¼lb Pack", desc:"Lion's Mane retail pack", priceLb:8.00, unitLb:0.25, dataKey:'lionsPack', varieties:["Lion's Mane"]},
-  {code:'CRP', name:"Chef's Mix ¼lb Pack",  desc:"Chef's Mix retail pack",  priceLb:9.00, unitLb:0.25, dataKey:'chefsPack', varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl','Chestnut','Shiitake','Lynx Paw','Coral Tooth']},
+  {code:'CRP', name:"Chef's Mix ¼lb Pack",  desc:"Chef's Mix retail pack",  priceLb:9.00, unitLb:0.25, dataKey:'chefsPack', varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl','Chestnut','Shiitake','Lynx Paw','Coral Tooth'], composition:[{label:'oyster',share:1/3,varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl','Cumberland Oyster']},{label:'shiitake',share:1/3,varieties:['Shiitake']},{label:'chestnut',share:1/3,varieties:['Chestnut']}]},
 ];
 const ALL_PRODS = [...PRODUCTS, ...RETAIL_PACKS];
 // #14 — "Organic" in front of every mushroom name / pack type. Idempotent so it
@@ -2831,28 +2831,32 @@ function buildPackOrderCard(){
 // ── MIX-BOX INVENTORY ENGINE ──
 // Each product consumes qty × unitLb total (mix box 3 lb, tote 10 lb, retail 0.25 lb),
 // split evenly across the DISTINCT checked varieties valid for that product → a 3-variety
-// mix box = 1 lb/variety. Skips lots already pulled in a pack session today (session wins).
+// Allocation: split each SKU's case-lbs across the LOTS checked for it — so a Chef's Mix case ≈ 1/3 case per lot
+// (3 lb ÷ 3 checked lots = 1 lb each). Single-variety SKUs deduct their full case-lbs from that variety's lots.
+// Skips lots already pulled in a pack session today (session wins).
 function computeOrderDeductions(qtys, checked){
   const today=tday();
   const inSession=(hid)=>DB.packSessions.some(s=>s.date===today && (s.pulled||[]).some(p=>p.harvestId===hid));
-  const targetByVar={}; const unmatched=[];
+  const targetByLot={}; const unmatched=[];
   ALL_PRODS.forEach(p=>{ const N=parseInt(qtys[p.dataKey])||0; if(N<=0) return;
     const total=N*(p.unitLb||3);
-    const relVars=[...new Set(checked.filter(l=>p.varieties&&p.varieties.includes(l.variety)).map(l=>l.variety))];
-    if(!relVars.length){ unmatched.push({code:p.code,name:p.name,qty:N,lb:total}); return; }
-    const per=total/relVars.length; // e.g. 3 lb box ÷ 3 varieties = 1 lb each
-    relVars.forEach(v=>{ targetByVar[v]=(targetByVar[v]||0)+per; });
+    // composition groups (e.g. Chef's Mix = 1/3 oyster · 1/3 shiitake · 1/3 chestnut). Default: one group = all the product's varieties.
+    const groups=(p.composition&&p.composition.length)?p.composition:[{label:'',share:1,varieties:p.varieties||[]}];
+    groups.forEach(grp=>{
+      const grpLbs=total*(grp.share||1);
+      const relLots=checked.filter(l=>(grp.varieties||[]).includes(l.variety)); // lots checked that fall in this category
+      if(!relLots.length){ unmatched.push({code:p.code,name:p.name+(grp.label?' — '+grp.label:''),qty:N,lb:Math.round(grpLbs*100)/100}); return; }
+      const perLot=grpLbs/relLots.length; // split this category's share evenly across its checked lots
+      relLots.forEach(l=>{ targetByLot[l.harvestId]=(targetByLot[l.harvestId]||0)+perLot; });
+    });
   });
   const deductions=[]; let skippedSession=0; const shortfall={};
-  Object.entries(targetByVar).forEach(([v,need])=>{
-    let remaining=need;
-    const lots=checked.filter(l=>l.variety===v).sort((a,b)=>b.onHand-a.onHand); // draw from the biggest lot first
-    for(const l of lots){ if(remaining<=0.01) break;
-      if(inSession(l.harvestId)){ skippedSession+=Math.min(remaining,l.onHand); remaining-=Math.min(remaining,l.onHand); continue; } // handled by the pack session
-      const take=Math.min(remaining, l.onHand);
-      if(take>0.01){ deductions.push({harvestId:l.harvestId,lot:l.lotNumber,variety:v,used:Math.round(take*100)/100}); remaining-=take; }
-    }
-    if(remaining>0.05) shortfall[v]=Math.round(remaining*100)/100;
+  Object.entries(targetByLot).forEach(([hid,need])=>{
+    const l=checked.find(x=>x.harvestId===hid); if(!l) return;
+    if(inSession(hid)){ skippedSession+=Math.min(need,l.onHand); return; } // handled by the pack session
+    const take=Math.min(need, l.onHand);
+    if(take>0.01) deductions.push({harvestId:hid,lot:l.lotNumber,variety:l.variety,used:Math.round(take*100)/100});
+    const over=need-l.onHand; if(over>0.05) shortfall[l.variety]=Math.round(((shortfall[l.variety]||0)+over)*100)/100;
   });
   return {deductions, skippedSession:Math.round(skippedSession*100)/100, shortfall, unmatched};
 }
@@ -6049,6 +6053,85 @@ const VARIETY_TURNAROUND={
   'Coral Tooth':       {min:12,max:18,yieldPct:0.15}
 };
 
+// ───────── WEEKLY INVENTORY RECONCILE ─────────
+let _recWeek='';
+function _mondayOf(iso){ const d=new Date((iso||tday())+'T12:00:00'); const day=d.getDay(); const diff=d.getDate()-day+(day===0?-6:1); d.setDate(diff); return d.toISOString().split('T')[0]; }
+function setRecWeek(v){ _recWeek=_mondayOf(v); renderC(); }
+function _recVarieties(){ const s=new Set(); (ALL_PRODS||[]).forEach(p=>(p.varieties||[]).forEach(v=>s.add(v))); (DB.harvests||[]).forEach(h=>{ if(h.variety) s.add(h.variety); }); return [...s]; }
+function varietyOnHand(v){ return (DB.harvests||[]).filter(h=>h.variety===v).reduce((s,h)=>s+packOnHand(h),0); }
+// what the app deducted for this variety during the selected week (orders + pack sessions)
+function _deductedThisWeek(v, wk){
+  let t=0;
+  (DB.orders||[]).forEach(o=>{ const ow=o.week||_mondayOf(o.deliveredAt||o.packedAt||o.date); if(ow!==wk) return; (o.deductions||[]).forEach(d=>{ if(d.variety===v) t+=(d.used||0); }); });
+  (DB.packSessions||[]).forEach(s=>{ if(s.status!=='closed') return; if(_mondayOf(s.date)!==wk) return; const u=(s.totalUsedByVariety||{})[v]||0; t+=u; });
+  return Math.round(t*100)/100;
+}
+// apply a physical count for one variety → shift on-hand to match, spread across lots, with audit
+async function applyVarietyReconcile(variety, counted, wk){
+  const lots=(DB.harvests||[]).filter(h=>h.variety===variety).map(h=>({h,oh:packOnHand(h)})).filter(x=>x.oh>0.001).sort((a,b)=>b.oh-a.oh);
+  const current=Math.round(lots.reduce((s,x)=>s+x.oh,0)*100)/100;
+  let delta=Math.round((counted-current)*100)/100;
+  if(Math.abs(delta)<0.05) return {variety,current,counted,delta:0};
+  const updates=[];
+  if(delta<0){ // remove overage — add to usedWeight across on-hand lots, biggest first
+    let rem=-delta;
+    for(const {h,oh} of lots){ if(rem<=0.001) break; const take=Math.min(rem,oh); h.usedWeight=Math.round(((h.usedWeight||0)+take)*100)/100; h.reconciledAt=tday(); h.reconcileAdjust=Math.round(((h.reconcileAdjust||0)-take)*100)/100; updates.push(FS.update('harvests',h.id,{usedWeight:h.usedWeight,reconciledAt:h.reconciledAt,reconcileAdjust:h.reconcileAdjust})); rem-=take; }
+  } else { // found more than recorded — add a reconcile harvest line
+    const adj={date:tday(),variety,lotNumber:'RECONCILE',weight:delta,usedWeight:0,sampleWeight:0,preservedWeight:0,container:'',grade:'',reconcileAdjust:delta,reconciledAt:tday(),notes:`Weekly reconcile (${wk}) — added ${delta} lb to match physical count`,createdAt:new Date().toISOString()};
+    const id=await FS.add('harvests',adj); DB.harvests.push({id,...adj});
+  }
+  await Promise.all(updates);
+  logAudit('inventory_reconcile',`Reconciled ${variety}: ${current} → ${counted} lb (Δ${delta>=0?'+':''}${delta}) · week ${wk}`);
+  return {variety,current,counted,delta};
+}
+async function applyReconcile(){
+  const wk=_recWeek||_mondayOf(tday());
+  const inputs=[...document.querySelectorAll('.rec-count')];
+  const changes=[];
+  for(const inp of inputs){ const v=inp.getAttribute('data-var'); const raw=inp.value.trim(); if(raw==='') continue; const counted=parseFloat(raw); if(isNaN(counted)) continue; const cur=varietyOnHand(v); if(Math.abs(counted-cur)<0.05) continue; changes.push({v,counted}); }
+  if(!changes.length){ alert('No variances to apply — enter a physical count that differs from on-hand.'); return; }
+  if(!confirm(`Apply ${changes.length} reconcile adjustment(s) for week of ${wk}?\n\n${changes.map(c=>`• ${c.v} → ${c.counted} lb`).join('\n')}`)) return;
+  for(const c of changes){ await applyVarietyReconcile(c.v, c.counted, wk); }
+  toast('inv-rec-t','✓ Reconciled '+changes.length+' variety(ies)');
+  renderC();
+}
+function updateRecVariance(inp){
+  const cur=parseFloat(inp.getAttribute('data-oh'))||0; const raw=inp.value.trim();
+  const cell=document.getElementById('recvar-'+inp.getAttribute('data-i')); if(!cell) return;
+  if(raw===''){ cell.textContent='—'; cell.style.color='var(--text3)'; return; }
+  const d=Math.round((parseFloat(raw)-cur)*100)/100;
+  cell.textContent=(d>=0?'+':'')+d.toFixed(1)+' lb'; cell.style.color=Math.abs(d)<0.05?'var(--text3)':(d<0?'var(--rust)':'var(--fern)');
+}
+function buildReconcilePanel(){
+  if(!canEdit()) return '';
+  const wk=_recWeek||_mondayOf(tday());
+  const vars=_recVarieties().map(v=>({v,oh:Math.round(varietyOnHand(v)*100)/100,ded:_deductedThisWeek(v,wk)})).filter(x=>x.oh>0.05||x.ded>0.05).sort((a,b)=>b.oh-a.oh);
+  const rows=vars.map((x,i)=>`<tr>
+    <td style="font-weight:500;">${x.v}</td>
+    <td class="mn">${x.oh.toFixed(1)} lb</td>
+    <td class="mn" style="color:var(--text3);">${x.ded.toFixed(1)} lb</td>
+    <td><input class="fi rec-count" type="number" step="0.1" min="0" data-var="${x.v.replace(/"/g,'&quot;')}" data-oh="${x.oh}" data-i="${i}" placeholder="count…" oninput="updateRecVariance(this)" style="width:110px;"></td>
+    <td class="mn" id="recvar-${i}" style="font-weight:700;color:var(--text3);">—</td>
+  </tr>`).join('');
+  return `<details style="border:1px solid rgba(184,130,10,.3);border-radius:8px;margin-bottom:20px;background:rgba(184,130,10,.03);overflow:hidden;">
+    <summary style="cursor:pointer;list-style:none;padding:12px 16px;font-weight:600;color:var(--gold);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      📊 Weekly Inventory Reconcile <span style="font-size:11px;font-weight:400;color:var(--text3);">expected-vs-actual + physical count → true up</span>
+    </summary>
+    <div style="padding:0 16px 16px;">
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+        <label style="font-size:12px;color:var(--text3);">Week of</label>
+        <input class="fi" type="date" value="${wk}" onchange="setRecWeek(this.value)" style="max-width:170px;">
+        <span style="font-size:11px;color:var(--text3);">Enter what you physically counted; the app posts an adjustment so on-hand matches, with an audit entry.</span>
+      </div>
+      <div class="tw"><table>
+        <thead><tr><th>Variety</th><th>On-hand (app)</th><th>Deducted this wk</th><th>Physical count</th><th>Variance</th></tr></thead>
+        <tbody>${rows||`<tr><td colspan="5" class="empty">No stock to reconcile.</td></tr>`}</tbody>
+      </table></div>
+      <div class="form-acts" style="margin-top:12px;"><button class="btn b-m" onclick="applyReconcile()">Apply Reconcile Adjustments</button></div>
+      <div class="toast" id="inv-rec-t">✓ Reconciled</div>
+    </div>
+  </details>`;
+}
 function rInventory(el){
   const PRESERVE_METHODS=['Fresh Frozen','Freeze Dried','Dehydrated','Waste / Compost'];
 
@@ -6205,6 +6288,7 @@ function rInventory(el){
   el.innerHTML=`
     <div class="ph"><div class="ph-t">Inventory</div><div class="ph-s">Live fresh stock — updates when orders are packed or lots are moved to preservation</div></div>
 
+    ${buildReconcilePanel()}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;">
       ${['all',...INVENTORY_FACILITIES].map(f=>`<button data-fac="${f}" onclick="filterInventory(this.dataset.fac)" style="padding:6px 14px;border:1px solid ${_fac===f?'var(--gold)':'var(--border)'};background:${_fac===f?'rgba(184,130,10,.12)':'var(--white)'};color:${_fac===f?'var(--gold)':'var(--text3)'};border-radius:3px;cursor:pointer;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;font-weight:${_fac===f?'700':'400'};">${f==='all'?'All Facilities':f}</button>`).join('')}
     </div>
