@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #47</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #48</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2787,12 +2787,20 @@ function buildPackOrderCard(){
   DB.harvests.forEach(h=>{ const oh=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); if(oh<=0.05) return; const lot=h.lotNumber||'—'; const m=lotMap[lot]||(lotMap[lot]={variety:h.variety||'—',onHand:0,cons:new Set(),hid:h.id}); m.onHand+=oh; if(h.container) m.cons.add(h.container); });
   const _byVar={}; Object.entries(lotMap).forEach(([lot,m])=>{ (_byVar[m.variety]=_byVar[m.variety]||[]).push({lot,...m}); });
   const lotChecks=Object.keys(_byVar).length?Object.keys(_byVar).sort().map(v=>`
-    <div style="margin-bottom:8px;"><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px;">${v}</div>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;">${_byVar[v].sort((a,b)=>b.onHand-a.onHand).map(l=>`
-      <label style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid ${pulledSet.has(l.lot)?'var(--fern)':'var(--border)'};border-radius:5px;cursor:pointer;font-size:12px;background:var(--white);">
-        <input type="checkbox" class="po-lot-chk" value="${l.lot.replace(/"/g,'&quot;')}" data-hid="${l.hid}" ${pulledSet.has(l.lot)?'checked':''}>
-        <span><strong style="font-family:'Syne Mono',monospace;">${l.lot}</strong>${[...l.cons].length?' · '+[...l.cons].join(','):''} · ${l.onHand.toFixed(1)} lb</span>
-      </label>`).join('')}</div></div>`).join(''):`<div style="font-size:11px;color:var(--text3);">No harvest lots on hand — log a harvest first.</div>`;
+    <div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px;">${v}</div>
+    <div style="display:flex;flex-direction:column;gap:5px;">${_byVar[v].sort((a,b)=>b.onHand-a.onHand).map(l=>{const ck=pulledSet.has(l.lot);return `
+      <div class="po-lot-row" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 10px;border:1px solid ${ck?'var(--fern)':'var(--border)'};border-radius:5px;font-size:12px;background:var(--white);">
+        <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;flex:1;min-width:170px;">
+          <input type="checkbox" class="po-lot-chk" value="${l.lot.replace(/"/g,'&quot;')}" data-hid="${l.hid}" data-oh="${l.onHand.toFixed(2)}" ${ck?'checked':''} onchange="onPoLotToggle(this)">
+          <span><strong style="font-family:'Syne Mono',monospace;">${l.lot}</strong>${[...l.cons].length?' · '+[...l.cons].join(','):''} · <span style="color:var(--fern);">${l.onHand.toFixed(1)} lb</span></span>
+        </label>
+        <span class="po-pull-wrap" data-hid="${l.hid}" style="display:${ck?'inline-flex':'none'};align-items:center;gap:6px;">
+          <span style="font-size:10px;color:var(--text3);">Pull</span>
+          <input type="number" class="po-lot-pull" data-hid="${l.hid}" data-oh="${l.onHand.toFixed(2)}" step="0.1" min="0" max="${l.onHand.toFixed(2)}" placeholder="0" style="width:66px;padding:4px 6px;" oninput="onPoPullInput(this)"> lb
+          <button type="button" class="btn b-sm" style="background:rgba(184,76,32,.1);color:#b84c20;border:1px solid rgba(184,76,32,.3);" title="Mark this lot fully used up (toast)" onclick="poToast('${l.hid}')">🔥 toast</button>
+          <span class="po-remain" data-hid="${l.hid}" style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);">${l.onHand.toFixed(1)} left</span>
+        </span>
+      </div>`;}).join('')}</div></div>`).join(''):`<div style="font-size:11px;color:var(--text3);">No harvest lots on hand — log a harvest first.</div>`;
   const prodInputs=ALL_PRODS.map(p=>`
     <div style="display:flex;flex-direction:column;gap:2px;">
       <label style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:.5px;">${p.code} · ${p.name}</label>
@@ -2818,8 +2826,9 @@ function buildPackOrderCard(){
       <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:14px 0 8px;">CASES / UNITS PACKED (by code)</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px;">${prodInputs}</div>
       <div class="fgl" style="margin-bottom:12px;"><label>Notes</label><input class="fi" id="po-notes" placeholder="Optional"></div>
-      <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:6px 0 8px;">LOTS THAT WENT INTO THIS PACK <span style="text-transform:none;letter-spacing:0;">— check the lots used (pulled-session lots are pre-checked & outlined green)</span></div>
-      <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:8px;background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.2);border-radius:5px;padding:8px 11px;">📦 <b>Inventory auto-deducts on Generate:</b> each box = <b>qty × 3 lb</b>, split evenly across the varieties you check — so a mix box (MO8/CM5/WD01) with <b>3 varieties checked = 1 lb each</b>. Lots already pulled in today's pack session are skipped (that session already deducted them).</div>
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:6px 0 8px;">LOTS THAT WENT INTO THIS PACK <span style="text-transform:none;letter-spacing:0;">— check the lots used, then set how much to pull from each</span></div>
+      <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:8px;background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.2);border-radius:5px;padding:8px 11px;">📦 <b>You control the draw-down.</b> Check a lot, then type how many <b>lb to pull</b> from it — or hit <b>🔥 toast</b> to use it up entirely. <b>Suggest pulls</b> pre-fills from the order (Chef's Mix = ⅓ oyster · ⅓ shiitake · ⅓ chestnut); adjust from there. Only what you enter is deducted — nothing arbitrary. Session-pulled lots are skipped.</div>
+      <div style="margin-bottom:8px;"><button type="button" class="btn b-g b-sm" onclick="poSuggestPulls()">✨ Suggest pulls from order</button> <button type="button" class="btn b-g b-sm" onclick="poClearPulls()">clear pulls</button> <span id="po-pull-total" style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-left:6px;"></span></div>
       <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">${lotChecks}</div>
       <div class="form-acts">
         <button class="btn b-m b-lg" onclick="savePackOrder()">Generate Packed Order</button>
@@ -2860,6 +2869,36 @@ function computeOrderDeductions(qtys, checked){
   });
   return {deductions, skippedSession:Math.round(skippedSession*100)/100, shortfall, unmatched};
 }
+// ── per-lot pull controls: you decide what's toast and what remains (no arbitrary allocation) ──
+function _poPull(hid){ return document.querySelector('.po-lot-pull[data-hid="'+hid+'"]'); }
+function _poWrap(hid){ return document.querySelector('.po-pull-wrap[data-hid="'+hid+'"]'); }
+function _poRemain(hid){ return document.querySelector('.po-remain[data-hid="'+hid+'"]'); }
+function _poUpdRemain(hid){ const p=_poPull(hid), rem=_poRemain(hid); if(!p||!rem) return; const oh=parseFloat(p.getAttribute('data-oh'))||0; const pull=Math.min(oh,parseFloat(p.value)||0); const left=Math.max(0,oh-pull); if(pull>0.01&&left<=0.05){ rem.textContent='🔥 toast'; rem.style.color='#b84c20'; } else { rem.textContent=left.toFixed(1)+' left'; rem.style.color='var(--text3)'; } }
+function poPullTotal(){ let t=0; document.querySelectorAll('.po-lot-chk:checked').forEach(c=>{ const p=_poPull(c.getAttribute('data-hid')); if(p){ const oh=parseFloat(p.getAttribute('data-oh'))||0; t+=Math.min(oh,parseFloat(p.value)||0); } }); const st=document.getElementById('po-pull-total'); if(st) st.textContent=t>0.05?('· pulling '+(Math.round(t*10)/10).toFixed(1)+' lb total'):''; }
+function onPoLotToggle(chk){ const hid=chk.getAttribute('data-hid'); const wrap=_poWrap(hid); const row=chk.closest('.po-lot-row');
+  if(chk.checked){ if(wrap) wrap.style.display='inline-flex'; if(row) row.style.borderColor='var(--fern)'; }
+  else { if(wrap) wrap.style.display='none'; const p=_poPull(hid); if(p) p.value=''; if(row) row.style.borderColor='var(--border)'; _poUpdRemain(hid); }
+  poPullTotal();
+}
+function onPoPullInput(inp){ const oh=parseFloat(inp.getAttribute('data-oh'))||0; const v=parseFloat(inp.value); if(!isNaN(v)&&v>oh) inp.value=oh.toFixed(2); _poUpdRemain(inp.getAttribute('data-hid')); poPullTotal(); }
+function poToast(hid){ const chk=document.querySelector('.po-lot-chk[data-hid="'+hid+'"]'); if(chk&&!chk.checked){ chk.checked=true; onPoLotToggle(chk); } const p=_poPull(hid); if(p) p.value=(parseFloat(p.getAttribute('data-oh'))||0).toFixed(2); _poUpdRemain(hid); poPullTotal(); }
+function poClearPulls(){ document.querySelectorAll('.po-lot-pull').forEach(p=>{ p.value=''; _poUpdRemain(p.getAttribute('data-hid')); }); poPullTotal(); }
+function refreshPoLotRows(){ document.querySelectorAll('.po-lot-chk').forEach(chk=>onPoLotToggle(chk)); }
+// pre-fill pull amounts from the order composition — a STARTING POINT you then adjust (toast / trim)
+function poSuggestPulls(){
+  const qtys={}; ALL_PRODS.forEach(p=>{ qtys[p.dataKey]=parseInt(document.getElementById('po-'+p.dataKey)?.value)||0; });
+  const checked=[...document.querySelectorAll('.po-lot-chk:checked')].map(c=>{ const hid=c.getAttribute('data-hid'); const h=DB.harvests.find(x=>x.id===hid); return h?{harvestId:hid,lotNumber:h.lotNumber,variety:h.variety,onHand:packOnHand(h)}:null; }).filter(Boolean);
+  if(!checked.length){ alert('Check the lots that went into this pack first, then Suggest.'); return; }
+  const ded=computeOrderDeductions(qtys, checked);
+  document.querySelectorAll('.po-lot-pull').forEach(p=>{ p.value=''; });
+  ded.deductions.forEach(d=>{ const p=_poPull(d.harvestId); if(p) p.value=d.used.toFixed(2); });
+  document.querySelectorAll('.po-lot-chk:checked').forEach(c=>_poUpdRemain(c.getAttribute('data-hid')));
+  poPullTotal();
+  let msg='';
+  if(ded.unmatched.length) msg+='⚠ No checked lot for: '+ded.unmatched.map(u=>u.name+' ×'+u.qty).join(', ')+' — check a lot for those or pull manually.\n';
+  if(ded.skippedSession>0) msg+=ded.skippedSession.toFixed(1)+' lb sits on a lot already pulled in today\'s pack session (that session deducts it).\n';
+  if(msg) setTimeout(()=>alert('Suggested pulls filled — adjust as needed (🔥 toast to use a lot up).\n\n'+msg),80);
+}
 async function savePackOrder(){
   const so=(document.getElementById('po-so')?.value||'').trim();
   const client=(document.getElementById('po-client')?.value||'').trim();
@@ -2882,22 +2921,29 @@ async function savePackOrder(){
     usedHarvests, usedLots, scanUrl:snapUrl, tmSlipUrl:snapUrl, deliveredAt,
     deliveryStatus:'open', signedSlipUrl:'', source:'pack' };
   // ── inventory deduction (mix rule: qty×unitLb split across checked varieties; session lots skipped) ──
-  const checkedObjs=checked.map(c=>{ const hid=c.getAttribute('data-hid'); const h=DB.harvests.find(x=>x.id===hid); return h?{harvestId:hid,lotNumber:h.lotNumber,variety:h.variety,onHand:packOnHand(h)}:null; }).filter(Boolean);
-  const ded=computeOrderDeductions(qtys, checkedObjs);
-  o.deductions=ded.deductions;
+  // DEDUCT EXACTLY WHAT YOU SET per lot (🔥 toast = full on-hand). Nothing is auto-allocated.
+  const inSessionToday=(hid)=>DB.packSessions.some(s=>s.date===tday() && s.status==='open' && (s.pulled||[]).some(p=>p.harvestId===hid));
+  const deductions=[]; let skippedSession=0;
+  checked.forEach(c=>{ const hid=c.getAttribute('data-hid'); const h=DB.harvests.find(x=>x.id===hid); if(!h) return;
+    const pIn=document.querySelector('.po-lot-pull[data-hid="'+hid+'"]');
+    const pull=pIn?Math.min(packOnHand(h), parseFloat(pIn.value)||0):0;
+    if(pull<=0.01) return;
+    if(inSessionToday(hid)){ skippedSession+=pull; return; }
+    deductions.push({harvestId:hid,lot:h.lotNumber,variety:h.variety,used:Math.round(pull*100)/100});
+  });
+  o.deductions=deductions;
   try{ const oId=await FS.add('orders',o); o.id=oId; DB.orders.push(o); }
   catch(e){ alert('Save failed: '+(e.message||e)); return; }
   // apply the deductions to on-hand
   const invUpd=[];
-  ded.deductions.forEach(d=>{ const h=DB.harvests.find(x=>x.id===d.harvestId); if(h){ h.usedWeight=(h.usedWeight||0)+d.used; invUpd.push(FS.update('harvests',d.harvestId,{usedWeight:h.usedWeight})); } });
+  deductions.forEach(d=>{ const h=DB.harvests.find(x=>x.id===d.harvestId); if(h){ h.usedWeight=(h.usedWeight||0)+d.used; invUpd.push(FS.update('harvests',d.harvestId,{usedWeight:h.usedWeight})); } });
   try{ await Promise.all(invUpd); }catch(e){ console.warn('inventory deduct update failed',e); }
-  const dedTot=ded.deductions.reduce((s,d)=>s+d.used,0);
-  logAudit('order_created',`Packed order${so?' SO#'+so:''} for ${client} — ${usedLots.length} lot(s) tied — deducted ${dedTot.toFixed(1)}lb`);
-  // surface reconciliation notes so nothing silently mis-deducts
+  const dedTot=deductions.reduce((s,d)=>s+d.used,0);
+  logAudit('order_created',`Packed order${so?' SO#'+so:''} for ${client} — ${usedLots.length} lot(s) tied — deducted ${dedTot.toFixed(1)}lb (${deductions.length} lot pull(s))`);
+  // surface notes so nothing silently mis-deducts
   let warn='';
-  if(ded.skippedSession>0) warn+=`\n${ded.skippedSession.toFixed(1)} lb already handled by today's pack session (skipped).`;
-  if(Object.keys(ded.shortfall).length) warn+='\n⚠ Not enough on-hand for: '+Object.entries(ded.shortfall).map(([v,l])=>`${v} (${l}lb short)`).join(', ')+'.';
-  if(ded.unmatched.length) warn+='\n⚠ No matching lot checked for: '+ded.unmatched.map(u=>`${u.code}×${u.qty}`).join(', ')+' — inventory NOT deducted for these.';
+  if(skippedSession>0) warn+=`\n${skippedSession.toFixed(1)} lb sits on a lot already pulled in today's pack session (skipped — that session deducts it).`;
+  if(dedTot<=0.05 && anyQty) warn+='\n⚠ No pull amounts were set — NO inventory was deducted for this order. Set pulls (or 🔥 toast) and re-log, or fix it in the reconcile.';
   toast('po-t','✓ Packed order for '+client+(so?' (SO#'+so+')':'')+' — deducted '+dedTot.toFixed(1)+' lb');
   if(warn) setTimeout(()=>alert('Order logged. Inventory notes:'+warn),300);
   // build the email report from what was packed
@@ -5459,6 +5505,7 @@ async function snapSlip(input){
     const slipLots=(d.lots||[]).map(l=>(l.lot||'').trim()).filter(Boolean);
     let lotHits=0, lotMiss=[];
     slipLots.forEach(lot=>{ const cb=[...document.querySelectorAll('.po-lot-chk')].find(c=>c.value.toUpperCase()===lot.toUpperCase()); if(cb){ cb.checked=true; lotHits++; } else lotMiss.push(lot); });
+    if(typeof refreshPoLotRows==='function') refreshPoLotRows(); // reveal the pull / 🔥 toast controls for the checked lots
     let notes=`✓ Read SO ${d.soNum||'?'} · ${d.client||'?'} — ${matched} item(s) filled`;
     if(unmatched.length) notes+=`; <span style="color:var(--gold)">unmatched code(s): ${unmatched.join(', ')} — enter manually</span>`;
     if(lotHits) notes+=`; ${lotHits} lot(s) checked`;
