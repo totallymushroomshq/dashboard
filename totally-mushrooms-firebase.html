@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #51</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #52</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4850,23 +4850,75 @@ async function snapHarvestBatch(input){
 function _sheetFacility(con){ return ((typeof CONTAINERS!=='undefined'&&CONTAINERS.find(c=>c.code===con))||getActiveContainers().find(c=>c.code===con)||{}).facility||''; }
 // location code for a sheet: prefer the facility (mapped OHF/OPRY), else the code written on the sheet itself
 function _sheetLocCode(con, writtenLoc){ const fac=_sheetFacility(con); if(fac) return _locCode(fac); const w=String(writtenLoc||'').trim(); if(!w) return ''; return FACILITY_CODES[w.toLowerCase()]||w.toUpperCase(); }
+// one editable lot row (matches the individual harvest form: lot · variety · grade · weight)
+function hbLotRow(r){ r=r||{};
+  return `<div class="hb-lotrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
+    <input class="fi hb-lot" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:104px;">
+    <input class="fi hb-var" list="hb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Variety" style="flex:1;min-width:118px;" autocomplete="off">
+    <select class="fs hb-grade" style="max-width:64px;"><option value="A" ${(r.grade||'A')==='A'?'selected':''}>A</option><option value="B" ${r.grade==='B'?'selected':''}>B</option></select>
+    <input class="fi hb-wt" type="number" step="0.01" min="0" value="${r.harvested!=null&&r.harvested!==''?r.harvested:''}" placeholder="lb" style="max-width:86px;">
+    <button type="button" class="btn b-r b-sm" title="Remove lot" onclick="this.closest('.hb-lotrow').remove()">✕</button>
+  </div>`;
+}
+function hbCrewRow(c){ c=c||{};
+  return `<div class="hb-crewrow" style="display:flex;gap:6px;align-items:center;margin-bottom:5px;">
+    <input class="fi hb-cname" value="${attrEsc(c.name||'')}" placeholder="Name" list="lab-crew-list" style="flex:1;min-width:120px;">
+    <input class="fi hb-cmin" type="number" min="0" value="${c.minutes!=null&&c.minutes!==''?c.minutes:''}" placeholder="min" style="max-width:76px;"><span style="font-size:11px;color:var(--text3);">min</span>
+    <button type="button" class="btn b-r b-sm" title="Remove crew" onclick="this.closest('.hb-crewrow').remove()">✕</button>
+  </div>`;
+}
+function hbAddLot(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('hb-lots')) w.insertAdjacentHTML('beforeend',hbLotRow({})); }
+function hbAddCrew(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('hb-crew')) w.insertAdjacentHTML('beforeend',hbCrewRow({})); }
+function hbRemoveSheet(btn){ if(confirm('Remove this whole dated sheet from the batch?')) btn.closest('.hb-sheet').remove(); }
+// reconstruct _harvestBatch from the edited fields in the review modal
+function _readHarvestBatchFromDOM(){
+  const out=[];
+  document.querySelectorAll('.hb-sheet').forEach(el=>{
+    const si=parseInt(el.getAttribute('data-si')); const orig=(_harvestBatch[si])||{};
+    const rows=[...el.querySelectorAll('.hb-lotrow')].map(row=>({
+      lot:(row.querySelector('.hb-lot')?.value||'').trim(),
+      strain:(row.querySelector('.hb-var')?.value||'').trim(),
+      grade:row.querySelector('.hb-grade')?.value||'A',
+      harvested:parseFloat(row.querySelector('.hb-wt')?.value)||0
+    })).filter(r=>r.lot||r.strain||r.harvested);
+    const crew=[...el.querySelectorAll('.hb-crewrow')].map(row=>({
+      name:(row.querySelector('.hb-cname')?.value||'').trim(),
+      minutes:parseInt(row.querySelector('.hb-cmin')?.value)||0
+    })).filter(c=>c.name&&c.minutes>0);
+    out.push({...orig,
+      date:el.querySelector('.hb-date')?.value||orig.date||'',
+      container:(el.querySelector('.hb-con')?.value||'').trim(),
+      location:(el.querySelector('.hb-loc')?.value||'').trim(),
+      employee:(el.querySelector('.hb-emp')?.value||'').trim(),
+      rows, crew });
+  });
+  return out;
+}
 function reviewHarvestBatch(){
   const sheets=_harvestBatch;
-  const sheetCard=(s)=>{
+  sheets.forEach((s,i)=>{ s.__i=i; });
+  const conCodes=[...new Set((typeof CONTAINERS!=='undefined'?CONTAINERS:[]).map(c=>c.code).filter(Boolean))];
+  const sheetEditor=(s)=>{
     const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.strain||x.harvested));
-    const tot=rows.reduce((a,x)=>a+(parseFloat(x.harvested)||0),0);
-    const crew=(Array.isArray(s.crew)?s.crew:[]).map(c=>`${c.name||'?'} ${c.minutes||0}m`).join(', ')||'—';
+    const crew=(Array.isArray(s.crew)?s.crew:[]);
     const iso=_toISO(s.date)||s.date||'';
-    return `<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;background:var(--paper);">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-        <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--fern);">${fDate(iso)||s.date||'?'}</span>
-        <span style="font-size:12px;color:var(--text2);">${rows.length} lot${rows.length!==1?'s':''} · ${tot.toFixed(1)} lb</span>
-        <span style="font-size:11px;color:var(--text3);flex:1;min-width:120px;">👤 ${s.employee||'—'} · 🧑‍🌾 ${crew}${s.pageUrl?` · <a href="${s.pageUrl}" target="_blank" rel="noopener">page PDF</a>`:''}</span>
+    return `<div class="hb-sheet" data-si="${s.__i}" style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--paper);">
+      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm" style="background:rgba(184,76,32,.08);color:#b84c20;border:1px solid rgba(184,76,32,.25);" onclick="hbRemoveSheet(this)">✕ remove sheet</button></div>
+      <div class="fg2">
+        <div class="fgl"><label>Date</label><input class="fi hb-date" type="date" value="${attrEsc(iso)}"></div>
+        <div class="fgl"><label>Container</label><input class="fi hb-con" list="hb-con-dl" value="${attrEsc(s.container||'')}" autocomplete="off"></div>
+        <div class="fgl"><label>Location <span style="color:var(--text3);font-size:9px;">OHF/OPRY</span></label><input class="fi hb-loc" value="${attrEsc(s.location||'')}" placeholder="OHF"></div>
+        <div class="fgl"><label>Employee</label><input class="fi hb-emp" value="${attrEsc(s.employee||'')}"></div>
       </div>
-      <div style="font-size:11px;color:var(--text3);margin-top:4px;">${rows.map(r=>`${r.lot||'?'} ${r.strain||''} ${(parseFloat(r.harvested)||0).toFixed(1)}lb`).join(' · ')||'—'}</div>
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:10px 0 4px;">LOTS <span style="text-transform:none;letter-spacing:0;">— lot # · variety · grade · lb harvested</span></div>
+      <div class="hb-lots">${(rows.length?rows:[{}]).map(hbLotRow).join('')}</div>
+      <button type="button" class="btn b-g b-sm" onclick="hbAddLot(this)">+ lot</button>
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:12px 0 4px;">CREW · LABOR</div>
+      <div class="hb-crew">${(crew.length?crew:[{}]).map(hbCrewRow).join('')}</div>
+      <button type="button" class="btn b-g b-sm" onclick="hbAddCrew(this)">+ crew</button>
     </div>`;
   };
-  // group the batch into sections BY CONTAINER (each container may span several dates)
+  // group into sections BY CONTAINER (each container may span several dates)
   const groups=[], gi={};
   sheets.forEach(s=>{ const con=s.container||'—'; if(gi[con]==null){ gi[con]=groups.length; groups.push({con,sheets:[]}); } groups[gi[con]].sheets.push(s); });
   const rowsHtml=groups.map(g=>{
@@ -4878,27 +4930,30 @@ function reviewHarvestBatch(){
         ${fac?`<span style="font-size:11px;color:var(--text3);">${fac}${_sheetLocCode(g.con,'')?' · '+_sheetLocCode(g.con,''):''}</span>`:''}
         <span style="font-size:12px;color:var(--text2);margin-left:auto;">${g.sheets.length} date${g.sheets.length!==1?'s':''} · ${gLb.toFixed(1)} lb</span>
       </div>
-      ${g.sheets.map(sheetCard).join('')}
+      ${g.sheets.map(sheetEditor).join('')}
     </div>`;
   }).join('');
   document.getElementById('em-title').textContent=`📚 Batch Harvest — ${sheets.length} sheet(s) · ${groups.length} container(s)`;
   document.getElementById('em-body').innerHTML=`
-    <div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.6;">Grouped by container. Each dated sheet is logged as its own session (records + crew labor) and gets its own dated report with its own labeled PDF. Verify, then log all.</div>
+    <datalist id="hb-var-dl">${VARIETIES.map(v=>`<option value="${attrEsc(v)}">`).join('')}</datalist>
+    <datalist id="hb-con-dl">${conCodes.map(c=>`<option value="${attrEsc(c)}">`).join('')}</datalist>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.6;">Grouped by container — <b>edit anything</b> the scan read (date, container, employee, each lot &amp; weight, crew). Each dated sheet logs as its own session and gets its own dated report + labeled PDF. Verify, then log all.</div>
     ${rowsHtml}
     <div class="form-acts" style="margin-top:14px;">
-      <button class="btn b-m b-lg" onclick="commitHarvestBatch(this)">Log all ${sheets.length} &amp; prepare reports</button>
+      <button class="btn b-m b-lg" onclick="commitHarvestBatch(this)">Log all &amp; prepare reports</button>
       <button class="btn b-g" onclick="closeModal()">Cancel</button>
     </div>`;
   document.getElementById('edit-modal').classList.add('open');
 }
 async function commitHarvestBatch(btn){
+  _harvestBatch=_readHarvestBatchFromDOM(); // capture all edits from the review form first
   const sheets=_harvestBatch; if(!sheets.length) return;
   if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
   const prepared=[];
   for(const s of sheets){
-    const iso=_toISO(s.date)||tday(); const con=s.container||''; const fac=_sheetFacility(con);
+    const iso=_toISO(s.date)||tday(); const con=(s.container||'').trim(); const fac=_sheetFacility(con);
     const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.strain||x.harvested))
-      .map(r=>({date:iso,container:con,facility:fac,lotNumber:(r.lot||'').trim(),variety:(r.strain||'').trim(),grade:'A',weight:parseFloat(r.harvested)||0,notes:'batch scan'}));
+      .map(r=>({date:iso,container:con,facility:fac,lotNumber:(r.lot||'').trim(),variety:(r.strain||'').trim(),grade:(r.grade||'A'),weight:parseFloat(r.harvested)||0,notes:'batch scan'}));
     if(!rows.length) continue;
     try{ normalizeRowVarieties(rows); }catch(e){}
     const createdIds=[];
