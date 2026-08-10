@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #49</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #50</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4847,7 +4847,9 @@ async function snapHarvestBatch(input){
   }catch(e){ show('⚠ '+e.message); }
   finally{ input.value=''; }
 }
-function _sheetFacility(con){ return (getActiveContainers().find(c=>c.code===con)||{}).facility||''; }
+function _sheetFacility(con){ return ((typeof CONTAINERS!=='undefined'&&CONTAINERS.find(c=>c.code===con))||getActiveContainers().find(c=>c.code===con)||{}).facility||''; }
+// location code for a sheet: prefer the facility (mapped OHF/OPRY), else the code written on the sheet itself
+function _sheetLocCode(con, writtenLoc){ const fac=_sheetFacility(con); if(fac) return _locCode(fac); const w=String(writtenLoc||'').trim(); if(!w) return ''; return FACILITY_CODES[w.toLowerCase()]||w.toUpperCase(); }
 function reviewHarvestBatch(){
   const sheets=_harvestBatch;
   const rowsHtml=sheets.map((s)=>{
@@ -4893,8 +4895,9 @@ async function commitHarvestBatch(btn){
     const crew=(Array.isArray(s.crew)?s.crew:[]).map(c=>({emp:(c.name||'').trim(),min:parseInt(c.minutes)||0})).filter(c=>c.emp&&c.min>0);
     for(const c of crew){ try{ await logManualTime(con,'Harvesting',c.min,iso,'Harvesting session (batch)',c.emp); }catch(e){ console.warn(e); } }
     logAudit('harvest_logged',`Batch harvest — ${rows.length} lot(s) @ ${con} ${iso} (${crew.length} crew)`);
-    const prime={container:con,facility:fac,date:iso};
-    prepared.push({prime,rows,crew,pageB64:s.pageB64,pageBytes:s.pageBytes,pageUrl:s.pageUrl||'',subject:notifySubject('harvest',prime),recordIds:createdIds});
+    const prime={container:con,facility:fac,date:iso,location:s.location||''};
+    const subject=`${_sheetLocCode(con,s.location)} ${con} ${_mmddyy(iso)}`.replace(/\s+/g,' ').trim(); // reads location + container per sheet
+    prepared.push({prime,rows,crew,pageB64:s.pageB64,pageBytes:s.pageBytes,pageUrl:s.pageUrl||'',subject,recordIds:createdIds});
   }
   _harvestBatch=[]; _harvestBatchReports=prepared;
   toast('hl-t',`✓ Logged ${prepared.length} dated session(s)`); rHarvest(document.getElementById('main-views'));
