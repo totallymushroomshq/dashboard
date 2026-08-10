@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #55</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #56</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -6374,14 +6374,47 @@ async function applyVarietyReconcile(variety, counted, wk){
 }
 async function applyReconcile(){
   const wk=_recWeek||_mondayOf(tday());
-  const inputs=[...document.querySelectorAll('.rec-count')];
+  const inputs=[...document.querySelectorAll('.rec-lot-count')];
   const changes=[];
-  for(const inp of inputs){ const v=inp.getAttribute('data-var'); const raw=inp.value.trim(); if(raw==='') continue; const counted=parseFloat(raw); if(isNaN(counted)) continue; const cur=varietyOnHand(v); if(Math.abs(counted-cur)<0.05) continue; changes.push({v,counted}); }
-  if(!changes.length){ alert('No variances to apply — enter a physical count that differs from on-hand.'); return; }
-  if(!confirm(`Apply ${changes.length} reconcile adjustment(s) for week of ${wk}?\n\n${changes.map(c=>`• ${c.v} → ${c.counted} lb`).join('\n')}`)) return;
-  for(const c of changes){ await applyVarietyReconcile(c.v, c.counted, wk); }
-  toast('inv-rec-t','✓ Reconciled '+changes.length+' variety(ies)');
+  for(const inp of inputs){ const oh=parseFloat(inp.getAttribute('data-oh'))||0; const raw=inp.value.trim(); if(raw==='') continue; const counted=parseFloat(raw); if(isNaN(counted)||counted<0) continue; if(Math.abs(counted-oh)<0.05) continue; changes.push({v:inp.getAttribute('data-var'),lot:inp.getAttribute('data-lot'),counted,oh}); }
+  if(!changes.length){ alert('No lot variances to apply — change a lot count (or hit 🔥 gone).'); return; }
+  if(!confirm(`Apply ${changes.length} lot adjustment(s) for week of ${wk}?\n\n${changes.slice(0,12).map(c=>`• ${c.v} lot ${c.lot}: ${c.oh}→${c.counted} lb`).join('\n')}${changes.length>12?'\n…':''}`)) return;
+  for(const c of changes){ await applyLotReconcile(c.v,c.lot,c.counted,wk); }
+  toast('inv-rec-t','✓ Reconciled '+changes.length+' lot(s)');
   renderC();
+}
+async function applyLotReconcile(variety, lotNumber, counted, wk){
+  const recs=(DB.harvests||[]).filter(h=>h.variety===variety && (h.lotNumber||'—')===lotNumber).map(h=>({h,oh:packOnHand(h)})).filter(x=>x.oh>0.001).sort((a,b)=>b.oh-a.oh);
+  const current=Math.round(recs.reduce((s,x)=>s+x.oh,0)*100)/100;
+  let delta=Math.round((counted-current)*100)/100;
+  if(Math.abs(delta)<0.05) return null;
+  const updates=[];
+  if(delta<0){ let rem=-delta;
+    for(const {h,oh} of recs){ if(rem<=0.001) break; const take=Math.min(rem,oh); h.usedWeight=Math.round(((h.usedWeight||0)+take)*100)/100; h.reconciledAt=tday(); h.reconcileAdjust=Math.round(((h.reconcileAdjust||0)-take)*100)/100; updates.push(FS.update('harvests',h.id,{usedWeight:h.usedWeight,reconciledAt:h.reconciledAt,reconcileAdjust:h.reconcileAdjust})); rem-=take; }
+  } else {
+    const cont=(recs[0]&&recs[0].h.container)||'';
+    const adj={date:tday(),variety,lotNumber,weight:delta,usedWeight:0,sampleWeight:0,preservedWeight:0,container:cont,grade:'',reconcileAdjust:delta,reconciledAt:tday(),notes:`Weekly reconcile (${wk}) — lot ${lotNumber} +${delta} lb to match physical count`,createdAt:new Date().toISOString()};
+    const id=await FS.add('harvests',adj); DB.harvests.push({id,...adj});
+  }
+  await Promise.all(updates);
+  logAudit('inventory_reconcile',`Reconciled lot ${lotNumber} (${variety}): ${current} → ${counted} lb (Δ${delta>=0?'+':''}${delta}) · week ${wk}`);
+  return {lotNumber,current,counted,delta};
+}
+function onRecLotInput(inp){
+  const oh=parseFloat(inp.getAttribute('data-oh'))||0; const raw=inp.value.trim();
+  const row=inp.closest('tr'); const dcell=row&&row.querySelector('.rec-lot-var');
+  const d=raw===''?0:Math.round((parseFloat(inp.value)-oh)*100)/100;
+  if(dcell){ dcell.textContent=(d>=0?'+':'')+d.toFixed(1); dcell.style.color=Math.abs(d)<0.05?'var(--text3)':(d<0?'var(--rust)':'var(--fern)'); }
+  const grp=inp.closest('.rec-vargroup'); if(grp) _recUpdateVarGroup(grp);
+}
+function recLotGone(btn){ const inp=btn.closest('tr').querySelector('.rec-lot-count'); if(inp){ inp.value='0'; onRecLotInput(inp); } }
+function _recUpdateVarGroup(grp){
+  let counted=0, oh=0;
+  grp.querySelectorAll('.rec-lot-count').forEach(inp=>{ const o=parseFloat(inp.getAttribute('data-oh'))||0; oh+=o; counted+=(inp.value.trim()===''?o:(parseFloat(inp.value)||0)); });
+  const cEl=grp.querySelector('.rec-var-counted'), dEl=grp.querySelector('.rec-var-delta');
+  const d=Math.round((counted-oh)*100)/100;
+  if(cEl) cEl.textContent=(Math.round(counted*10)/10).toFixed(1);
+  if(dEl){ dEl.textContent=(d>=0?'+':'')+d.toFixed(1); dEl.style.color=Math.abs(d)<0.05?'var(--text3)':(d<0?'var(--rust)':'var(--fern)'); }
 }
 function updateRecVariance(inp){
   const cur=parseFloat(inp.getAttribute('data-oh'))||0; const raw=inp.value.trim();
@@ -6393,28 +6426,46 @@ function updateRecVariance(inp){
 function buildReconcilePanel(){
   if(!canEdit()) return '';
   const wk=_recWeek||_mondayOf(tday());
-  const vars=_recVarieties().map(v=>({v,oh:Math.round(varietyOnHand(v)*100)/100,ded:_deductedThisWeek(v,wk)})).filter(x=>x.oh>0.05||x.ded>0.05).sort((a,b)=>b.oh-a.oh);
-  const rows=vars.map((x,i)=>`<tr>
-    <td style="font-weight:500;">${x.v}</td>
-    <td class="mn">${x.oh.toFixed(1)} lb</td>
-    <td class="mn" style="color:var(--text3);">${x.ded.toFixed(1)} lb</td>
-    <td><input class="fi rec-count" type="number" step="0.1" min="0" data-var="${x.v.replace(/"/g,'&quot;')}" data-oh="${x.oh}" data-i="${i}" placeholder="count…" oninput="updateRecVariance(this)" style="width:110px;"></td>
-    <td class="mn" id="recvar-${i}" style="font-weight:700;color:var(--text3);">—</td>
-  </tr>`).join('');
+  const byVar={};
+  (DB.harvests||[]).forEach(h=>{ const oh=packOnHand(h); if(oh<=0.001) return; const v=h.variety||'—'; const lot=h.lotNumber||'—';
+    const m=(byVar[v]=byVar[v]||{}); const l=(m[lot]=m[lot]||{lot,oh:0,cons:new Set()}); l.oh+=oh; if(h.container) l.cons.add(h.container); });
+  const varList=Object.keys(byVar).map(v=>{ const lots=Object.values(byVar[v]).sort((a,b)=>b.oh-a.oh); const oh=lots.reduce((s,l)=>s+l.oh,0);
+    return {v,lots,oh:Math.round(oh*100)/100,ded:_deductedThisWeek(v,wk)}; }).filter(x=>x.oh>0.05||x.ded>0.05).sort((a,b)=>b.oh-a.oh);
+  const varBlocks=varList.map(x=>{
+    const vs=(x.v||'').replace(/"/g,'&quot;');
+    const lotRows=x.lots.map(l=>{ const oh=Math.round(l.oh*100)/100; const ls=(l.lot||'').replace(/"/g,'&quot;');
+      return `<tr>
+        <td class="mn" style="color:var(--gold);font-weight:700;">${l.lot}</td>
+        <td style="font-size:11px;color:var(--text3);">${[...l.cons].join(', ')||'—'}</td>
+        <td class="mn">${oh.toFixed(1)} lb</td>
+        <td><input class="fi rec-lot-count" type="number" step="0.1" min="0" value="${oh}" data-var="${vs}" data-lot="${ls}" data-oh="${oh}" oninput="onRecLotInput(this)" style="width:92px;"></td>
+        <td><button type="button" class="btn b-sm" style="background:rgba(184,76,32,.1);color:#b84c20;border:1px solid rgba(184,76,32,.3);" title="This lot is gone — 0 left" onclick="recLotGone(this)">🔥 gone</button></td>
+        <td class="mn rec-lot-var" style="font-weight:700;color:var(--text3);">0.0</td>
+      </tr>`;
+    }).join('');
+    return `<div class="rec-vargroup" style="border:1px solid var(--border);border-radius:6px;margin-bottom:10px;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:rgba(184,130,10,.06);padding:8px 12px;">
+        <span style="font-weight:600;">${x.v}</span>
+        <span style="font-size:11px;color:var(--text3);">${x.lots.length} lot${x.lots.length!==1?'s':''} · on-hand <b>${x.oh.toFixed(1)}</b> lb · deducted this wk ${x.ded.toFixed(1)} lb</span>
+        <span style="font-size:12px;margin-left:auto;">counted <b class="rec-var-counted">${x.oh.toFixed(1)}</b> · Δ <b class="rec-var-delta" style="color:var(--text3);">0.0</b></span>
+      </div>
+      <div class="tw"><table>
+        <thead><tr><th>Lot #</th><th>Container</th><th>On-hand</th><th>Counted</th><th></th><th>Δ</th></tr></thead>
+        <tbody>${lotRows}</tbody>
+      </table></div>
+    </div>`;
+  }).join('');
   return `<details style="border:1px solid rgba(184,130,10,.3);border-radius:8px;margin-bottom:20px;background:rgba(184,130,10,.03);overflow:hidden;">
     <summary style="cursor:pointer;list-style:none;padding:12px 16px;font-weight:600;color:var(--gold);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      📊 Weekly Inventory Reconcile <span style="font-size:11px;font-weight:400;color:var(--text3);">expected-vs-actual + physical count → true up</span>
+      📊 Weekly Inventory Reconcile — by lot <span style="font-size:11px;font-weight:400;color:var(--text3);">count each lot (or 🔥 gone) → true up per lot</span>
     </summary>
     <div style="padding:0 16px 16px;">
       <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
         <label style="font-size:12px;color:var(--text3);">Week of</label>
         <input class="fi" type="date" value="${wk}" onchange="setRecWeek(this.value)" style="max-width:170px;">
-        <span style="font-size:11px;color:var(--text3);">Enter what you physically counted; the app posts an adjustment so on-hand matches, with an audit entry.</span>
+        <span style="font-size:11px;color:var(--text3);">Each lot is pre-filled with what the app thinks is on-hand — change only the lots that differ, or hit 🔥 gone. Apply posts a per-lot adjustment with an audit entry.</span>
       </div>
-      <div class="tw"><table>
-        <thead><tr><th>Variety</th><th>On-hand (app)</th><th>Deducted this wk</th><th>Physical count</th><th>Variance</th></tr></thead>
-        <tbody>${rows||`<tr><td colspan="5" class="empty">No stock to reconcile.</td></tr>`}</tbody>
-      </table></div>
+      ${varBlocks||`<div class="empty">No stock to reconcile.</div>`}
       <div class="form-acts" style="margin-top:12px;"><button class="btn b-m" onclick="applyReconcile()">Apply Reconcile Adjustments</button></div>
       <div class="toast" id="inv-rec-t">✓ Reconciled</div>
     </div>
