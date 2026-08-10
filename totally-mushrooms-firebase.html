@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #53</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #54</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4853,7 +4853,7 @@ function _sheetLocCode(con, writtenLoc){ const fac=_sheetFacility(con); if(fac) 
 // one editable lot row (matches the individual harvest form: lot · variety · grade · weight)
 function hbLotRow(r){ r=r||{};
   return `<div class="hb-lotrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
-    <input class="fi hb-lot" list="hb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:104px;" autocomplete="off">
+    <input class="fi hb-lot" list="hb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:104px;" autocomplete="off" oninput="hbLotVariety(this)">
     <input class="fi hb-var" list="hb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Variety" style="flex:1;min-width:118px;" autocomplete="off">
     <select class="fs hb-grade" style="max-width:64px;"><option value="A" ${(r.grade||'A')==='A'?'selected':''}>A</option><option value="B" ${r.grade==='B'?'selected':''}>B</option></select>
     <input class="fi hb-wt" type="number" step="0.01" min="0" value="${r.harvested!=null&&r.harvested!==''?r.harvested:''}" placeholder="lb" style="max-width:86px;">
@@ -4866,6 +4866,14 @@ function hbCrewRow(c){ c=c||{};
     <input class="fi hb-cmin" type="number" min="0" value="${c.minutes!=null&&c.minutes!==''?c.minutes:''}" placeholder="min" style="max-width:76px;"><span style="font-size:11px;color:var(--text3);">min</span>
     <button type="button" class="btn b-r b-sm" title="Remove crew" onclick="this.closest('.hb-crewrow').remove()">✕</button>
   </div>`;
+}
+// lot # → variety: fill the row's variety box from the known lot (harvests/fruitings/receivings)
+function hbLotVariety(inp){
+  const lot=(inp.value||'').trim(); if(!lot) return;
+  const v=(typeof lotToVariety==='function')?lotToVariety(lot):'';
+  if(!v) return;
+  const row=inp.closest('.hb-lotrow'); const vEl=row&&row.querySelector('.hb-var');
+  if(vEl) vEl.value=v;
 }
 function hbAddLot(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('hb-lots')) w.insertAdjacentHTML('beforeend',hbLotRow({})); }
 function hbAddCrew(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('hb-crew')) w.insertAdjacentHTML('beforeend',hbCrewRow({})); }
