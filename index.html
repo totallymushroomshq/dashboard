@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #48</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #49</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4823,6 +4823,120 @@ function _toISO(s){
   if(mon&&day&&yr){ if(yr.length===2) yr='20'+yr; return `${yr}-${String(mon).padStart(2,'0')}-${String(day).padStart(2,'0')}`; }
   return '';
 }
+// ── BATCH HARVEST: one multi-date PDF → N dated sessions, each logged + its own dated report + its own labeled PDF ──
+let _harvestBatch=[]; let _harvestBatchReports=[];
+async function parseHarvestBatch(file){
+  const user=firebase.auth().currentUser; if(!user) throw new Error('Not signed in — reload and log in.');
+  const tok=await user.getIdToken(); const b64=await _fileToB64(file);
+  const resp=await fetch(PARSE_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
+    body:JSON.stringify({image:b64,mime:file.type||'application/pdf',kind:'harvest_batch'})});
+  let j={}; try{ j=await resp.json(); }catch(e){}
+  if(!resp.ok) throw new Error(j.error||('Server error '+resp.status));
+  if(!j.ok||!Array.isArray(j.sheets)) throw new Error(j.error||'Could not read the batch PDF.');
+  return j.sheets;
+}
+async function snapHarvestBatch(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('hl-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Reading multi-date PDF — can take a moment for several sheets…');
+  try{
+    const sheets=await parseHarvestBatch(file);
+    if(!sheets.length){ show('⚠ No harvest sheets found in that PDF.'); return; }
+    _harvestBatch=sheets; show(`✓ Read <b>${sheets.length} dated sheet(s)</b> — verify &amp; log below.`);
+    reviewHarvestBatch();
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+function _sheetFacility(con){ return (getActiveContainers().find(c=>c.code===con)||{}).facility||''; }
+function reviewHarvestBatch(){
+  const sheets=_harvestBatch;
+  const rowsHtml=sheets.map((s)=>{
+    const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.strain||x.harvested));
+    const tot=rows.reduce((a,x)=>a+(parseFloat(x.harvested)||0),0);
+    const crew=(Array.isArray(s.crew)?s.crew:[]).map(c=>`${c.name||'?'} ${c.minutes||0}m`).join(', ')||'—';
+    const iso=_toISO(s.date)||s.date||'';
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;background:var(--paper);">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--fern);">${fDate(iso)||s.date||'?'}</span>
+        <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);">${s.container||'—'}</span>
+        <span style="font-size:12px;color:var(--text2);">${rows.length} lot${rows.length!==1?'s':''} · ${tot.toFixed(1)} lb</span>
+        <span style="font-size:11px;color:var(--text3);flex:1;min-width:120px;">👤 ${s.employee||'—'} · 🧑‍🌾 ${crew}${s.pageUrl?` · <a href="${s.pageUrl}" target="_blank" rel="noopener">page PDF</a>`:''}</span>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;">${rows.map(r=>`${r.lot||'?'} ${r.strain||''} ${(parseFloat(r.harvested)||0).toFixed(1)}lb`).join(' · ')||'—'}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('em-title').textContent=`📚 Batch Harvest — ${sheets.length} dated sheet(s)`;
+  document.getElementById('em-body').innerHTML=`
+    <div style="font-size:12px;color:var(--text3);margin-bottom:12px;line-height:1.6;">Each sheet is logged as its own dated session (records + crew labor) and gets its own dated report with its own labeled PDF. Verify, then log all.</div>
+    ${rowsHtml}
+    <div class="form-acts" style="margin-top:14px;">
+      <button class="btn b-m b-lg" onclick="commitHarvestBatch(this)">Log all ${sheets.length} &amp; prepare reports</button>
+      <button class="btn b-g" onclick="closeModal()">Cancel</button>
+    </div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+async function commitHarvestBatch(btn){
+  const sheets=_harvestBatch; if(!sheets.length) return;
+  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
+  const prepared=[];
+  for(const s of sheets){
+    const iso=_toISO(s.date)||tday(); const con=s.container||''; const fac=_sheetFacility(con);
+    const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.strain||x.harvested))
+      .map(r=>({date:iso,container:con,facility:fac,lotNumber:(r.lot||'').trim(),variety:(r.strain||'').trim(),grade:'A',weight:parseFloat(r.harvested)||0,notes:'batch scan'}));
+    if(!rows.length) continue;
+    try{ normalizeRowVarieties(rows); }catch(e){}
+    const createdIds=[];
+    for(const r of rows){ if(r.variety) addVariety(r.variety);
+      const hData={date:r.date,container:r.container,facility:r.facility,lotNumber:r.lotNumber,variety:r.variety,grade:r.grade,weight:r.weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes:r.notes,scanUrl:s.pageUrl||'',createdAt:new Date().toISOString()};
+      const hId=await FS.add('harvests',hData); DB.harvests.push({id:hId,...hData}); createdIds.push(hId);
+    }
+    const crew=(Array.isArray(s.crew)?s.crew:[]).map(c=>({emp:(c.name||'').trim(),min:parseInt(c.minutes)||0})).filter(c=>c.emp&&c.min>0);
+    for(const c of crew){ try{ await logManualTime(con,'Harvesting',c.min,iso,'Harvesting session (batch)',c.emp); }catch(e){ console.warn(e); } }
+    logAudit('harvest_logged',`Batch harvest — ${rows.length} lot(s) @ ${con} ${iso} (${crew.length} crew)`);
+    const prime={container:con,facility:fac,date:iso};
+    prepared.push({prime,rows,crew,pageB64:s.pageB64,pageBytes:s.pageBytes,pageUrl:s.pageUrl||'',subject:notifySubject('harvest',prime),recordIds:createdIds});
+  }
+  _harvestBatch=[]; _harvestBatchReports=prepared;
+  toast('hl-t',`✓ Logged ${prepared.length} dated session(s)`); rHarvest(document.getElementById('main-views'));
+  harvestBatchSendPanel();
+}
+function harvestBatchSendPanel(){
+  const reps=_harvestBatchReports; if(!reps.length){ closeModal(); return; }
+  const recips=notifyRecips('harvest');
+  const master=DB.notify.enabled!==false; const ready=master&&DB.notify.templateId&&DB.emailjs.serviceId&&DB.emailjs.publicKey;
+  const repHtml=reps.map((r,i)=>`
+    <div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;background:var(--paper);">
+      <div class="fgl"><label style="font-size:10px;">Subject — report ${i+1} (${fDate(r.prime.date)})</label><input class="fi" id="hbsubj-${i}" value="${attrEsc(r.subject)}" style="font-family:'Syne Mono',monospace;font-size:11px;"></div>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px;">${r.rows.length} lot(s) · ${r.rows.reduce((a,x)=>a+(x.weight||0),0).toFixed(1)} lb${r.pageB64?` · 📎 ${_safeFile(r.subject)}.pdf`:' · (no per-page PDF — full doc link in body)'}</div>
+      <div style="margin-top:6px;"><button class="btn b-g b-sm" onclick="sendOneBatchReport(${i})" ${ready?'':'disabled style="opacity:.5"'}>✉ Send this one</button> <span id="hbstat-${i}" style="font-size:11px;color:var(--text3);margin-left:6px;"></span></div>
+    </div>`).join('');
+  document.getElementById('em-title').textContent=`✉ Send ${reps.length} Dated Harvest Report(s)`;
+  document.getElementById('em-body').innerHTML=`
+    ${!ready?`<div style="background:rgba(184,76,32,.09);border:1px solid rgba(184,76,32,.3);border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#b84c20;">${!master?'📴 Email sending is OFF (testing). Turn it on in Admin → Email.':'⚠ Notification template not set — add it in Admin → Email.'}</div>`:''}
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Each date sends as its own report with its own labeled PDF attachment (filename = subject).</div>
+    <label style="font-size:10px;color:var(--text3);">Send to</label>
+    <div id="hb-recips" style="display:flex;flex-direction:column;gap:5px;margin:5px 0 12px;">${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="hb-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}<div style="display:flex;gap:6px;margin-top:4px;"><input class="fi" id="hb-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();hbAddRecip();}"><button class="btn b-g b-sm" onclick="hbAddRecip()">+ Add</button></div></div>
+    ${repHtml}
+    <div class="form-acts" style="margin-top:14px;">
+      <button class="btn b-m b-lg" onclick="sendAllBatchReports()" ${ready?'':'disabled style="opacity:.5"'}>✉ Send all ${reps.length}</button>
+      <button class="btn b-g" onclick="closeModal()">Done / close</button>
+    </div>
+    <div class="toast" id="hb-t">✓ Sent</div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+function hbAddRecip(){ const inp=document.getElementById('hb-add'); const v=(inp?.value||'').trim(); if(!v) return; const box=document.getElementById('hb-recips'); const l=document.createElement('label'); l.style.cssText='display:flex;align-items:center;gap:8px;font-size:12px;'; l.innerHTML=`<input type="checkbox" class="hb-r" value="${attrEsc(v)}" checked> ${v}`; box.insertBefore(l, box.lastElementChild); inp.value=''; inp.focus(); }
+async function sendOneBatchReport(i){
+  const r=_harvestBatchReports[i]; if(!r) return false;
+  const subj=(document.getElementById('hbsubj-'+i)?.value||r.subject).trim();
+  const to=[...document.querySelectorAll('.hb-r:checked')].map(c=>c.value); if(!to.length){ alert('Pick at least one recipient.'); return false; }
+  const stat=document.getElementById('hbstat-'+i); if(stat){ stat.textContent='sending…'; stat.style.color='var(--text3)'; }
+  const report=notifyReport('harvest', subj, {prime:r.prime, rows:r.rows.map(x=>({lotNumber:x.lotNumber,variety:x.variety,grade:x.grade,weight:x.weight})), crew:r.crew, imageUrl:r.pageUrl});
+  const image=r.pageB64?{b64:r.pageB64,mime:'application/pdf',bytes:r.pageBytes}:null;
+  const ok=await sendNotify(subj,to,report,image);
+  if(stat){ stat.textContent = ok? (ok==='link-only'?'✓ sent (link in body)':'✓ sent') : '⚠ failed'; stat.style.color = ok?'var(--fern)':'var(--rust)'; }
+  return ok;
+}
+async function sendAllBatchReports(){ let n=0; for(let i=0;i<_harvestBatchReports.length;i++){ const ok=await sendOneBatchReport(i); if(ok) n++; } toast('hb-t',`✓ Sent ${n}/${_harvestBatchReports.length}`); }
 async function snapHarvest(input){
   const file=input.files&&input.files[0]; if(!file) return;
   const st=document.getElementById('hl-snap-status');
@@ -5540,6 +5654,10 @@ function rHarvest(el){
       <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
         <input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapHarvest(this)">
       </label>
+      <label class="btn b-lg" style="cursor:pointer;display:inline-block;margin-left:8px;background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.3);">📚 Batch PDF (multiple dates)
+        <input type="file" accept="application/pdf,.pdf" style="display:none;" onchange="snapHarvestBatch(this)">
+      </label>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px;">📚 <b>Batch:</b> one PDF with several dated harvest sheets (one per page) → each date is logged separately and sent as its own dated report with its own labeled PDF.</div>
       <div id="hl-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
     </div>`:''}
     ${canEdit()?'<div class="card"><div class="card-t">Log a Harvest</div>':'<div style="display:none"><div>'}
