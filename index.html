@@ -360,7 +360,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #65</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #66</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -1964,8 +1964,10 @@ function buildNav(){
     pill.className='rpill';
   }
 
-  const perms=S.permissions||DEFAULT_PERMS[role]||DEFAULT_PERMS.staff;
-  const allowed=new Set(ALL_INTERNAL_TABS.filter(t=>perms[t.id]).map(t=>t.id));
+  const dperm=DEFAULT_PERMS[role]||DEFAULT_PERMS.staff;
+  const perms=S.permissions||dperm;
+  // a tab NOT present in a user's saved permissions (e.g. a newly-added tab like 'packing') falls back to the role default
+  const allowed=new Set(ALL_INTERNAL_TABS.filter(t=>(perms[t.id]!==undefined?perms[t.id]:dperm[t.id])).map(t=>t.id));
 
   const GROUPS=[
     {label:'Daily',       ids:['today','week','new-order','email-parse']},
