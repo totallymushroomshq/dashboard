@@ -360,7 +360,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #67</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #68</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -3004,13 +3004,19 @@ function renderPoManualLots(){
 // create a reconstructed record so a used-but-removed lot is traceable; existing fruiting/receiving/block for the same lot link automatically by lot #
 async function backfillLotTrace(lot, variety, container){
   const norm=x=>(x||'').trim().toLowerCase(); const L=norm(lot); if(!L) return null;
-  const anyRecord=(DB.harvests||[]).some(h=>norm(h.lotNumber)===L)||(DB.fruitings||[]).some(f=>norm(f.lotNumber)===L)||(DB.receivings||[]).some(r=>norm(r.lotNumber)===L);
-  if(anyRecord) return null; // already traceable via an existing record
+  const hasHarvest=(DB.harvests||[]).some(h=>norm(h.lotNumber)===L);
+  const hasFruit=(DB.fruitings||[]).some(f=>norm(f.lotNumber)===L);
+  if(hasHarvest&&hasFruit) return null; // fully traceable already
   const fac=(typeof _sheetFacility==='function'?_sheetFacility(container||''):'')||'';
-  const hData={date:tday(),container:container||'',facility:fac,lotNumber:lot,variety:variety||'',grade:'A',weight:0,usedWeight:0,sampleWeight:0,preservedWeight:0,reconstructed:true,notes:'Back-filled at pack — lot was toasted/removed early; added for traceability',createdAt:new Date().toISOString()};
-  const id=await FS.add('harvests',hData); DB.harvests.push({id,...hData});
-  logAudit('lot_backfilled',`Back-filled lot ${lot} (${variety||''}${container?' · '+container:''}) into traceability at pack`);
-  return id;
+  const made=[];
+  // reconstruct the FRUITING node (container → lot) if missing, so the mid-chain connects to any upstream receiving/block
+  if(!hasFruit){ const fData={date:tday(),containerID:container||'',lotNumber:lot,source:'',vendor:'',variety:variety||'',blockCount:0,blockWeightLb:0,rateLbPerBlock:LBSPERBLOCK,reconstructed:true,notes:'Back-filled at pack — reconstructed for traceability',status:'harvested',createdAt:new Date().toISOString()};
+    const fid=await FS.add('fruitings',fData); DB.fruitings.push({id:fid,...fData}); made.push('fruiting'); }
+  // reconstruct the HARVEST node if missing (0 lb — already used)
+  if(!hasHarvest){ const hData={date:tday(),container:container||'',facility:fac,lotNumber:lot,variety:variety||'',grade:'A',weight:0,usedWeight:0,sampleWeight:0,preservedWeight:0,reconstructed:true,notes:'Back-filled at pack — lot was toasted/removed early; added for traceability',createdAt:new Date().toISOString()};
+    const id=await FS.add('harvests',hData); DB.harvests.push({id,...hData}); made.push('harvest'); }
+  logAudit('lot_backfilled',`Back-filled lot ${lot} (${variety||''}${container?' · '+container:''}) into traceability at pack — reconstructed ${made.join(' + ')||'nothing'}. Upstream (receiving/block/spawn) links automatically by lot #.`);
+  return made;
 }
 function clrPackOrder(){
   ['po-so','po-client','po-notes','po-ml-lot','po-ml-var','po-ml-con'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
@@ -9739,6 +9745,64 @@ function delFlip(id){
   rCleaning(document.getElementById('main-views'));
 }
 
+// ═════════════ FULL LINEAGE DASHBOARD — spawn/block/receiving → fruiting → harvest → customer ═════════════
+function _traceStage(o){
+  // o:{icon,title,color,count,rows} rows:[html]
+  const c=o.color;
+  return `<div class="tr-stage" style="border:1px solid ${c}55;border-left:4px solid ${c};border-radius:8px;background:${c}0c;padding:12px 14px;">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:${o.rows.length?'8px':'0'};">
+      <span style="font-size:20px;">${o.icon}</span>
+      <span style="font-weight:700;color:${c};font-size:13px;letter-spacing:.02em;">${o.title}</span>
+      <span style="margin-left:auto;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);">${o.count}</span>
+    </div>
+    ${o.rows.length?`<div style="display:flex;flex-direction:column;gap:6px;">${o.rows.join('')}</div>`:`<div style="font-size:11px;color:var(--text3);font-style:italic;">no record found for this point in the chain</div>`}
+  </div>`;
+}
+function _trArrow(){ return `<div style="text-align:center;color:var(--text3);font-size:16px;line-height:1;margin:2px 0;">↓</div>`; }
+function _trRow(main, sub){ return `<div style="background:var(--white);border:1px solid var(--border);border-radius:5px;padding:7px 10px;font-size:12px;"><div style="font-weight:500;">${main}</div>${sub?`<div style="font-size:11px;color:var(--text3);margin-top:2px;">${sub}</div>`:''}</div>`; }
+function showTraceReport(q){
+  q=(q||_traceQ||'').trim(); if(!q){ alert('Search a lot / block # first, then open the lineage.'); return; }
+  const d=_traceData(q,'','');
+  const mn="font-family:'Syne Mono',monospace;";
+  const blocks=d.fruitByNum.concat(d.fruitByContainer);
+  const nothing=!blocks.length&&!d.harvests.length&&!d.orders.length&&!d.labBatches.length&&!d.spawnRuns.length&&!d.receivings.length&&!d.cultures.length;
+  const cultRows=(d.cultures||[]).map(c=>_trRow(`<span style="${mn}color:var(--gold);">${c.cultureLot||c.id}</span> · ${c.strain||''}`, c.source||c.species||''));
+  const spawnRows=(d.spawnRuns||[]).map(s=>_trRow(`<span style="${mn}color:var(--gold);">${s.spawnLot||s.lotCode||''}</span> · ${s.strain||''}`, `${s.grain||''}${s.bagCount?' · '+s.bagCount+' bags':''}${s.date?' · '+fDate(s.date):''}`));
+  const blockRows=(d.labBatches||[]).map(b=>{ const tot=batchVarietyLines(b).reduce((a,v)=>a+(parseInt(v.blockCount)||0),0); return _trRow(`<span style="${mn}color:var(--gold);">${b.lotCode||b.batchNum||''}</span> · ${batchVarietyLines(b).map(v=>v.variety).filter(Boolean).join(', ')||''}`, `${b.blocksProduced||tot||0} blocks${b.productionDate?' · '+fDate(b.productionDate):''}`); });
+  const recvRows=(d.receivings||[]).map(r=>_trRow(`<span style="${mn}color:var(--gold);">${r.lotNumber||''}</span> · ${r.variety||''}`, `${(r.source==='internal'?'Internal':'Vendor')}${r.vendor?' — '+r.vendor:''} · ${r.blockCount||0} blocks${r.date?' · '+fDate(r.date):''}`));
+  const fruitRows=blocks.map(f=>_trRow(`<span style="${mn}color:var(--fern);">${f.containerID||'—'}</span> · ${f.variety||''} · <span style="${mn}color:var(--gold);">${f.lotNumber||''}</span>`, `${f.blockCount||0} blocks placed${f.date?' · '+fDate(f.date):''} · ${f.status||''}`));
+  const harvRows=(d.harvests||[]).map(h=>_trRow(`<span style="${mn}color:var(--gold);">${h.lotNumber||''}</span> · ${h.variety||''} · <span class="bdg ${h.grade==='A'?'bc':'bp'}" style="font-size:8px;">${h.grade||'—'}</span>`, `${(h.weight||0).toFixed(1)} lb${h.container?' · '+h.container:''}${h.date?' · '+fDate(h.date):''}${h.reconstructed?' · ⚠ back-filled':''}`));
+  const ordRows=(d.orders||[]).map(o=>{ const cases=ALL_PRODS.reduce((s,p)=>s+(parseInt(o[p.dataKey])||0),0); return _trRow(`<strong>${o.client||'—'}</strong>${o.soNum?` <span style="${mn}font-size:10px;color:var(--text3);">SO ${o.soNum}</span>`:''}`, `${cases} case(s)${o.deliveredAt?' · delivered '+fDate((o.deliveredAt+'').slice(0,10)):(o.packedAt?' · packed '+fDate((o.packedAt+'').slice(0,10)):'')}`); });
+  const cust=[...new Set((d.orders||[]).map(o=>o.client).filter(Boolean))];
+  const variety=[...new Set([...(d.harvests||[]).map(h=>h.variety),...blocks.map(f=>f.variety)].filter(Boolean))][0]||'';
+  document.getElementById('em-title').textContent='🧬 Full Lineage — '+q;
+  document.getElementById('em-body').innerHTML = nothing
+    ? `<div style="padding:24px;text-align:center;color:var(--text3);">No records anywhere for <b style="${mn}">${q}</b>.</div>`
+    : `
+    <div style="background:linear-gradient(90deg,rgba(58,96,48,.1),rgba(46,109,164,.08));border:1px solid var(--border);border-radius:8px;padding:12px 15px;margin-bottom:16px;">
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--text3);">LOT / BLOCK</div>
+      <div style="font-size:20px;font-weight:700;color:var(--gold);${mn}">${q}</div>
+      <div style="font-size:12px;color:var(--text2);margin-top:4px;">${variety?variety+' · ':''}${d.containers.length?'chamber '+d.containers.join(', ')+' · ':''}${cust.length?'→ '+cust.join(', '):'not yet shipped'}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:0;">
+      ${_traceStage({icon:'🧫',title:'Culture',color:'#7a4fb5',count:cultRows.length+' rec',rows:cultRows})}
+      ${_trArrow()}
+      ${_traceStage({icon:'🌾',title:'Grain Spawn',color:'#b8820a',count:spawnRows.length+' run(s)',rows:spawnRows})}
+      ${_trArrow()}
+      ${_traceStage({icon:'🧱',title:'Block Production',color:'#8f6410',count:blockRows.length+' cook(s)',rows:blockRows})}
+      ${_trArrow()}
+      ${_traceStage({icon:'📥',title:'Received',color:'#2e6da4',count:recvRows.length+' receipt(s)',rows:recvRows})}
+      ${_trArrow()}
+      ${_traceStage({icon:'🍄',title:'Fruited (Container)',color:'#3a6030',count:fruitRows.length+' block rec(s)',rows:fruitRows})}
+      ${_trArrow()}
+      ${_traceStage({icon:'⚖️',title:'Harvested',color:'#3a6030',count:harvRows.length+' lot(s)',rows:harvRows})}
+      ${_trArrow()}
+      ${_traceStage({icon:'🚚',title:'Customer',color:'#993556',count:ordRows.length+' order(s)',rows:ordRows})}
+    </div>
+    <div style="margin-top:14px;text-align:right;"><button class="btn b-g" onclick="closeModal()">Close</button></div>`;
+  document.getElementById('edit-modal').classList.add('open');
+}
+
 function rTrace(el){
   const q=_traceQ, date=_traceDate, container=_traceContainer;
   const thL='text-align:left;padding:7px 10px;font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap;';
@@ -9755,7 +9819,8 @@ function rTrace(el){
       results=`<div class="card" style="padding:24px;text-align:center;color:var(--text3);">No records found for lot / block <strong style="color:var(--text2);${mn}">${q}</strong>${date?` on ${fDate(date)}`:''}${container?` in container ${container}`:''}. Check the number, or clear the date / container filters.</div>`;
     } else {
       // Summary
-      const sumChips=`<div class="stats" style="margin-bottom:24px;">
+      const lineageBtn=`<div style="margin-bottom:14px;"><button class="btn b-m b-lg" onclick="showTraceReport('${q.replace(/'/g,"\\'")}')">🧬 View Full Lineage Dashboard</button></div>`;
+      const sumChips=lineageBtn+`<div class="stats" style="margin-bottom:24px;">
         <div class="sc g"><div class="sc-l">Received Blocks</div><div class="sc-v">${blocks.length}</div><div class="sc-n">fruiting block records</div></div>
         <div class="sc"><div class="sc-l">Chambers</div><div class="sc-v">${d.containers.length}</div><div class="sc-n">${d.containers.join(', ')||'—'}</div></div>
         <div class="sc"><div class="sc-l">Harvest Lots</div><div class="sc-v">${d.harvests.length}</div><div class="sc-n">graded & weighed</div></div>
