@@ -360,7 +360,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #62</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #63</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -6902,6 +6902,104 @@ function updateRecVariance(inp){
   const d=Math.round((parseFloat(raw)-cur)*100)/100;
   cell.textContent=(d>=0?'+':'')+d.toFixed(1)+' lb'; cell.style.color=Math.abs(d)<0.05?'var(--text3)':(d<0?'var(--rust)':'var(--fern)');
 }
+// ═════════════ COOLER COUNT: snap tote stickers / hand-enter → same-lot totes sum → SET on-hand (physical count) ═════════════
+let _coolerCount=[];
+async function applyLotCount(lotNumber, variety, counted, when){
+  const norm=x=>(x||'').trim().toLowerCase();
+  const recs=(DB.harvests||[]).filter(h=>norm(h.lotNumber)===norm(lotNumber)).map(h=>({h,oh:packOnHand(h)})).filter(x=>x.oh>0.001).sort((a,b)=>b.oh-a.oh);
+  const current=Math.round(recs.reduce((s,x)=>s+x.oh,0)*100)/100;
+  let delta=Math.round((counted-current)*100)/100;
+  if(Math.abs(delta)<0.05) return {lot:lotNumber,current,counted,delta:0};
+  const updates=[];
+  if(delta<0){ let rem=-delta;
+    for(const {h,oh} of recs){ if(rem<=0.001) break; const take=Math.min(rem,oh); h.usedWeight=Math.round(((h.usedWeight||0)+take)*100)/100; h.reconciledAt=tday(); h.reconcileAdjust=Math.round(((h.reconcileAdjust||0)-take)*100)/100; updates.push(FS.update('harvests',h.id,{usedWeight:h.usedWeight,reconciledAt:h.reconciledAt,reconcileAdjust:h.reconcileAdjust})); rem-=take; }
+  } else {
+    const v=variety||(recs[0]&&recs[0].h.variety)||''; const cont=(recs[0]&&recs[0].h.container)||'';
+    const adj={date:tday(),variety:v,lotNumber,weight:delta,usedWeight:0,sampleWeight:0,preservedWeight:0,container:cont,grade:'',reconcileAdjust:delta,reconciledAt:tday(),notes:`Cooler count ${when||''} — lot ${lotNumber} set to ${counted} lb`,createdAt:new Date().toISOString()};
+    const id=await FS.add('harvests',adj); DB.harvests.push({id,...adj});
+  }
+  await Promise.all(updates);
+  logAudit('inventory_reconcile',`Cooler count — lot ${lotNumber} (${variety||''}): ${current} → ${counted} lb (Δ${delta>=0?'+':''}${delta})`);
+  return {lot:lotNumber,current,counted,delta};
+}
+async function snapSticker(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('cc-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Reading tote sticker(s)…');
+  try{ const r=await processScan(file,'sticker'); const d=r.data||{}; const totes=Array.isArray(d.totes)?d.totes:[];
+    if(!totes.length){ show('⚠ No sticker read — try a clearer photo, or add manually below.'); return; }
+    let n=0; totes.forEach(t=>{ if(t&&(t.lot||t.variety||t.weight)){ _coolerCount.push({lot:(t.lot||'').trim(),variety:canonicalVariety((t.variety||'').trim()),weight:parseFloat(t.weight)||0,date:_toISO(t.date)||'',container:(t.container||'').trim()}); n++; } });
+    const dl=document.getElementById('cc-lot-dl'); if(dl){ _coolerCount.forEach(t=>{ if(t.lot&&![...dl.options].some(o=>o.value===t.lot)){ const o=document.createElement('option'); o.value=t.lot; dl.appendChild(o); } }); }
+    renderCoolerCount(); const wrap=document.getElementById('cc-details'); if(wrap&&!wrap.open) wrap.open=true;
+    show(`✓ Added ${n} tote(s) — verify below, then Apply.`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+function addCoolerTote(){
+  const g=id=>(document.getElementById(id)?.value||'').trim();
+  const lot=g('cc-lot'), variety=g('cc-var'), weight=parseFloat(document.getElementById('cc-wt')?.value)||0, container=g('cc-con');
+  if(!lot&&!weight){ alert('Enter at least a lot # and weight.'); return; }
+  _coolerCount.push({lot,variety:canonicalVariety(variety),weight,date:'',container});
+  if(variety) addVariety(canonicalVariety(variety));
+  ['cc-lot','cc-var','cc-wt','cc-con'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  document.getElementById('cc-lot')?.focus();
+  renderCoolerCount();
+}
+function updateCoolerTote(i,field,val){ const t=_coolerCount[i]; if(!t) return; t[field]=(field==='weight')?(parseFloat(val)||0):(val||'').trim(); renderCoolerCount(); }
+function removeCoolerTote(i){ _coolerCount.splice(i,1); renderCoolerCount(); }
+function renderCoolerCount(){
+  const c=document.getElementById('cc-stage'); if(!c) return;
+  if(!_coolerCount.length){ c.innerHTML='<div style="font-size:11px;color:var(--text3);padding:8px 0;">No totes captured yet — snap a sticker or add one above.</div>'; return; }
+  const toteRows=_coolerCount.map((t,i)=>`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
+    <input class="fi" value="${attrEsc(t.lot||'')}" list="cc-lot-dl" autocomplete="off" onchange="updateCoolerTote(${i},'lot',this.value)" placeholder="Lot #" style="flex:1;min-width:96px;">
+    <input class="fi" value="${attrEsc(t.variety||'')}" list="cc-var-dl" autocomplete="off" onchange="updateCoolerTote(${i},'variety',this.value)" placeholder="Variety" style="flex:1;min-width:104px;">
+    <input class="fi" type="number" step="0.01" min="0" value="${(t.weight!=null&&t.weight!=='')?t.weight:''}" onchange="updateCoolerTote(${i},'weight',this.value)" placeholder="lb" style="max-width:78px;">
+    <button class="btn b-r b-sm" onclick="removeCoolerTote(${i})">✕</button>
+  </div>`).join('');
+  const byLot={}; _coolerCount.forEach(t=>{ const k=(t.lot||'—'); (byLot[k]=byLot[k]||{variety:t.variety,sum:0,n:0}); byLot[k].sum+=parseFloat(t.weight)||0; byLot[k].n++; if(t.variety&&!byLot[k].variety) byLot[k].variety=t.variety; });
+  const lots=Object.keys(byLot).sort();
+  const summary=lots.map(k=>{ const cur=Math.round((DB.harvests||[]).filter(h=>(h.lotNumber||'').trim().toLowerCase()===k.trim().toLowerCase()).reduce((s,h)=>s+packOnHand(h),0)*100)/100; const set=Math.round(byLot[k].sum*100)/100; const d=Math.round((set-cur)*100)/100;
+    return `<div style="display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0;flex-wrap:wrap;"><span><strong style="font-family:'Syne Mono',monospace;color:var(--gold);">${k}</strong> ${byLot[k].variety||''} · ${byLot[k].n} tote${byLot[k].n!==1?'s':''}</span><span>now ${cur.toFixed(1)} → <strong>set ${set.toFixed(1)} lb</strong> <span style="color:${Math.abs(d)<0.05?'var(--text3)':(d<0?'var(--rust)':'var(--fern)')};">(${d>=0?'+':''}${d.toFixed(1)})</span></span></div>`;
+  }).join('');
+  c.innerHTML=`<div style="margin-bottom:10px;">${toteRows}</div>
+    <div style="border-top:1px solid var(--border);padding-top:8px;"><div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:4px;">WILL SET ON-HAND — SUMMED PER LOT</div>${summary}</div>`;
+}
+async function applyCoolerCount(){
+  if(!_coolerCount.length){ alert('No totes captured.'); return; }
+  const byLot={}; _coolerCount.forEach(t=>{ const k=(t.lot||'').trim(); if(!k) return; (byLot[k]=byLot[k]||{variety:t.variety,sum:0}); byLot[k].sum+=parseFloat(t.weight)||0; if(t.variety&&!byLot[k].variety) byLot[k].variety=t.variety; });
+  const lots=Object.keys(byLot); if(!lots.length){ alert('Every tote needs a lot #.'); return; }
+  if(!confirm(`Set on-hand to the counted totals for ${lots.length} lot(s)?\n\n${lots.slice(0,14).map(k=>`• ${k}: ${(Math.round(byLot[k].sum*100)/100).toFixed(1)} lb`).join('\n')}${lots.length>14?'\n…':''}`)) return;
+  for(const k of lots){ await applyLotCount(k, byLot[k].variety, Math.round(byLot[k].sum*100)/100, tday()); }
+  _coolerCount=[];
+  toast('inv-rec-t','✓ Cooler count applied — '+lots.length+' lot(s)');
+  renderC();
+}
+function buildCoolerCountCard(){
+  if(!canEdit()) return '';
+  const knownLots=[...new Set([...DB.harvests.map(h=>h.lotNumber),...DB.fruitings.map(f=>f.lotNumber),...(DB.receivings||[]).map(r=>r.lotNumber)].filter(Boolean))].sort();
+  const conCodes=[...new Set((typeof CONTAINERS!=='undefined'?CONTAINERS:[]).map(c=>c.code).filter(Boolean))];
+  return `<details id="cc-details" ontoggle="renderCoolerCount()" style="border:1px solid rgba(58,96,48,.3);border-radius:8px;margin-bottom:20px;background:rgba(58,96,48,.03);overflow:hidden;">
+    <summary style="cursor:pointer;list-style:none;padding:12px 16px;font-weight:600;color:var(--fern);display:flex;align-items:center;gap:10px;flex-wrap:wrap;">📷 Cooler Count — snap tote stickers or hand-enter <span style="font-size:11px;font-weight:400;color:var(--text3);">totes of the same lot add up → sets that lot's on-hand</span></summary>
+    <div style="padding:0 16px 16px;">
+      <datalist id="cc-var-dl">${VARIETIES.map(v=>`<option value="${attrEsc(v)}">`).join('')}</datalist>
+      <datalist id="cc-lot-dl">${knownLots.map(l=>`<option value="${attrEsc(l)}">`).join('')}</datalist>
+      <datalist id="cc-con-dl">${conCodes.map(c=>`<option value="${attrEsc(c)}">`).join('')}</datalist>
+      <label class="btn b-g" style="cursor:pointer;display:inline-block;margin-bottom:8px;">📷 Snap tote sticker(s)<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapSticker(this)"></label>
+      <div id="cc-snap-status" style="display:none;margin-bottom:10px;font-size:12px;padding:8px 12px;background:var(--paper);border:1px solid var(--border);border-radius:5px;"></div>
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:4px 0;">OR ENTER A TOTE BY HAND</div>
+      <div class="fg2" style="align-items:end;">
+        <div class="fgl"><label>Lot #</label><input class="fi" id="cc-lot" list="cc-lot-dl" autocomplete="off" placeholder="e.g. WS1776"></div>
+        <div class="fgl"><label>Variety</label><input class="fi" id="cc-var" list="cc-var-dl" autocomplete="off" placeholder="Variety"></div>
+        <div class="fgl"><label>Weight (lb)</label><input class="fi" id="cc-wt" type="number" step="0.01" min="0" placeholder="lb"></div>
+        <div class="fgl"><label>Container</label><input class="fi" id="cc-con" list="cc-con-dl" autocomplete="off" placeholder="GH-…"></div>
+      </div>
+      <button class="btn b-g b-sm" onclick="addCoolerTote()" style="margin:6px 0 14px;">+ Add tote</button>
+      <div id="cc-stage"></div>
+      <div class="form-acts" style="margin-top:12px;"><button class="btn b-m" onclick="applyCoolerCount()">Apply Physical Count (set on-hand)</button></div>
+    </div>
+  </details>`;
+}
+
 function buildReconcilePanel(){
   if(!canEdit()) return '';
   const wk=_recWeek||_mondayOf(tday());
@@ -7107,6 +7205,7 @@ function rInventory(el){
     <div class="ph"><div class="ph-t">Inventory</div><div class="ph-s">Live fresh stock — updates when orders are packed or lots are moved to preservation</div></div>
 
     ${buildReconcilePanel()}
+    ${buildCoolerCountCard()}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;">
       ${['all',...INVENTORY_FACILITIES].map(f=>`<button data-fac="${f}" onclick="filterInventory(this.dataset.fac)" style="padding:6px 14px;border:1px solid ${_fac===f?'var(--gold)':'var(--border)'};background:${_fac===f?'rgba(184,130,10,.12)':'var(--white)'};color:${_fac===f?'var(--gold)':'var(--text3)'};border-radius:3px;cursor:pointer;font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1.5px;text-transform:uppercase;font-weight:${_fac===f?'700':'400'};">${f==='all'?'All Facilities':f}</button>`).join('')}
     </div>
