@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #59</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #60</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4918,6 +4918,277 @@ function _readHarvestBatchFromDOM(){
   });
   return out;
 }
+
+// ═════════════ LAB BLOCK BATCH: one multi-cook PDF → N block production records, each logged + its own report ═════════════
+let _blockBatch=[]; let _blockBatchReports=[]; let _bbSending=false;
+async function parseBlockBatch(file){
+  const user=firebase.auth().currentUser; if(!user) throw new Error('Not signed in — reload and log in.');
+  const tok=await user.getIdToken(); const b64=await _fileToB64(file);
+  const resp=await fetch(PARSE_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
+    body:JSON.stringify({image:b64,mime:file.type||'application/pdf',kind:'block_batch'})});
+  let j={}; try{ j=await resp.json(); }catch(e){}
+  if(!resp.ok) throw new Error(j.error||('Server error '+resp.status));
+  if(!j.ok||!Array.isArray(j.sheets)) throw new Error(j.error||'Could not read the batch PDF.');
+  return j.sheets;
+}
+async function snapBlockBatch(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('pl-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Reading multi-cook block PDF — can take a moment…');
+  try{ const sheets=await parseBlockBatch(file); if(!sheets.length){ show('⚠ No block logs found in that PDF.'); return; }
+    _blockBatch=sheets; show(`✓ Read <b>${sheets.length} cook(s)</b> — verify &amp; log below.`); reviewBlockBatch();
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+function bbStrainRow(r){ r=r||{};
+  return `<div class="bb-strainrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
+    <input class="fi bb-suffix" value="${attrEsc(r.suffix||'')}" placeholder="suffix (A)" style="max-width:90px;">
+    <input class="fi bb-var" list="bb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Strain" style="flex:1;min-width:120px;" autocomplete="off" onchange="hbResolveVariety&&hbResolveVariety(this)">
+    <input class="fi bb-gen" value="${attrEsc(r.generation||'')}" placeholder="Gen" style="max-width:64px;">
+    <input class="fi bb-bc" type="number" min="0" value="${(r.blockCount!=null&&r.blockCount!=='')?r.blockCount:''}" placeholder="blocks" style="max-width:84px;">
+    <input class="fi bb-slot" list="lab-lotcode-l" value="${attrEsc(r.spawnLot||'')}" placeholder="spawn lot" style="flex:1;min-width:110px;" autocomplete="off">
+    <button type="button" class="btn b-r b-sm" onclick="this.closest('.bb-strainrow').remove()">✕</button>
+  </div>`;
+}
+function bbAddStrain(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('bb-strains')) w.insertAdjacentHTML('beforeend',bbStrainRow({})); }
+function bbRemoveSheet(btn){ if(confirm('Remove this whole cook from the batch?')) btn.closest('.bb-sheet').remove(); }
+function _readBlockBatchFromDOM(){
+  const out=[];
+  document.querySelectorAll('.bb-sheet').forEach(el=>{
+    const si=parseInt(el.getAttribute('data-si')); const orig=(_blockBatch[si])||{};
+    const rows=[...el.querySelectorAll('.bb-strainrow')].map(row=>({
+      suffix:(row.querySelector('.bb-suffix')?.value||'').trim(), strain:(row.querySelector('.bb-var')?.value||'').trim(),
+      generation:(row.querySelector('.bb-gen')?.value||'').trim(), blockCount:parseInt(row.querySelector('.bb-bc')?.value)||0,
+      spawnLot:(row.querySelector('.bb-slot')?.value||'').trim()
+    })).filter(r=>r.suffix||r.strain||r.blockCount);
+    const g=id=>(el.querySelector('.'+id)?.value||'').trim();
+    out.push({...orig, productionDate:el.querySelector('.bb-pdate')?.value||orig.productionDate||'', lotCode:g('bb-lot'),
+      substrateBatch:g('bb-sbatch'), order:g('bb-order'), batch:g('bb-batch'), blocksProduced:parseInt(el.querySelector('.bb-produced')?.value)||0, rows });
+  });
+  return out;
+}
+function reviewBlockBatch(){
+  const sheets=_blockBatch; sheets.forEach((s,i)=>{ s.__i=i; });
+  const labOpts=(typeof _labFieldOpts==='function')?_labFieldOpts():{subBatch:'',order:'',batchNo:'',lotCode:''};
+  const sheetEditor=(s)=>{
+    const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.strain||x.blockCount)); const iso=_toISO(s.productionDate)||s.productionDate||'';
+    return `<div class="bb-sheet" data-si="${s.__i}" style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--paper);">
+      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm" style="background:rgba(184,76,32,.08);color:#b84c20;border:1px solid rgba(184,76,32,.25);" onclick="bbRemoveSheet(this)">✕ remove cook</button></div>
+      <div class="fg2">
+        <div class="fgl"><label>Production Date</label><input class="fi bb-pdate" type="date" value="${attrEsc(iso)}"></div>
+        <div class="fgl"><label>Lot Code</label><input class="fi bb-lot" list="lab-lotcode-l" value="${attrEsc(s.lotCode||'')}" autocomplete="off"></div>
+        <div class="fgl"><label>Substrate Batch</label><input class="fi bb-sbatch" list="lab-subbatch-l" value="${attrEsc(s.substrateBatch||'')}" autocomplete="off"></div>
+        <div class="fgl"><label>Blocks Produced</label><input class="fi bb-produced" type="number" min="0" value="${(s.blocksProduced!=null&&s.blocksProduced!=='')?s.blocksProduced:''}"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Order</label><input class="fi bb-order" list="lab-order-l" value="${attrEsc(s.order||'')}" autocomplete="off"></div>
+        <div class="fgl"><label>Batch</label><input class="fi bb-batch" list="lab-batchno-l" value="${attrEsc(s.batch||'')}" autocomplete="off"></div>
+      </div>
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:10px 0 4px;">BLOCK BREAKDOWN <span style="text-transform:none;letter-spacing:0;">— suffix · strain · gen · blocks · spawn lot</span></div>
+      <div class="bb-strains">${(rows.length?rows:[{}]).map(bbStrainRow).join('')}</div>
+      <button type="button" class="btn b-g b-sm" onclick="bbAddStrain(this)">+ strain</button>
+    </div>`;
+  };
+  const rowsHtml=sheets.map(sheetEditor).join('');
+  const mv=document.getElementById('main-views');
+  mv.innerHTML=`
+    ${(typeof labDatalistsHTML==='function')?labDatalistsHTML():''}
+    <datalist id="bb-var-dl">${VARIETIES.map(v=>`<option value="${attrEsc(v)}">`).join('')}</datalist>
+    <div class="ph"><div class="ph-t">📚 Batch Block Production Review</div><div class="ph-s">${sheets.length} cook(s) — a page, not a popup. Edit anything, then log all.</div></div>
+    <div style="max-width:960px;">
+      ${rowsHtml}
+      <div class="form-acts" style="margin-top:14px;">
+        <button class="btn b-m b-lg" onclick="commitBlockBatch(this)">Log all &amp; prepare reports</button>
+        <button class="btn b-g" onclick="rLabSubstrate(document.getElementById('main-views'))">Cancel</button>
+      </div>
+    </div>`;
+  try{ window.scrollTo(0,0); }catch(e){}
+}
+async function commitBlockBatch(btn){
+  _blockBatch=_readBlockBatchFromDOM();
+  const sheets=_blockBatch; if(!sheets.length) return;
+  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
+  const prepared=[];
+  for(const s of sheets){
+    const iso=_toISO(s.productionDate)||tday(); const lotCode=(s.lotCode||'').trim();
+    const srows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.strain||x.blockCount));
+    if(!srows.length) continue;
+    const varieties=srows.map(r=>{ const suffix=(r.suffix||'').trim(); const variety=(r.strain||'').trim(); if(variety) addVariety(variety);
+      return {suffix, lot:lotCode?`${lotCode}${suffix?' '+suffix:''}`:'', variety, generation:(r.generation||'').trim(), blockCount:parseInt(r.blockCount)||0, spawnLot:(r.spawnLot||'').trim(), spawnRunId:'', bagsUsed:0, spawnDate:'', spawnSource:'', spawnSupplier:'', spawnQuantity:'', rack:'', colDays:0, notes:''}; });
+    const totalBlocks=varieties.reduce((a,v)=>a+(v.blockCount||0),0);
+    const batchNum=(typeof nextLabBatchNum==='function')?nextLabBatchNum():('LAB-'+iso+'-'+Math.random().toString(36).slice(2,5));
+    const data={ batchNum, productionDate:iso, substrateBatch:(s.substrateBatch||'').trim(), lotCode, order:(s.order||'').trim(),
+      substrateOrigin:'', varieties, strain:varieties.map(v=>v.variety).filter(Boolean).join(', '), blockCount:totalBlocks,
+      blocksProduced:parseInt(s.blocksProduced)||totalBlocks, substrateLbs:parseFloat(s.subLbs)||0, buckets:parseInt(s.buckets)||0,
+      gallonsWater:parseFloat(s.gallons)||0, waterMinutes:0, mixMinutes:0, prodNotes:'batch scan', sterilizationDate:_toISO(s.sterDate)||'',
+      autoclaveTemp:parseInt(s.autoclaveTemp)||0, cookTimeHours:parseFloat(s.cookTime)||0, cookTimeStart:'', cookTimeEnd:'', sterNotes:'',
+      sterCrew:'', inocCrew:'', scanUrl:s.pageUrl||'', createdBy:S.name||S.role, timestamp:new Date().toISOString() };
+    const id=await FS.add('labBatches',data); DB.labBatches.push({id,...data});
+    logAudit('lab_production_log',`Batch block ${batchNum} — ${totalBlocks} blocks · ${varieties.length} strain(s): ${data.strain}`);
+    const subject=notifySubject('block',{lotCode,date:iso});
+    prepared.push({subject, data:{lotCode,date:iso,subLbs:data.substrateLbs,buckets:data.buckets,gallons:data.gallonsWater,blocksProduced:data.blocksProduced,crewText:'',rows:varieties.map(v=>({lot:v.lot,strain:v.variety,generation:v.generation,blockCount:v.blockCount,spawnLot:v.spawnLot})),imageUrl:s.pageUrl||''}, pageB64:s.pageB64,pageBytes:s.pageBytes,pageUrl:s.pageUrl||''});
+  }
+  _blockBatch=[]; _blockBatchReports=prepared;
+  toast('pl-t',`✓ Logged ${prepared.length} cook(s)`); labBatchSendPanel('block');
+}
+
+
+// ═════════════ LAB SPAWN BATCH: one multi-spawn PDF → N spawn runs, each logged + its own report ═════════════
+let _spawnBatch=[]; let _spawnBatchReports=[];
+async function parseSpawnBatch(file){
+  const user=firebase.auth().currentUser; if(!user) throw new Error('Not signed in — reload and log in.');
+  const tok=await user.getIdToken(); const b64=await _fileToB64(file);
+  const resp=await fetch(PARSE_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
+    body:JSON.stringify({image:b64,mime:file.type||'application/pdf',kind:'spawn_batch'})});
+  let j={}; try{ j=await resp.json(); }catch(e){}
+  if(!resp.ok) throw new Error(j.error||('Server error '+resp.status));
+  if(!j.ok||!Array.isArray(j.sheets)) throw new Error(j.error||'Could not read the batch PDF.');
+  return j.sheets;
+}
+async function snapSpawnBatch(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('sp-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Reading multi-spawn PDF — can take a moment…');
+  try{ const sheets=await parseSpawnBatch(file); if(!sheets.length){ show('⚠ No spawn logs found in that PDF.'); return; }
+    _spawnBatch=sheets; show(`✓ Read <b>${sheets.length} spawn run(s)</b> — verify &amp; log below.`); reviewSpawnBatch();
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+function bbRemoveSpawnSheet(btn){ if(confirm('Remove this whole spawn run from the batch?')) btn.closest('.sb-sheet').remove(); }
+function _readSpawnBatchFromDOM(){
+  const out=[];
+  document.querySelectorAll('.sb-sheet').forEach(el=>{
+    const si=parseInt(el.getAttribute('data-si')); const orig=(_spawnBatch[si])||{};
+    const g=id=>(el.querySelector('.'+id)?.value||'').trim();
+    out.push({...orig, productionDate:el.querySelector('.sb-pdate')?.value||orig.productionDate||'', lotCode:g('sb-lot'),
+      strain:g('sb-strain'), grainType:g('sb-grain'), grainWeight:g('sb-gwt'), bags:parseInt(el.querySelector('.sb-bags')?.value)||0,
+      substrateBatch:g('sb-sbatch'), order:g('sb-order'), batch:g('sb-batch'), cultureSource:g('sb-culture') });
+  });
+  return out;
+}
+function reviewSpawnBatch(){
+  const sheets=_spawnBatch; sheets.forEach((s,i)=>{ s.__i=i; });
+  const sheetEditor=(s)=>{
+    const iso=_toISO(s.productionDate)||s.productionDate||'';
+    return `<div class="sb-sheet" data-si="${s.__i}" style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--paper);">
+      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm" style="background:rgba(184,76,32,.08);color:#b84c20;border:1px solid rgba(184,76,32,.25);" onclick="bbRemoveSpawnSheet(this)">✕ remove run</button></div>
+      <div class="fg2">
+        <div class="fgl"><label>Production Date</label><input class="fi sb-pdate" type="date" value="${attrEsc(iso)}"></div>
+        <div class="fgl"><label>Lot Code</label><input class="fi sb-lot" list="lab-lotcode-l" value="${attrEsc(s.lotCode||'')}" autocomplete="off"></div>
+        <div class="fgl"><label>Strain</label><input class="fi sb-strain" list="sb-var-dl" value="${attrEsc(s.strain||'')}" autocomplete="off" onchange="hbResolveVariety&&hbResolveVariety(this)"></div>
+        <div class="fgl"><label># Bags / Jars</label><input class="fi sb-bags" type="number" min="0" value="${(s.bags!=null&&s.bags!=='')?s.bags:''}"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Grain Type</label><input class="fi sb-grain" value="${attrEsc(s.grainType||'')}"></div>
+        <div class="fgl"><label>Total Grain Weight</label><input class="fi sb-gwt" value="${attrEsc(s.grainWeight||'')}"></div>
+        <div class="fgl"><label>Substrate Batch</label><input class="fi sb-sbatch" list="lab-subbatch-l" value="${attrEsc(s.substrateBatch||'')}" autocomplete="off"></div>
+        <div class="fgl"><label>Culture Source</label><input class="fi sb-culture" value="${attrEsc(s.cultureSource||'')}"></div>
+      </div>
+      <div class="fg2">
+        <div class="fgl"><label>Order</label><input class="fi sb-order" list="lab-order-l" value="${attrEsc(s.order||'')}" autocomplete="off"></div>
+        <div class="fgl"><label>Batch</label><input class="fi sb-batch" list="lab-batchno-l" value="${attrEsc(s.batch||'')}" autocomplete="off"></div>
+      </div>
+    </div>`;
+  };
+  const mv=document.getElementById('main-views');
+  mv.innerHTML=`
+    ${(typeof labDatalistsHTML==='function')?labDatalistsHTML():''}
+    <datalist id="sb-var-dl">${VARIETIES.map(v=>`<option value="${attrEsc(v)}">`).join('')}</datalist>
+    <div class="ph"><div class="ph-t">📚 Batch Grain Spawn Review</div><div class="ph-s">${sheets.length} spawn run(s) — a page, not a popup. Edit anything, then log all.</div></div>
+    <div style="max-width:960px;">
+      ${sheets.map(sheetEditor).join('')}
+      <div class="form-acts" style="margin-top:14px;">
+        <button class="btn b-m b-lg" onclick="commitSpawnBatch(this)">Log all &amp; prepare reports</button>
+        <button class="btn b-g" onclick="rLabSpawn(document.getElementById('main-views'))">Cancel</button>
+      </div>
+    </div>`;
+  try{ window.scrollTo(0,0); }catch(e){}
+}
+async function commitSpawnBatch(btn){
+  _spawnBatch=_readSpawnBatchFromDOM();
+  const sheets=_spawnBatch; if(!sheets.length) return;
+  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
+  const prepared=[];
+  for(const s of sheets){
+    const iso=_toISO(s.productionDate)||tday(); const strain=(s.strain||'').trim(); if(strain) addVariety(strain);
+    const spawnLot=(typeof nextSpawnLot==='function')?nextSpawnLot():('SPN-'+iso+'-'+Math.random().toString(36).slice(2,5));
+    const bagCount=parseInt(s.bags)||0;
+    const data={ spawnLot, lotCode:(s.lotCode||'').trim(), productionDate:iso, date:iso, substrateBatch:(s.substrateBatch||'').trim(),
+      order:(s.order||'').trim(), batchNo:(s.batch||'').trim(), grain:(s.grainType||'').trim(), totalGrainWeight:(s.grainWeight||'').trim(),
+      additives:'', grainBatchLot:(s.grainLot||'').trim(), bagCount, usedBags:0, substrateNotes:'batch scan',
+      sterilizationDate:_toISO(s.sterDate)||'', autoclaveTemp:(s.autoclaveTemp||'').trim(), cookTimeHours:(s.cookHrs||'').trim(), cookTimeStart:'', cookTimeEnd:'', sterNotes:'',
+      inoculationDate:_toISO(s.inocDate)||'', strain, sourceCultureId:null, sourceCultureLot:'', cultureSource:(s.cultureSource||'').trim(),
+      inoculationMethod:(s.method||'').trim(), grainTempCooling:(s.grainTemp||'').trim(), lcSourceLot:(s.lcLot||'').trim(), spawnQuantity:(s.spawnQty||'').trim(),
+      inocNotes:'', status:'colonizing', crew:'', loggedBy:S.name||'', createdAt:new Date().toISOString(), scanUrl:s.pageUrl||'' };
+    const id=await FS.add('spawnRuns',data); DB.spawnRuns.push({id,...data});
+    logAudit('spawn_logged',`Batch spawn ${data.lotCode||spawnLot} — ${strain} on ${data.grain||'grain'} (${bagCount} bags)`);
+    const subject=notifySubject('spawn',{lotCode:data.lotCode,spawnLot,date:iso});
+    prepared.push({subject, data:{lotCode:data.lotCode,spawnLot,date:iso,strain,grain:data.grain,grainWeight:data.totalGrainWeight,bags:bagCount,substrateBatch:data.substrateBatch,cultureSource:data.cultureSource,crewText:'',imageUrl:s.pageUrl||''}, pageB64:s.pageB64,pageBytes:s.pageBytes,pageUrl:s.pageUrl||''});
+  }
+  _spawnBatch=[]; _spawnBatchReports=prepared;
+  toast('sp-t',`✓ Logged ${prepared.length} spawn run(s)`); labBatchSendPanel('spawn');
+}
+
+// ── shared lab batch send panel (block + spawn) ──
+let _labSending=false;
+function _labReps(kind){ return kind==='block'?_blockBatchReports:_spawnBatchReports; }
+async function sendOneLabReport(kind,i,btn){
+  const reps=_labReps(kind); const r=reps[i]; if(!r) return false;
+  if(r._sent){ if(btn){ btn.disabled=true; btn.style.opacity='.5'; btn.textContent='✓ sent'; } return true; }
+  const subj=(document.getElementById('lb-subj-'+i)?.value||r.subject).trim();
+  const to=[...document.querySelectorAll('.lbr-r:checked')].map(c=>c.value); if(!to.length){ alert('Pick at least one recipient.'); return false; }
+  if(btn){ btn.disabled=true; btn.style.opacity='.5'; }
+  const stat=document.getElementById('lb-stat-'+i); if(stat){ stat.textContent='sending…'; stat.style.color='var(--text3)'; }
+  const report=notifyReport(kind, subj, r.data);
+  const image=r.pageB64?{b64:r.pageB64,mime:'application/pdf',bytes:r.pageBytes}:null;
+  const ok=await sendNotify(subj,to,report,image);
+  if(ok){ r._sent=true; if(btn) btn.textContent='✓ sent'; } else if(btn){ btn.disabled=false; btn.style.opacity=''; }
+  if(stat){ stat.textContent = ok?(ok==='link-only'?'✓ sent (link in body)':'✓ sent'):'⚠ failed'; stat.style.color=ok?'var(--fern)':'var(--rust)'; }
+  return ok;
+}
+async function sendAllLabReports(kind,btn){
+  if(_labSending) return; _labSending=true;
+  if(btn){ btn.disabled=true; btn.style.opacity='.5'; btn.textContent='Sending…'; }
+  const reps=_labReps(kind); const tot=reps.length; let n=0;
+  for(let i=0;i<tot;i++){ if(reps[i]&&reps[i]._sent){ n++; continue; } const ok=await sendOneLabReport(kind,i); if(ok){ n++; if(reps[i]) reps[i]._sent=true; } }
+  _labSending=false;
+  const banner=document.getElementById('lb-done-banner'); if(banner){ banner.style.display='block'; banner.innerHTML=`✓ Sent ${n} of ${tot} report(s) — done. Tap <b>Done / close</b>. Do NOT press send again.`; }
+  if(btn){ btn.textContent=`✓ Sent ${n}/${tot}`; btn.disabled=true; btn.style.opacity='.5'; }
+  toast('lbr-t',`✓ Sent ${n}/${tot}`);
+}
+function lbrAddRecip(){ const inp=document.getElementById('lbr-add'); const v=(inp?.value||'').trim(); if(!v) return; const box=document.getElementById('lbr-recips'); const l=document.createElement('label'); l.style.cssText='display:flex;align-items:center;gap:8px;font-size:12px;'; l.innerHTML=`<input type="checkbox" class="lbr-r" value="${attrEsc(v)}" checked> ${v}`; box.insertBefore(l, box.lastElementChild); inp.value=''; inp.focus(); }
+function labBatchSendPanel(kind){
+  const reps=_labReps(kind); const back=kind==='block'?'rLabSubstrate':'rLabSpawn';
+  if(!reps.length){ window[back](document.getElementById('main-views')); return; }
+  const recips=notifyRecips(kind);
+  const master=DB.notify.enabled!==false; const ready=master&&DB.notify.templateId&&DB.emailjs.serviceId&&DB.emailjs.publicKey;
+  const label=kind==='block'?'Block Production':'Grain Spawn';
+  const idOf=(r)=>kind==='block'?(r.data.lotCode||''):(r.data.lotCode||r.data.spawnLot||'');
+  const repCard=(r,i)=>`
+    <div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;background:var(--paper);">
+      <div class="fgl"><label style="font-size:10px;">Subject — ${idOf(r)||fDate(r.data.date)}</label><input class="fi" id="lb-subj-${i}" value="${attrEsc(r.subject)}" style="font-family:'Syne Mono',monospace;font-size:11px;"></div>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px;">${r.pageB64?`📎 ${_safeFile(r.subject)}.pdf`:''}</div>
+      <div style="margin-top:6px;"><button class="btn b-g b-sm" onclick="sendOneLabReport('${kind}',${i},this)" ${ready?'':'disabled style="opacity:.5"'}>✉ Send this one</button> <span id="lb-stat-${i}" style="font-size:11px;color:var(--text3);margin-left:6px;"></span></div>
+    </div>`;
+  const mv=document.getElementById('main-views');
+  mv.innerHTML=`
+    <div class="ph"><div class="ph-t">✉ Send ${label} Reports</div><div class="ph-s">${reps.length} report(s) — each ${kind==='block'?'cook':'run'} sends its own report + labeled PDF. A page, not a popup.</div></div>
+    <div style="max-width:940px;">
+      ${!ready?`<div style="background:rgba(184,76,32,.09);border:1px solid rgba(184,76,32,.3);border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#b84c20;">${!master?'📴 Email sending is OFF (testing). Turn it on in Admin → Email.':'⚠ Notification template not set — add it in Admin → Email.'}</div>`:''}
+      <div id="lb-done-banner" style="display:none;background:rgba(58,96,48,.1);border:1px solid var(--fern);border-radius:6px;padding:12px 15px;margin-bottom:14px;font-weight:600;color:var(--fern);"></div>
+      <label style="font-size:10px;color:var(--text3);">Send to</label>
+      <div id="lbr-recips" style="display:flex;flex-direction:column;gap:5px;margin:5px 0 12px;">${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="lbr-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}<div style="display:flex;gap:6px;margin-top:4px;"><input class="fi" id="lbr-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();lbrAddRecip();}"><button class="btn b-g b-sm" onclick="lbrAddRecip()">+ Add</button></div></div>
+      ${reps.map(repCard).join('')}
+      <div class="form-acts" style="margin-top:14px;">
+        <button class="btn b-m b-lg" onclick="sendAllLabReports('${kind}',this)" ${ready?'':'disabled style="opacity:.5"'}>✉ Send all ${reps.length}</button>
+        <button class="btn b-g" onclick="${back}(document.getElementById('main-views'))">Done / close</button>
+      </div>
+      <div class="toast" id="lbr-t">✓ Sent</div>
+    </div>`;
+  try{ window.scrollTo(0,0); }catch(e){}
+}
+
+
 function reviewHarvestBatch(){
   const sheets=_harvestBatch;
   sheets.forEach((s,i)=>{ s.__i=i; });
@@ -10363,7 +10634,7 @@ function rLabSpawn(el){
     ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
       <div class="card-t">📸 Snap / Upload Grain Spawn Log</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph or upload the spawn production sheet — AI fills the form below. Verify (set Strain if blank), then Log.</div>
-      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / PDF<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapSpawn(this)"></label>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / PDF<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapSpawn(this)"></label> <label class="btn b-lg" style="cursor:pointer;display:inline-block;margin-left:8px;background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.3);">📚 Batch PDF (multiple runs)<input type="file" accept="application/pdf,.pdf" style="display:none;" onchange="snapSpawnBatch(this)"></label>
       <div id="sp-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
     </div>`:''}
     ${canEdit()?`<div class="card"><div class="card-t">Grain Spawn Production Log</div>
@@ -10473,7 +10744,7 @@ function rLabSubstrate(el){
     ${!editBatch&&canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
       <div class="card-t">📸 Snap / Upload Block Production Log</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph or upload the block log — AI fills the form AND the per-strain block lines below. Verify, then Log.</div>
-      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / PDF<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapBlock(this)"></label>
+      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / PDF<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapBlock(this)"></label> <label class="btn b-lg" style="cursor:pointer;display:inline-block;margin-left:8px;background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.3);">📚 Batch PDF (multiple cooks)<input type="file" accept="application/pdf,.pdf" style="display:none;" onchange="snapBlockBatch(this)"></label>
       <div id="pl-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
     </div>`:''}
     <!-- ══ PRODUCTION LOG FORM ══ -->
