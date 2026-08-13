@@ -360,7 +360,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #72</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #73</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -7210,10 +7210,20 @@ async function applyCoolerCount(){
   if(!_coolerCount.length){ alert('No totes captured.'); return; }
   const byLot={}; _coolerCount.forEach(t=>{ const k=(t.lot||'').trim(); if(!k) return; (byLot[k]=byLot[k]||{variety:t.variety,sum:0}); byLot[k].sum+=parseFloat(t.weight)||0; if(t.variety&&!byLot[k].variety) byLot[k].variety=t.variety; });
   const lots=Object.keys(byLot); if(!lots.length){ alert('Every tote needs a lot #.'); return; }
-  if(!confirm(`Set on-hand to the counted totals for ${lots.length} lot(s)?\n\n${lots.slice(0,14).map(k=>`• ${k}: ${(Math.round(byLot[k].sum*100)/100).toFixed(1)} lb`).join('\n')}${lots.length>14?'\n…':''}`)) return;
+  // the cooler count is ALWAYS the whole cooler → zero out every OTHER on-hand lot
+  const norm=x=>(x||'').trim().toLowerCase();
+  const counted=new Set(lots.map(norm));
+  const zeroMap={};
+  (DB.harvests||[]).forEach(h=>{ const oh=packOnHand(h); if(oh<=0.05) return; const k=(h.lotNumber||'').trim(); if(!k||counted.has(norm(k))) return; (zeroMap[k]=zeroMap[k]||{variety:h.variety,oh:0}); zeroMap[k].oh+=oh; });
+  const zeroLots=Object.keys(zeroMap);
+  const zeroTot=Math.round(zeroLots.reduce((s,k)=>s+zeroMap[k].oh,0)*100)/100;
+  let msg=`FULL COOLER RESET — set on-hand to the counted totals for ${lots.length} lot(s):\n\n${lots.slice(0,12).map(k=>`• ${k}: ${(Math.round(byLot[k].sum*100)/100).toFixed(1)} lb`).join('\n')}${lots.length>12?'\n…':''}`;
+  msg+=`\n\n⚠ ZERO OUT ${zeroLots.length} uncounted lot(s) totaling ${zeroTot.toFixed(1)} lb${zeroLots.length?`:\n${zeroLots.slice(0,10).map(k=>`• ${k} (${zeroMap[k].variety||''}) ${zeroMap[k].oh.toFixed(1)} lb → 0`).join('\n')}${zeroLots.length>10?'\n…':''}`:''}`;
+  if(!confirm(msg)) return;
   for(const k of lots){ await applyLotCount(k, byLot[k].variety, Math.round(byLot[k].sum*100)/100, tday()); }
+  for(const k of zeroLots){ await applyLotCount(k, zeroMap[k].variety, 0, tday()); }
   _coolerCount=[];
-  toast('inv-rec-t','✓ Cooler count applied — '+lots.length+' lot(s)');
+  toast('inv-rec-t',`✓ Full cooler count applied — ${lots.length} lot(s) set · ${zeroLots.length} zeroed`);
   renderC();
 }
 function buildCoolerCountCard(){
@@ -7237,7 +7247,8 @@ function buildCoolerCountCard(){
       </div>
       <button class="btn b-g b-sm" onclick="addCoolerTote()" style="margin:6px 0 14px;">+ Add tote</button>
       <div id="cc-stage"></div>
-      <div class="form-acts" style="margin-top:12px;"><button class="btn b-m" onclick="applyCoolerCount()">Apply Physical Count (set on-hand)</button></div>
+      <div style="margin:12px 0 6px;font-size:12px;color:var(--text2);background:rgba(184,76,32,.05);border:1px solid rgba(184,76,32,.25);border-radius:6px;padding:9px 11px;line-height:1.55;">⚠ <b>This is the whole cooler.</b> Applying sets each counted lot's on-hand to its total <b>and zeroes out every on-hand lot you did NOT count</b> — the totes above become the complete fresh inventory.</div>
+      <div class="form-acts" style="margin-top:8px;"><button class="btn b-m" onclick="applyCoolerCount()">Apply Full Cooler Count (reset inventory)</button></div>
     </div>
   </details>`;
 }
