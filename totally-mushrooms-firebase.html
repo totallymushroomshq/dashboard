@@ -353,7 +353,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #56</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #57</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4989,7 +4989,7 @@ async function commitHarvestBatch(btn){
     for(const c of crew){ try{ await logManualTime(con,'Harvesting',c.min,iso,'Harvesting session (batch)',c.emp); }catch(e){ console.warn(e); } }
     logAudit('harvest_logged',`Batch harvest — ${rows.length} lot(s) @ ${con} ${iso} (${crew.length} crew)`);
     const prime={container:con,facility:fac,date:iso,location:s.location||''};
-    const subject=`${_sheetLocCode(con,s.location)} ${con} ${_mmddyy(iso)}`.replace(/\s+/g,' ').trim(); // reads location + container per sheet
+    const subject=`Harvest ${_sheetLocCode(con,s.location)} ${con} ${_mmddyy(iso)}`.replace(/\s+/g,' ').trim(); // type-first · reads location + container per sheet
     prepared.push({prime,rows,crew,pageB64:s.pageB64,pageBytes:s.pageBytes,pageUrl:s.pageUrl||'',subject,recordIds:createdIds});
   }
   _harvestBatch=[]; _harvestBatchReports=prepared;
@@ -5124,9 +5124,9 @@ function _mmddyy(iso){ const m=String(iso||'').match(/(\d{4})-(\d{2})-(\d{2})/);
 function _mm_dd_yy(iso){ const m=String(iso||'').match(/(\d{4})-(\d{2})-(\d{2})/); return m?`${m[2]}-${m[3]}-${m[1].slice(2)}`:''; }
 function notifySubject(kind, r){
   r=r||{};
-  if(kind==='harvest')  return `${_locCode(r.facility)} ${r.container||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
-  if(kind==='fruiting') return `${_locCode(r.facility||r.location)} ${r.container||r.containerID||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
-  if(kind==='slip')     return `${r.client||''} Packing Slip SO ${r.soNum||''} ${_mm_dd_yy(r.shipDate||r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='harvest')  return `Harvest ${_locCode(r.facility)} ${r.container||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='fruiting') return `Fruiting ${_locCode(r.facility||r.location)} ${r.container||r.containerID||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
+  if(kind==='slip')     return `Packing ${r.client||''} SO ${r.soNum||''} ${_mm_dd_yy(r.shipDate||r.date)}`.replace(/\s+/g,' ').trim();
   if(kind==='receiving')return `Receiving ${r.vendor||r.source||''} ${r.lot||r.lotNumber||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
   if(kind==='lab')      return `Lab ${r.lot||r.batch||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
   if(kind==='spawn')    return `Spawn ${r.lotCode||r.spawnLot||''} ${_mmddyy(r.date)}`.replace(/\s+/g,' ').trim();
