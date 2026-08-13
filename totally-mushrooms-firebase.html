@@ -360,7 +360,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #66</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #67</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2549,17 +2549,8 @@ function packOnHand(h){
 
 function rPacking(el){
   const canPack=(S.role==='admin'||S.role==='staff');
-  const dk=new Date().toLocaleDateString('en-US',{weekday:'long'});
-  const todayAllOrds=DB.orders.filter(o=>o.day===dk&&['confirmed','pending'].includes(o.status)&&!o.isStanding);
-  const snapCards=ALL_PRODS.map(p=>{
-    const neededUnits=todayAllOrds.reduce((s,o)=>s+(o[p.dataKey]||0),0);
-    const neededLbs=neededUnits*p.unitLb;
-    const onHandLbs=DB.harvests.filter(h=>p.varieties.includes(h.variety)).reduce((s,h)=>s+Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)),0);
-    return {key:p.dataKey, code:p.code, label:p.code+' \u00b7 '+p.name, unit:p.unitLb===3?'3 lb boxes':'\u00bc lb packs', neededUnits, neededLbs, onHandLbs};
-  }).filter(x=>x.neededUnits>0||x.onHandLbs>0);
   el.innerHTML=`
     <div class="ph"><div class="ph-t">\u{1F4E6} Pack Orders</div><div class="ph-s">Pack &amp; log delivered orders \u00b7 signed slips \u00b7 packing history</div></div>
-    ${canPack?buildPackDaySection(DB.packSessions.filter(ps=>ps.date===tday()&&ps.status==='open'),DB.harvests.map(h=>({...h,onHand:packOnHand(h)})).filter(h=>h.onHand>0.05).sort((a,b)=>a.variety.localeCompare(b.variety)||b.date.localeCompare(a.date)),snapCards):''}
     ${canPack?buildPackOrderCard():''}
     ${buildPackedOrdersList()}`;
 }
@@ -2852,7 +2843,20 @@ function buildPackOrderCard(){
       <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:6px 0 8px;">LOTS THAT WENT INTO THIS PACK <span style="text-transform:none;letter-spacing:0;">— check the lots used, then set how much to pull from each</span></div>
       <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:8px;background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.2);border-radius:5px;padding:8px 11px;">📦 <b>You control the draw-down.</b> Check a lot, then type how many <b>lb to pull</b> from it — or hit <b>🔥 toast</b> to use it up entirely. <b>Suggest pulls</b> pre-fills from the order (Chef's Mix = ⅓ oyster · ⅓ shiitake · ⅓ chestnut); adjust from there. Only what you enter is deducted — nothing arbitrary. Session-pulled lots are skipped.</div>
       <div style="margin-bottom:8px;"><button type="button" class="btn b-g b-sm" onclick="poSuggestPulls()">✨ Suggest pulls from order</button> <button type="button" class="btn b-g b-sm" onclick="poClearPulls()">clear pulls</button> <span id="po-pull-total" style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-left:6px;"></span></div>
-      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;">${lotChecks}</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px;">${lotChecks}</div>
+      <datalist id="po-varieties-dl">${VARIETIES.map(v=>`<option value="${attrEsc(v)}">`).join('')}</datalist>
+      <datalist id="po-containers-dl">${[...new Set((typeof CONTAINERS!=='undefined'?CONTAINERS:[]).map(c=>c.code).filter(Boolean))].map(c=>`<option value="${attrEsc(c)}">`).join('')}</datalist>
+      <datalist id="po-known-lots">${[...new Set([...DB.harvests.map(h=>h.lotNumber),...DB.fruitings.map(f=>f.lotNumber),...(DB.receivings||[]).map(r=>r.lotNumber)].filter(Boolean))].sort().map(l=>`<option value="${attrEsc(l)}">`).join('')}</datalist>
+      <div style="border:1px dashed var(--border);border-radius:6px;padding:10px 12px;margin-bottom:16px;background:rgba(184,130,10,.03);">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px;line-height:1.5;">🔎 <b>Lot not listed above?</b> If a lot you used was toasted or removed early, add it from the sheet — it'll be tied to this order and <b>back-filled into traceability</b>.</div>
+        <div class="fg2" style="align-items:end;">
+          <div class="fgl"><label>Lot #</label><input class="fi" id="po-ml-lot" list="po-known-lots" autocomplete="off" placeholder="e.g. WS1776"></div>
+          <div class="fgl"><label>Variety</label><input class="fi" id="po-ml-var" list="po-varieties-dl" autocomplete="off" placeholder="Variety"></div>
+          <div class="fgl"><label>Container</label><input class="fi" id="po-ml-con" list="po-containers-dl" autocomplete="off" placeholder="GH-…"></div>
+        </div>
+        <button type="button" class="btn b-g b-sm" onclick="poAddManualLot()" style="margin-top:8px;">+ Add lot to this order</button>
+        <div id="po-manual-lots" style="margin-top:8px;"></div>
+      </div>
       <div class="form-acts">
         <button class="btn b-m b-lg" onclick="savePackOrder()">Generate Packed Order</button>
         <button class="btn b-g" onclick="clrPackOrder()">Clear</button>
@@ -2933,7 +2937,8 @@ async function savePackOrder(){
   const cr=DB.clients.find(c=>(c.name||'').toLowerCase()===client.toLowerCase());
   // only the lots checked for THIS client (per-client traceability)
   const checked=[...document.querySelectorAll('.po-lot-chk:checked')];
-  const usedLots=[...new Set(checked.map(c=>c.value).filter(Boolean))];
+  // include manually-added lots (used but not in current inventory — toasted/removed early)
+  const usedLots=[...new Set([...checked.map(c=>c.value),..._poManualLots.map(m=>m.lot)].filter(Boolean))];
   const usedHarvests=[...new Set(checked.map(c=>c.getAttribute('data-hid')).filter(Boolean))];
   const snapUrl=(_lastSnap&&_lastSnap.kind==='slip')?_lastSnap.url:'';
   const slipShip=(_lastSnap&&_lastSnap.kind==='slip')?_lastSnap.shipDate:'';
@@ -2957,6 +2962,8 @@ async function savePackOrder(){
   o.deductions=deductions;
   try{ const oId=await FS.add('orders',o); o.id=oId; DB.orders.push(o); }
   catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  // back-fill traceability for manually-added lots (used but removed early) — reconstruct a trace record if the lot has none
+  for(const m of _poManualLots){ try{ await backfillLotTrace(m.lot, m.variety, m.container); }catch(e){ console.warn('backfill lot', e); } }
   // apply the deductions to on-hand
   const invUpd=[];
   deductions.forEach(d=>{ const h=DB.harvests.find(x=>x.id===d.harvestId); if(h){ h.usedWeight=(h.usedWeight||0)+d.used; invUpd.push(FS.update('harvests',d.harvestId,{usedWeight:h.usedWeight})); } });
@@ -2977,9 +2984,38 @@ async function savePackOrder(){
   openEmailDispatch('slip', notifySubject('slip',{client,soNum:so,shipDate:shipIso}), {label:'Packing Slip '+(so?'SO '+so:client),
     data:{client,soNum:so,poNum:(o.notes.match(/PO\s*(\S+)/i)||[])[1]||'',shipDate:shipIso,items,lots:usedLots,imageUrl:snapUrl,tmSlipUrl:snapUrl,signedSlipUrl:''}, image:snapImg});
 }
+// ── manual lots: a used lot that isn't in current inventory (toasted / removed early) — tie to order + back-fill trace ──
+let _poManualLots=[];
+function poAddManualLot(){
+  const g=id=>(document.getElementById(id)?.value||'').trim();
+  const lot=g('po-ml-lot'); if(!lot){ alert('Enter the lot # from the sheet.'); return; }
+  const variety=canonicalVariety(g('po-ml-var')); const container=g('po-ml-con');
+  _poManualLots.push({lot, variety, container});
+  if(variety) addVariety(variety);
+  ['po-ml-lot','po-ml-var','po-ml-con'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
+  renderPoManualLots(); document.getElementById('po-ml-lot')?.focus();
+}
+function removePoManualLot(i){ _poManualLots.splice(i,1); renderPoManualLots(); }
+function renderPoManualLots(){
+  const c=document.getElementById('po-manual-lots'); if(!c) return;
+  if(!_poManualLots.length){ c.innerHTML=''; return; }
+  c.innerHTML=`<div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin-bottom:4px;">ADDED FROM SHEET — will be tied to this order &amp; traced</div>`+_poManualLots.map((m,i)=>`<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:5px;margin-bottom:4px;background:var(--white);"><span style="flex:1;"><strong style="font-family:'Syne Mono',monospace;color:var(--gold);">${m.lot}</strong> · ${m.variety||'—'}${m.container?' · '+m.container:''}</span><button class="btn b-r b-sm" onclick="removePoManualLot(${i})">✕</button></div>`).join('');
+}
+// create a reconstructed record so a used-but-removed lot is traceable; existing fruiting/receiving/block for the same lot link automatically by lot #
+async function backfillLotTrace(lot, variety, container){
+  const norm=x=>(x||'').trim().toLowerCase(); const L=norm(lot); if(!L) return null;
+  const anyRecord=(DB.harvests||[]).some(h=>norm(h.lotNumber)===L)||(DB.fruitings||[]).some(f=>norm(f.lotNumber)===L)||(DB.receivings||[]).some(r=>norm(r.lotNumber)===L);
+  if(anyRecord) return null; // already traceable via an existing record
+  const fac=(typeof _sheetFacility==='function'?_sheetFacility(container||''):'')||'';
+  const hData={date:tday(),container:container||'',facility:fac,lotNumber:lot,variety:variety||'',grade:'A',weight:0,usedWeight:0,sampleWeight:0,preservedWeight:0,reconstructed:true,notes:'Back-filled at pack — lot was toasted/removed early; added for traceability',createdAt:new Date().toISOString()};
+  const id=await FS.add('harvests',hData); DB.harvests.push({id,...hData});
+  logAudit('lot_backfilled',`Back-filled lot ${lot} (${variety||''}${container?' · '+container:''}) into traceability at pack`);
+  return id;
+}
 function clrPackOrder(){
-  ['po-so','po-client','po-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['po-so','po-client','po-notes','po-ml-lot','po-ml-var','po-ml-con'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   ALL_PRODS.forEach(p=>{const el=document.getElementById('po-'+p.dataKey);if(el)el.value='';});
+  _poManualLots=[]; renderPoManualLots();
 }
 // ── PACKED ORDERS LOG — delivery + signed-slip tracking, collapsible month → week → day ──
 function orderCases(o){ return ALL_PRODS.reduce((s,p)=>s+(parseInt(o[p.dataKey])||0),0); }
