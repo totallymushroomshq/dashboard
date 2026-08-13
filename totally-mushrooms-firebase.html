@@ -360,7 +360,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #68</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #69</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -6981,17 +6981,24 @@ async function applyLotCount(lotNumber, variety, counted, when){
   return {lot:lotNumber,current,counted,delta};
 }
 async function snapSticker(input){
-  const file=input.files&&input.files[0]; if(!file) return;
+  const files=[...(input.files||[])]; if(!files.length) return;
   const st=document.getElementById('cc-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
-  show('⏳ Reading tote sticker(s)…');
-  try{ const r=await processScan(file,'sticker'); const d=r.data||{}; const totes=Array.isArray(d.totes)?d.totes:[];
-    if(!totes.length){ show('⚠ No sticker read — try a clearer photo, or add manually below.'); return; }
-    let n=0; totes.forEach(t=>{ if(t&&(t.lot||t.variety||t.weight)){ _coolerCount.push({lot:(t.lot||'').trim(),variety:canonicalVariety((t.variety||'').trim()),weight:parseFloat(t.weight)||0,date:_toISO(t.date)||'',container:(t.container||'').trim()}); n++; } });
-    const dl=document.getElementById('cc-lot-dl'); if(dl){ _coolerCount.forEach(t=>{ if(t.lot&&![...dl.options].some(o=>o.value===t.lot)){ const o=document.createElement('option'); o.value=t.lot; dl.appendChild(o); } }); }
-    renderCoolerCount(); const wrap=document.getElementById('cc-details'); if(wrap&&!wrap.open) wrap.open=true;
-    show(`✓ Added ${n} tote(s) — verify below, then Apply.`);
-  }catch(e){ show('⚠ '+e.message); }
-  finally{ input.value=''; }
+  const wrap=document.getElementById('cc-details'); if(wrap&&!wrap.open) wrap.open=true;
+  let added=0, fails=0, done=0;
+  for(const file of files){
+    done++;
+    show(files.length>1?`⏳ Reading sticker ${done}/${files.length}… (${added} tote(s) so far)`:'⏳ Reading tote sticker(s)…');
+    try{
+      const r=await processScan(file,'sticker'); const d=r.data||{}; const totes=Array.isArray(d.totes)?d.totes:[];
+      let any=false;
+      totes.forEach(t=>{ if(t&&(t.lot||t.variety||t.weight)){ _coolerCount.push({lot:(t.lot||'').trim(),variety:canonicalVariety((t.variety||'').trim()),weight:parseFloat(t.weight)||0,date:_toISO(t.date)||'',container:(t.container||'').trim()}); added++; any=true; } });
+      if(!any) fails++;
+      const dl=document.getElementById('cc-lot-dl'); if(dl){ _coolerCount.forEach(t=>{ if(t.lot&&![...dl.options].some(o=>o.value===t.lot)){ const o=document.createElement('option'); o.value=t.lot; dl.appendChild(o); } }); }
+      renderCoolerCount();
+    }catch(e){ fails++; }
+  }
+  input.value='';
+  show(`✓ Added <b>${added}</b> tote(s) from ${files.length} photo(s)${fails?` · ${fails} unreadable (add manually)`:''} — verify below, then Apply. <span style="color:var(--text3);">Snap more anytime — they stack.</span>`);
 }
 function addCoolerTote(){
   const g=id=>(document.getElementById(id)?.value||'').trim();
@@ -7042,7 +7049,7 @@ function buildCoolerCountCard(){
       <datalist id="cc-var-dl">${VARIETIES.map(v=>`<option value="${attrEsc(v)}">`).join('')}</datalist>
       <datalist id="cc-lot-dl">${knownLots.map(l=>`<option value="${attrEsc(l)}">`).join('')}</datalist>
       <datalist id="cc-con-dl">${conCodes.map(c=>`<option value="${attrEsc(c)}">`).join('')}</datalist>
-      <label class="btn b-g" style="cursor:pointer;display:inline-block;margin-bottom:8px;">📷 Snap tote sticker(s)<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapSticker(this)"></label>
+      <label class="btn b-g" style="cursor:pointer;display:inline-block;margin-bottom:8px;">📷 Snap tote sticker(s)<input type="file" accept="image/*,application/pdf,.pdf" multiple style="display:none;" onchange="snapSticker(this)"></label>
       <div id="cc-snap-status" style="display:none;margin-bottom:10px;font-size:12px;padding:8px 12px;background:var(--paper);border:1px solid var(--border);border-radius:5px;"></div>
       <div style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);letter-spacing:1px;margin:4px 0;">OR ENTER A TOTE BY HAND</div>
       <div class="fg2" style="align-items:end;">
