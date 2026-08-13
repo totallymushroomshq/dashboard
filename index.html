@@ -360,7 +360,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #63</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #64</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -551,6 +551,7 @@ const DELIVERY_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Satur
 const ALL_INTERNAL_TABS = [
   {id:'today',l:'Day'},{id:'week',l:'Week'},
   {id:'new-order',l:'+ Order'},{id:'email-parse',l:'Parse Email'},
+  {id:'packing',l:'📦 Pack Orders'},
   {id:'receiving',l:'📥 Receiving'},
   {id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},
   {id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},
@@ -564,11 +565,11 @@ const ALL_INTERNAL_TABS = [
   {id:'qb',l:'📒 QB',c:'at'}
 ];
 const DEFAULT_PERMS = {
-  admin: {today:true,week:true,'new-order':true,'email-parse':true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
-  staff: {today:true,week:true,'new-order':true,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
-  accountant: {today:true,week:true,'new-order':false,'email-parse':false,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:false,waste:true,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
+  admin: {today:true,week:true,'new-order':true,'email-parse':true,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
+  staff: {today:true,week:true,'new-order':true,'email-parse':false,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
+  accountant: {today:true,week:true,'new-order':false,'email-parse':false,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:false,waste:true,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
 };
-const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',cleaning:'🧽 Clean · Flip · Waste',lab:'Lab — Carthage',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
+const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',packing:'Pack Orders',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',cleaning:'🧽 Clean · Flip · Waste',lab:'Lab — Carthage',analytics:'Analytics',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
 
 // ── FIREBASE CONFIG ──
 const FIREBASE_CONFIG = {
@@ -2006,7 +2007,7 @@ function sw(id){
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTrace,lab:rLab,cordyceps:rCordyceps,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rWeek,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTrace,lab:rLab,cordyceps:rCordyceps,analytics:rAna,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -2109,9 +2110,6 @@ function rToday(el){
     </div>
     <div class="sh" style="margin-top:4px;"><span>Inventory vs Today's Orders</span><span style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);">${dk.toUpperCase()}</span></div>
     <div class="inv-snap">${snapHTML}</div>
-    ${(S.role==='admin'||S.role==='staff')?buildPackDaySection(DB.packSessions.filter(ps=>ps.date===tday()&&ps.status==='open'),DB.harvests.map(h=>({...h,onHand:packOnHand(h)})).filter(h=>h.onHand>0.05).sort((a,b)=>a.variety.localeCompare(b.variety)||b.date.localeCompare(a.date)),snapCards):''}
-    ${(S.role==='admin'||S.role==='staff')?buildPackOrderCard():''}
-    ${(S.role==='admin'||S.role==='staff')?buildPackedOrdersList():''}
     <div class="sh"><span>Confirmed — Ready to Pack Today</span><span>${dk.toUpperCase()}</span></div>
     <div class="tw" style="margin-bottom:24px;">
       <table><thead><tr><th>Client</th><th>Items (codes)</th><th>Notes</th><th>Action</th></tr></thead>
@@ -2547,6 +2545,22 @@ function packOnHand(h){
   return Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)-lotCommitted(h.id));
 }
 
+function rPacking(el){
+  const canPack=(S.role==='admin'||S.role==='staff');
+  const dk=new Date().toLocaleDateString('en-US',{weekday:'long'});
+  const todayAllOrds=DB.orders.filter(o=>o.day===dk&&['confirmed','pending'].includes(o.status)&&!o.isStanding);
+  const snapCards=ALL_PRODS.map(p=>{
+    const neededUnits=todayAllOrds.reduce((s,o)=>s+(o[p.dataKey]||0),0);
+    const neededLbs=neededUnits*p.unitLb;
+    const onHandLbs=DB.harvests.filter(h=>p.varieties.includes(h.variety)).reduce((s,h)=>s+Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)),0);
+    return {key:p.dataKey, code:p.code, label:p.code+' \u00b7 '+p.name, unit:p.unitLb===3?'3 lb boxes':'\u00bc lb packs', neededUnits, neededLbs, onHandLbs};
+  }).filter(x=>x.neededUnits>0||x.onHandLbs>0);
+  el.innerHTML=`
+    <div class="ph"><div class="ph-t">\u{1F4E6} Pack Orders</div><div class="ph-s">Pack &amp; log delivered orders \u00b7 signed slips \u00b7 packing history</div></div>
+    ${canPack?buildPackDaySection(DB.packSessions.filter(ps=>ps.date===tday()&&ps.status==='open'),DB.harvests.map(h=>({...h,onHand:packOnHand(h)})).filter(h=>h.onHand>0.05).sort((a,b)=>a.variety.localeCompare(b.variety)||b.date.localeCompare(a.date)),snapCards):''}
+    ${canPack?buildPackOrderCard():''}
+    ${buildPackedOrdersList()}`;
+}
 function buildPackDaySection(openSessions, availLots, snapCards){
   openSessions = Array.isArray(openSessions) ? openSessions : (openSessions?[openSessions]:[]);
   openSessions = [...openSessions].sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
