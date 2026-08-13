@@ -360,7 +360,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #71</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #72</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5005,7 +5005,7 @@ async function snapBlockBatch(input){
 function bbStrainRow(r){ r=r||{};
   return `<div class="bb-strainrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
     <input class="fi bb-suffix" value="${attrEsc(r.suffix||'')}" placeholder="suffix (A)" style="max-width:90px;">
-    <input class="fi bb-var" list="bb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Strain" style="flex:1;min-width:120px;" autocomplete="off" onchange="hbResolveVariety&&hbResolveVariety(this)">
+    <input class="fi bb-var" list="bb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Strain" style="flex:1;min-width:120px;" autocomplete="off" onchange="if(typeof hbResolveVariety==='function'){this.value=hbResolveVariety(this.value);}">
     <input class="fi bb-gen" value="${attrEsc(r.generation||'')}" placeholder="Gen" style="max-width:64px;">
     <input class="fi bb-bc" type="number" min="0" value="${(r.blockCount!=null&&r.blockCount!=='')?r.blockCount:''}" placeholder="blocks" style="max-width:84px;">
     <input class="fi bb-slot" list="lab-lotcode-l" value="${attrEsc(r.spawnLot||'')}" placeholder="spawn lot" style="flex:1;min-width:110px;" autocomplete="off">
@@ -5137,7 +5137,7 @@ function reviewSpawnBatch(){
       <div class="fg2">
         <div class="fgl"><label>Production Date</label><input class="fi sb-pdate" type="date" value="${attrEsc(iso)}"></div>
         <div class="fgl"><label>Lot Code</label><input class="fi sb-lot" list="lab-lotcode-l" value="${attrEsc(s.lotCode||'')}" autocomplete="off"></div>
-        <div class="fgl"><label>Strain</label><input class="fi sb-strain" list="sb-var-dl" value="${attrEsc(s.strain||'')}" autocomplete="off" onchange="hbResolveVariety&&hbResolveVariety(this)"></div>
+        <div class="fgl"><label>Strain</label><input class="fi sb-strain" list="sb-var-dl" value="${attrEsc(s.strain||'')}" autocomplete="off" onchange="if(typeof hbResolveVariety==='function'){this.value=hbResolveVariety(this.value);}"></div>
         <div class="fgl"><label># Bags / Jars</label><input class="fi sb-bags" type="number" min="0" value="${(s.bags!=null&&s.bags!=='')?s.bags:''}"></div>
       </div>
       <div class="fg2">
@@ -5574,7 +5574,7 @@ async function snapFruitingBatch(input){
 function fbLotRow(r){ r=r||{};
   return `<div class="fb-lotrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
     <input class="fi fb-lot" list="fb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:110px;" autocomplete="off" onchange="fbLearnLot(this)">
-    <input class="fi fb-var" list="fb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Variety" style="flex:1;min-width:120px;" autocomplete="off" onchange="hbResolveVariety&&hbResolveVariety(this)">
+    <input class="fi fb-var" list="fb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Variety" style="flex:1;min-width:120px;" autocomplete="off" onchange="if(typeof hbResolveVariety==='function'){this.value=hbResolveVariety(this.value);}">
     <input class="fi fb-bc" type="number" min="0" value="${(r.blocksUsed!=null&&r.blocksUsed!=='')?r.blocksUsed:((r.blockCount!=null&&r.blockCount!=='')?r.blockCount:'')}" placeholder="blocks" style="max-width:96px;">
     <button type="button" class="btn b-r b-sm" title="Remove lot" onclick="this.closest('.fb-lotrow').remove()">✕</button>
   </div>`;
