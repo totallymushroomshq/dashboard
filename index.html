@@ -360,7 +360,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #69</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:8px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #70</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2824,9 +2824,12 @@ function buildPackOrderCard(){
     <div class="card" style="margin-bottom:24px;border:2px solid var(--gold);">
       <div class="card-t">📦 Pack → Log Order (from SO#)</div>
       <div style="background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.3);border-radius:6px;padding:12px 14px;margin-bottom:14px;">
-        <div style="font-size:12px;font-weight:600;color:var(--fern);margin-bottom:8px;">📸 Snap / Upload the <b>TM copy</b> — the packing slip with all lot data — AI fills this whole form</div>
+        <div style="font-size:12px;font-weight:600;color:var(--fern);margin-bottom:8px;">📸 Snap / Upload the <b>signed packing slip</b> — AI fills client, SO, items &amp; lots</div>
         <label class="btn b-g" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
           <input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapSlip(this)">
+        </label>
+        <label class="btn b-lg" style="cursor:pointer;display:inline-block;margin-left:8px;background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.3);">📚 Batch PDF (multiple slips)
+          <input type="file" accept="application/pdf,.pdf" style="display:none;" onchange="snapSlipBatch(this)">
         </label>
         <div id="po-snap-status" style="display:none;margin-top:10px;font-size:12px;padding:8px 12px;background:var(--white);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
       </div>
@@ -2947,7 +2950,7 @@ async function savePackOrder(){
     ...qtys, notes:(document.getElementById('po-notes')?.value||'').trim(),
     orderRef:nextHQOrderNum(), soNum:so, custom:false, isStanding:false, week:wkStart(),
     usedHarvests, usedLots, scanUrl:snapUrl, tmSlipUrl:snapUrl, deliveredAt,
-    deliveryStatus:'open', signedSlipUrl:'', source:'pack' };
+    deliveryStatus:'closed', signedSlipUrl:snapUrl, source:'pack' };
   // ── inventory deduction (mix rule: qty×unitLb split across checked varieties; session lots skipped) ──
   // DEDUCT EXACTLY WHAT YOU SET per lot (🔥 toast = full on-hand). Nothing is auto-allocated.
   const inSessionToday=(hid)=>DB.packSessions.some(s=>s.date===tday() && s.status==='open' && (s.pulled||[]).some(p=>p.harvestId===hid));
@@ -5243,6 +5246,180 @@ function labBatchSendPanel(kind){
         <button class="btn b-g" onclick="${back}(document.getElementById('main-views'))">Done / close</button>
       </div>
       <div class="toast" id="lbr-t">✓ Sent</div>
+    </div>`;
+  try{ window.scrollTo(0,0); }catch(e){}
+}
+
+
+// ═════════════ PACKING BATCH: one multi-slip PDF → N packed orders, each logged + its own packing report ═════════════
+let _slipBatch=[]; let _slipBatchReports=[]; let _slbSending=false;
+async function parseSlipBatch(file){
+  const user=firebase.auth().currentUser; if(!user) throw new Error('Not signed in — reload and log in.');
+  const tok=await user.getIdToken(); const b64=await _fileToB64(file);
+  const resp=await fetch(PARSE_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},
+    body:JSON.stringify({image:b64,mime:file.type||'application/pdf',kind:'slip_batch'})});
+  let j={}; try{ j=await resp.json(); }catch(e){}
+  if(!resp.ok) throw new Error(j.error||('Server error '+resp.status));
+  if(!j.ok||!Array.isArray(j.sheets)) throw new Error(j.error||'Could not read the batch PDF.');
+  return j.sheets;
+}
+async function snapSlipBatch(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('po-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Reading multi-slip PDF — can take a moment for several slips…');
+  try{ const sheets=await parseSlipBatch(file); if(!sheets.length){ show('⚠ No packing slips found in that PDF.'); return; }
+    _slipBatch=sheets; show(`✓ Read <b>${sheets.length} slip(s)</b> — verify &amp; log below.`); reviewSlipBatch();
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+function slbItemRow(it){ it=it||{};
+  const q=parseInt(it.shipped)||parseInt(it.ordered)||(it.qty!=null?parseInt(it.qty):'')||'';
+  return `<div class="slb-itemrow" style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+    <input class="fi slb-code" list="slb-code-dl" value="${attrEsc((it.code||'').toUpperCase())}" placeholder="Code (CM5…)" style="flex:1;min-width:110px;" autocomplete="off">
+    <input class="fi slb-qty" type="number" min="0" value="${q!==''?q:''}" placeholder="qty" style="max-width:74px;">
+    <button type="button" class="btn b-r b-sm" onclick="this.closest('.slb-itemrow').remove()">✕</button>
+  </div>`;
+}
+function slbLotRow(l){ l=l||{};
+  return `<div class="slb-lotrow" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
+    <input class="fi slb-lot" list="slb-lot-dl" value="${attrEsc(l.lot||'')}" placeholder="Lot #" style="flex:1;min-width:100px;" autocomplete="off">
+    <input class="fi slb-var" list="slb-var-dl" value="${attrEsc(l.variety||'')}" placeholder="Variety" style="flex:1;min-width:104px;" autocomplete="off">
+    <input class="fi slb-con" list="slb-con-dl" value="${attrEsc(l.container||'')}" placeholder="GH-…" style="max-width:96px;" autocomplete="off">
+    <button type="button" class="btn b-r b-sm" onclick="this.closest('.slb-lotrow').remove()">✕</button>
+  </div>`;
+}
+function slbAddItem(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('slb-items')) w.insertAdjacentHTML('beforeend',slbItemRow({})); }
+function slbAddLot(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('slb-lots')) w.insertAdjacentHTML('beforeend',slbLotRow({})); }
+function slbRemoveSheet(btn){ if(confirm('Remove this slip from the batch?')) btn.closest('.slb-sheet').remove(); }
+function _readSlipBatchFromDOM(){
+  const out=[];
+  document.querySelectorAll('.slb-sheet').forEach(el=>{
+    const si=parseInt(el.getAttribute('data-si')); const orig=(_slipBatch[si])||{};
+    const items=[...el.querySelectorAll('.slb-itemrow')].map(r=>({code:(r.querySelector('.slb-code')?.value||'').trim(),shipped:parseInt(r.querySelector('.slb-qty')?.value)||0})).filter(x=>x.code&&x.shipped);
+    const lots=[...el.querySelectorAll('.slb-lotrow')].map(r=>({lot:(r.querySelector('.slb-lot')?.value||'').trim(),variety:(r.querySelector('.slb-var')?.value||'').trim(),container:(r.querySelector('.slb-con')?.value||'').trim()})).filter(x=>x.lot||x.variety);
+    out.push({...orig, client:(el.querySelector('.slb-client')?.value||'').trim(), soNum:(el.querySelector('.slb-so')?.value||'').trim(), shipDate:el.querySelector('.slb-ship')?.value||orig.shipDate||'', items, lots});
+  });
+  return out;
+}
+function reviewSlipBatch(){
+  const sheets=_slipBatch; sheets.forEach((s,i)=>{ s.__i=i; });
+  const clientNames=[...new Set(DB.clients.map(c=>c.name).filter(Boolean))].sort();
+  const codes=ALL_PRODS.map(p=>p.code);
+  const knownLots=[...new Set([...DB.harvests.map(h=>h.lotNumber),...DB.fruitings.map(f=>f.lotNumber),...(DB.receivings||[]).map(r=>r.lotNumber)].filter(Boolean))].sort();
+  const conCodes=[...new Set((typeof CONTAINERS!=='undefined'?CONTAINERS:[]).map(c=>c.code).filter(Boolean))];
+  const sheetEditor=(s)=>{
+    const items=(Array.isArray(s.items)?s.items:[]).filter(x=>x&&(x.code||x.shipped||x.ordered));
+    const lots=(Array.isArray(s.lots)?s.lots:[]).filter(x=>x&&(x.lot||x.variety));
+    const iso=_toISO(s.shipDate||s.date)||'';
+    return `<div class="slb-sheet" data-si="${s.__i}" style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--paper);">
+      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm" style="background:rgba(184,76,32,.08);color:#b84c20;border:1px solid rgba(184,76,32,.25);" onclick="slbRemoveSheet(this)">✕ remove slip</button></div>
+      <div class="fg2">
+        <div class="fgl"><label>Customer</label><input class="fi slb-client" list="slb-client-dl" value="${attrEsc(s.client||'')}" autocomplete="off"></div>
+        <div class="fgl"><label>S.O. #</label><input class="fi slb-so" value="${attrEsc(s.soNum||'')}"></div>
+        <div class="fgl"><label>Ship Date</label><input class="fi slb-ship" type="date" value="${attrEsc(iso)}"></div>
+      </div>
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:10px 0 4px;">ITEMS — code · qty (cases)</div>
+      <div class="slb-items">${(items.length?items:[{}]).map(slbItemRow).join('')}</div>
+      <button type="button" class="btn b-g b-sm" onclick="slbAddItem(this)">+ item</button>
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:var(--text3);margin:12px 0 4px;">LOTS USED — traceability</div>
+      <div class="slb-lots">${(lots.length?lots:[{}]).map(slbLotRow).join('')}</div>
+      <button type="button" class="btn b-g b-sm" onclick="slbAddLot(this)">+ lot</button>
+    </div>`;
+  };
+  const mv=document.getElementById('main-views');
+  mv.innerHTML=`
+    <datalist id="slb-client-dl">${clientNames.map(c=>`<option value="${attrEsc(c)}">`).join('')}</datalist>
+    <datalist id="slb-code-dl">${codes.map(c=>`<option value="${attrEsc(c)}">`).join('')}</datalist>
+    <datalist id="slb-var-dl">${VARIETIES.map(v=>`<option value="${attrEsc(v)}">`).join('')}</datalist>
+    <datalist id="slb-lot-dl">${knownLots.map(l=>`<option value="${attrEsc(l)}">`).join('')}</datalist>
+    <datalist id="slb-con-dl">${conCodes.map(c=>`<option value="${attrEsc(c)}">`).join('')}</datalist>
+    <div class="ph"><div class="ph-t">📚 Batch Packing Slips</div><div class="ph-s">${sheets.length} slip(s) — a page, not a popup. Edit anything, then log all as packed orders.</div></div>
+    <div style="max-width:960px;">
+      ${sheets.map(sheetEditor).join('')}
+      <div class="form-acts" style="margin-top:14px;">
+        <button class="btn b-m b-lg" onclick="commitSlipBatch(this)">Log all &amp; prepare reports</button>
+        <button class="btn b-g" onclick="rPacking(document.getElementById('main-views'))">Cancel</button>
+      </div>
+    </div>`;
+  try{ window.scrollTo(0,0); }catch(e){}
+}
+async function commitSlipBatch(btn){
+  _slipBatch=_readSlipBatchFromDOM();
+  const sheets=_slipBatch; if(!sheets.length) return;
+  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
+  const prepared=[];
+  for(const s of sheets){
+    const client=(s.client||'').trim(); if(!client) continue;
+    const iso=_toISO(s.shipDate||s.date)||tday();
+    const day=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(iso+'T12:00:00').getDay()]||'';
+    const qtys={}; let anyQty=false;
+    (s.items||[]).forEach(it=>{ const prod=ALL_PRODS.find(p=>p.code.toUpperCase()===(it.code||'').trim().toUpperCase()); const q=parseInt(it.shipped)||0; if(prod&&q>0){ qtys[prod.dataKey]=(qtys[prod.dataKey]||0)+q; anyQty=true; } });
+    if(!anyQty) continue;
+    const cr=DB.clients.find(c=>(c.name||'').toLowerCase()===client.toLowerCase());
+    const lots=(s.lots||[]).map(l=>({lot:(l.lot||'').trim(),variety:canonicalVariety((l.variety||'').trim()),container:(l.container||'').trim()})).filter(l=>l.lot);
+    const usedLots=[...new Set(lots.map(l=>l.lot).filter(Boolean))];
+    const o={ clientId:cr?.id||null, client, day, status:'packed', receivedAt:new Date().toISOString(), packedAt:new Date().toISOString(),
+      ...qtys, notes:s.poNum?('PO '+s.poNum):'', orderRef:(typeof nextHQOrderNum==='function'?nextHQOrderNum():''), soNum:(s.soNum||'').trim(), custom:false, isStanding:false, week:wkStart(),
+      usedHarvests:[], usedLots, scanUrl:s.pageUrl||'', tmSlipUrl:s.pageUrl||'', deliveredAt:iso, deliveryStatus:'closed', signedSlipUrl:s.pageUrl||'', source:'pack' };
+    const oId=await FS.add('orders',o); o.id=oId; DB.orders.push(o);
+    for(const l of lots){ try{ await backfillLotTrace(l.lot,l.variety,l.container); }catch(e){ console.warn(e); } }
+    logAudit('order_created',`Batch packed order${o.soNum?' SO#'+o.soNum:''} for ${client} — ${usedLots.length} lot(s) tied`);
+    const items=ALL_PRODS.filter(p=>qtys[p.dataKey]>0).map(p=>({code:p.code,name:p.name,qty:qtys[p.dataKey]}));
+    const subject=notifySubject('slip',{client,soNum:o.soNum,shipDate:iso});
+    prepared.push({subject, data:{client,soNum:o.soNum,poNum:(s.poNum||''),shipDate:iso,items,lots:usedLots,imageUrl:s.pageUrl||'',tmSlipUrl:s.pageUrl||'',signedSlipUrl:s.pageUrl||''}, pageB64:s.pageB64,pageBytes:s.pageBytes,pageUrl:s.pageUrl||''});
+  }
+  _slipBatch=[]; _slipBatchReports=prepared;
+  toast('po-t',`✓ Logged ${prepared.length} packed order(s)`); slipBatchSendPanel();
+}
+async function sendOneSlipReport(i,btn){
+  const r=_slipBatchReports[i]; if(!r) return false;
+  if(r._sent){ if(btn){ btn.disabled=true; btn.style.opacity='.5'; btn.textContent='✓ sent'; } return true; }
+  const subj=(document.getElementById('slbsubj-'+i)?.value||r.subject).trim();
+  const to=[...document.querySelectorAll('.slbr-r:checked')].map(c=>c.value); if(!to.length){ alert('Pick at least one recipient.'); return false; }
+  if(btn){ btn.disabled=true; btn.style.opacity='.5'; }
+  const stat=document.getElementById('slbstat-'+i); if(stat){ stat.textContent='sending…'; stat.style.color='var(--text3)'; }
+  const report=notifyReport('slip', subj, r.data);
+  const image=r.pageB64?{b64:r.pageB64,mime:'application/pdf',bytes:r.pageBytes}:null;
+  const ok=await sendNotify(subj,to,report,image);
+  if(ok){ r._sent=true; if(btn) btn.textContent='✓ sent'; } else if(btn){ btn.disabled=false; btn.style.opacity=''; }
+  if(stat){ stat.textContent = ok?(ok==='link-only'?'✓ sent (link in body)':'✓ sent'):'⚠ failed'; stat.style.color=ok?'var(--fern)':'var(--rust)'; }
+  return ok;
+}
+async function sendAllSlipReports(btn){
+  if(_slbSending) return; _slbSending=true;
+  if(btn){ btn.disabled=true; btn.style.opacity='.5'; btn.textContent='Sending…'; }
+  const tot=_slipBatchReports.length; let n=0;
+  for(let i=0;i<tot;i++){ if(_slipBatchReports[i]&&_slipBatchReports[i]._sent){ n++; continue; } const ok=await sendOneSlipReport(i); if(ok){ n++; if(_slipBatchReports[i]) _slipBatchReports[i]._sent=true; } }
+  _slbSending=false;
+  const banner=document.getElementById('slb-done-banner'); if(banner){ banner.style.display='block'; banner.innerHTML=`✓ Sent ${n} of ${tot} report(s) — done. Tap <b>Done / close</b>. Do NOT press send again.`; }
+  if(btn){ btn.textContent=`✓ Sent ${n}/${tot}`; btn.disabled=true; btn.style.opacity='.5'; }
+  toast('slbr-t',`✓ Sent ${n}/${tot}`);
+}
+function slbrAddRecip(){ const inp=document.getElementById('slbr-add'); const v=(inp?.value||'').trim(); if(!v) return; const box=document.getElementById('slbr-recips'); const l=document.createElement('label'); l.style.cssText='display:flex;align-items:center;gap:8px;font-size:12px;'; l.innerHTML=`<input type="checkbox" class="slbr-r" value="${attrEsc(v)}" checked> ${v}`; box.insertBefore(l, box.lastElementChild); inp.value=''; inp.focus(); }
+function slipBatchSendPanel(){
+  const reps=_slipBatchReports; if(!reps.length){ rPacking(document.getElementById('main-views')); return; }
+  const recips=notifyRecips('slip');
+  const master=DB.notify.enabled!==false; const ready=master&&DB.notify.templateId&&DB.emailjs.serviceId&&DB.emailjs.publicKey;
+  const repCard=(r,i)=>`
+    <div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;background:var(--paper);">
+      <div class="fgl"><label style="font-size:10px;">Subject — ${r.data.client||''}${r.data.soNum?' SO '+r.data.soNum:''}</label><input class="fi" id="slbsubj-${i}" value="${attrEsc(r.subject)}" style="font-family:'Syne Mono',monospace;font-size:11px;"></div>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px;">${r.data.items.length} line(s) · ${r.data.lots.length} lot(s)${r.pageB64?` · 📎 ${_safeFile(r.subject)}.pdf`:''}</div>
+      <div style="margin-top:6px;"><button class="btn b-g b-sm" onclick="sendOneSlipReport(${i},this)" ${ready?'':'disabled style="opacity:.5"'}>✉ Send this one</button> <span id="slbstat-${i}" style="font-size:11px;color:var(--text3);margin-left:6px;"></span></div>
+    </div>`;
+  const mv=document.getElementById('main-views');
+  mv.innerHTML=`
+    <div class="ph"><div class="ph-t">✉ Send Packing Reports</div><div class="ph-s">${reps.length} report(s) — each slip sends its own report + labeled PDF. A page, not a popup.</div></div>
+    <div style="max-width:940px;">
+      ${!ready?`<div style="background:rgba(184,76,32,.09);border:1px solid rgba(184,76,32,.3);border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#b84c20;">${!master?'📴 Email sending is OFF (testing). Turn it on in Admin → Email.':'⚠ Notification template not set — add it in Admin → Email.'}</div>`:''}
+      <div id="slb-done-banner" style="display:none;background:rgba(58,96,48,.1);border:1px solid var(--fern);border-radius:6px;padding:12px 15px;margin-bottom:14px;font-weight:600;color:var(--fern);"></div>
+      <label style="font-size:10px;color:var(--text3);">Send to</label>
+      <div id="slbr-recips" style="display:flex;flex-direction:column;gap:5px;margin:5px 0 12px;">${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="slbr-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}<div style="display:flex;gap:6px;margin-top:4px;"><input class="fi" id="slbr-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();slbrAddRecip();}"><button class="btn b-g b-sm" onclick="slbrAddRecip()">+ Add</button></div></div>
+      ${reps.map(repCard).join('')}
+      <div class="form-acts" style="margin-top:14px;">
+        <button class="btn b-m b-lg" onclick="sendAllSlipReports(this)" ${ready?'':'disabled style="opacity:.5"'}>✉ Send all ${reps.length}</button>
+        <button class="btn b-g" onclick="rPacking(document.getElementById('main-views'))">Done / close</button>
+      </div>
+      <div class="toast" id="slbr-t">✓ Sent</div>
     </div>`;
   try{ window.scrollTo(0,0); }catch(e){}
 }
