@@ -365,7 +365,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #77</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #78</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4471,6 +4471,8 @@ function rFruiting(el){
       if(!fruitRows.length) return '<div class="empty" style="padding:18px;">No active fruiting blocks — log one above.</div>';
       const groups=[], idx={};
       fruitRows.forEach(f=>{ const k=f.sessionId||((f.date||'')+'|'+(f.containerID||'')); if(idx[k]==null){ idx[k]=groups.length; groups.push({key:k,date:f.date,container:f.containerID,rows:[]}); } groups[idx[k]].rows.push(f); });
+      // newest session first
+      groups.sort((a,b)=>{ const ta=Date.parse(a.date)||0, tb=Date.parse(b.date)||0; return tb-ta || String(b.container||'').localeCompare(String(a.container||'')); });
       return groups.map(g=>{
         const totBlocks=g.rows.reduce((s,f)=>s+(f.blockCount||0),0);
         const totProj=g.rows.reduce((s,f)=>s+(f.projLbs||0),0);
