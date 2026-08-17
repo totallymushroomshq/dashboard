@@ -365,7 +365,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #75</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #76</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -3035,9 +3035,18 @@ function clrPackOrder(){
 function orderCases(o){ return ALL_PRODS.reduce((s,p)=>s+(parseInt(o[p.dataKey])||0),0); }
 function orderLbs(o){ return ALL_PRODS.reduce((s,p)=>s+((parseInt(o[p.dataKey])||0)*(p.unitLb||3)),0); }
 function orderSlipOpen(o){ return o.deliveryStatus!=='closed'; }
+let _packSearch='';
+function onPackSearch(v){ _packSearch=v; rPacking(document.getElementById('main-views')); const el=document.getElementById('pack-search'); if(el){ el.focus(); try{ el.setSelectionRange(el.value.length,el.value.length); }catch(e){} } }
 function buildPackedOrdersList(){
-  const packed=(DB.orders||[]).filter(o=>(o.source==='pack'||o.deliveryStatus)&&!o.isStanding);
-  if(!packed.length) return '';
+  const _all=(DB.orders||[]).filter(o=>(o.source==='pack'||o.deliveryStatus)&&!o.isStanding);
+  const _q=(_packSearch||'').trim().toLowerCase();
+  const packed=_q? _all.filter(o=>[o.soNum,o.client,o.orderRef,o.notes].some(x=>(x==null?'':(''+x)).toLowerCase().includes(_q))) : _all;
+  const searchBar=`<div style="margin:0 0 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+    <input class="fi" id="pack-search" value="${(_packSearch||'').replace(/"/g,'&quot;')}" oninput="onPackSearch(this.value)" placeholder="🔍 Search SO #, customer, or order #…" style="max-width:340px;" autocomplete="off">
+    ${_q?`<button class="btn b-g b-sm" onclick="onPackSearch('')">clear</button><span style="font-size:12px;color:var(--text3);">${packed.length} match${packed.length===1?'':'es'}</span>`:''}
+  </div>`;
+  if(!_all.length) return '';
+  if(_q&&!packed.length) return `<div class="sh" style="margin-top:8px;"><span>&#128203; Packed Orders</span></div>${searchBar}<div class="empty" style="padding:18px;">No packed order matches "<b>${_packSearch}</b>".</div>`;
   const money=n=>'$'+(Math.round((n||0)*100)/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
   const isoOf=o=>((o.deliveredAt||o.packedAt||tday())+'').slice(0,10);
   const wkOf=iso=>{ const d=new Date(iso+'T00:00:00'); const off=(d.getDay()+6)%7; d.setDate(d.getDate()-off); return d.toISOString().slice(0,10); };
@@ -3068,16 +3077,17 @@ function buildPackedOrdersList(){
     const weeksHtml=weeks.map((wk,wi)=>{ const W=M.weeks[wk]; const days=Object.keys(W.days).sort().reverse();
       const allW=days.reduce((a,dk)=>a.concat(W.days[dk]),[]); const ws=sum(allW);
       const daysHtml=days.map((dk,di)=>{ const list=W.days[dk].slice().sort((a,b)=>(b.packedAt||'').localeCompare(a.packedAt||'')); const ds=sum(list);
-        return `<details${(mi===0&&wi===0&&di===0)?' open':''}><summary style="${smDay}">&#9656; ${fDate(dk)} &middot; ${dow(dk)} &mdash; ${ds.n} order${ds.n!==1?'s':''} &middot; ${ds.cases} cases &middot; ${ds.lbs.toFixed(1)} lb &middot; ${money(ds.rev)}</summary>
+        return `<details${(_q||(mi===0&&wi===0&&di===0))?' open':''}><summary style="${smDay}">&#9656; ${fDate(dk)} &middot; ${dow(dk)} &mdash; ${ds.n} order${ds.n!==1?'s':''} &middot; ${ds.cases} cases &middot; ${ds.lbs.toFixed(1)} lb &middot; ${money(ds.rev)}</summary>
           <div class="tw" style="margin:4px 0 8px 22px;"><table>
             <thead><tr><th>Delivered</th><th>Customer</th><th>Slip / Actions</th><th>Cases</th><th>Lbs</th><th>Total $</th></tr></thead>
             <tbody>${list.map(rowFor).join('')}</tbody></table></div></details>`;
       }).join('');
-      return `<details${(mi===0&&wi===0)?' open':''}><summary style="${smWeek}"><span>Week of ${fDate(wk)} &mdash; ${ws.n} order${ws.n!==1?'s':''}</span><span style="font-family:'Syne Mono',monospace;">${ws.cases} cs &middot; ${ws.lbs.toFixed(0)} lb &middot; ${money(ws.rev)}</span></summary>${daysHtml}</details>`;
+      return `<details${(_q||(mi===0&&wi===0))?' open':''}><summary style="${smWeek}"><span>Week of ${fDate(wk)} &mdash; ${ws.n} order${ws.n!==1?'s':''}</span><span style="font-family:'Syne Mono',monospace;">${ws.cases} cs &middot; ${ws.lbs.toFixed(0)} lb &middot; ${money(ws.rev)}</span></summary>${daysHtml}</details>`;
     }).join('');
-    return `<details${mi===0?' open':''}><summary style="${smMonth}"><span>${monLabel(mk)} &mdash; ${ms.n} order${ms.n!==1?'s':''}</span><span style="font-family:'Syne Mono',monospace;font-size:11px;">${ms.cases} cases &middot; ${ms.lbs.toFixed(0)} lb &middot; ${money(ms.rev)}</span></summary>${weeksHtml}</details>`;
+    return `<details${(_q||mi===0)?' open':''}><summary style="${smMonth}"><span>${monLabel(mk)} &mdash; ${ms.n} order${ms.n!==1?'s':''}</span><span style="font-family:'Syne Mono',monospace;font-size:11px;">${ms.cases} cases &middot; ${ms.lbs.toFixed(0)} lb &middot; ${money(ms.rev)}</span></summary>${weeksHtml}</details>`;
   }).join('');
-  return `<div class="sh" style="margin-top:8px;"><span>&#128203; Packed Orders &mdash; view, edit &amp; signed slips</span><span class="bdg bc">${packed.length} orders</span></div>
+  return `<div class="sh" style="margin-top:8px;"><span>&#128203; Packed Orders &mdash; view, edit &amp; signed slips</span><span class="bdg bc">${_all.length} orders</span></div>
+    ${searchBar}
     <div style="margin-bottom:24px;">${body}</div>`;
 }
 
