@@ -365,7 +365,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #76</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #77</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5023,7 +5023,7 @@ function bbStrainRow(r){ r=r||{};
     <input class="fi bb-var" list="bb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Strain" style="flex:1;min-width:120px;" autocomplete="off" onchange="if(typeof hbResolveVariety==='function'){this.value=hbResolveVariety(this.value);}">
     <input class="fi bb-gen" value="${attrEsc(r.generation||'')}" placeholder="Gen" style="max-width:64px;">
     <input class="fi bb-bc" type="number" min="0" value="${(r.blockCount!=null&&r.blockCount!=='')?r.blockCount:''}" placeholder="blocks" style="max-width:84px;">
-    <input class="fi bb-slot" list="lab-lotcode-l" value="${attrEsc(r.spawnLot||'')}" placeholder="spawn lot" style="flex:1;min-width:110px;" autocomplete="off">
+    <input class="fi bb-slot" list="lab-lotcode-l" value="${attrEsc((Array.isArray(r.spawnSources)&&r.spawnSources.length)?fmtSpawnSrc(r.spawnSources):(r.spawnLot||''))}" placeholder="spawn lots: 070326-7 ×7, 070926-8 ×8" title="Combined spawn lots — one per lot as ‘lot ×bags’, comma-separated" style="flex:1;min-width:150px;" autocomplete="off">
     <button type="button" class="btn b-r b-sm" onclick="this.closest('.bb-strainrow').remove()">✕</button>
   </div>`;
 }
@@ -5036,7 +5036,7 @@ function _readBlockBatchFromDOM(){
     const rows=[...el.querySelectorAll('.bb-strainrow')].map(row=>({
       suffix:(row.querySelector('.bb-suffix')?.value||'').trim(), strain:(row.querySelector('.bb-var')?.value||'').trim(),
       generation:(row.querySelector('.bb-gen')?.value||'').trim(), blockCount:parseInt(row.querySelector('.bb-bc')?.value)||0,
-      spawnLot:(row.querySelector('.bb-slot')?.value||'').trim()
+      spawnLot:(row.querySelector('.bb-slot')?.value||'').trim(), spawnSources:parseSpawnSrcText(row.querySelector('.bb-slot')?.value)
     })).filter(r=>r.suffix||r.strain||r.blockCount);
     const g=id=>(el.querySelector('.'+id)?.value||'').trim();
     out.push({...orig, productionDate:el.querySelector('.bb-pdate')?.value||orig.productionDate||'', lotCode:g('bb-lot'),
@@ -5048,7 +5048,7 @@ function reviewBlockBatch(){
   const sheets=_blockBatch; sheets.forEach((s,i)=>{ s.__i=i; });
   const labOpts=(typeof _labFieldOpts==='function')?_labFieldOpts():{subBatch:'',order:'',batchNo:'',lotCode:''};
   const sheetEditor=(s)=>{
-    const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.strain||x.blockCount)); const iso=_toISO(s.productionDate)||s.productionDate||'';
+    const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.strain||x.blockCount)).map(x=>({...x, spawnSources:(Array.isArray(x.spawnSources)&&x.spawnSources.length)?x.spawnSources:matchSpawnByStrain(x.strain,s.spawnLots)})); const iso=_toISO(s.productionDate)||s.productionDate||'';
     return `<div class="bb-sheet" data-si="${s.__i}" style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--paper);">
       <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm" style="background:rgba(184,76,32,.08);color:#b84c20;border:1px solid rgba(184,76,32,.25);" onclick="bbRemoveSheet(this)">✕ remove cook</button></div>
       <div class="fg2">
@@ -5091,7 +5091,8 @@ async function commitBlockBatch(btn){
     const srows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.strain||x.blockCount));
     if(!srows.length) continue;
     const varieties=srows.map(r=>{ const suffix=(r.suffix||'').trim(); const variety=(r.strain||'').trim(); if(variety) addVariety(variety);
-      return {suffix, lot:lotCode?`${lotCode}${suffix?' '+suffix:''}`:'', variety, generation:(r.generation||'').trim(), blockCount:parseInt(r.blockCount)||0, spawnLot:(r.spawnLot||'').trim(), spawnRunId:'', bagsUsed:0, spawnDate:'', spawnSource:'', spawnSupplier:'', spawnQuantity:'', rack:'', colDays:0, notes:''}; });
+      const ss=(Array.isArray(r.spawnSources)?r.spawnSources:parseSpawnSrcText(r.spawnLot)).map(s=>({lot:(s.lot||'').trim(),bags:parseInt(s.bags)||0})).filter(s=>s.lot||s.bags);
+      return {suffix, lot:lotCode?`${lotCode}${suffix?' '+suffix:''}`:'', variety, generation:(r.generation||'').trim(), blockCount:parseInt(r.blockCount)||0, spawnSources:ss, spawnLot:ss.map(s=>s.lot).filter(Boolean).join(', ')||(r.spawnLot||'').trim(), spawnRunId:'', bagsUsed:0, spawnDate:'', spawnSource:'', spawnSupplier:'', spawnQuantity:'', rack:'', colDays:0, notes:''}; });
     const totalBlocks=varieties.reduce((a,v)=>a+(v.blockCount||0),0);
     const batchNum=(typeof nextLabBatchNum==='function')?nextLabBatchNum():('LAB-'+iso+'-'+Math.random().toString(36).slice(2,5));
     const data={ batchNum, productionDate:iso, substrateBatch:(s.substrateBatch||'').trim(), lotCode, order:(s.order||'').trim(),
@@ -5103,7 +5104,7 @@ async function commitBlockBatch(btn){
     const id=await FS.add('labBatches',data); DB.labBatches.push({id,...data});
     logAudit('lab_production_log',`Batch block ${batchNum} — ${totalBlocks} blocks · ${varieties.length} strain(s): ${data.strain}`);
     const subject=notifySubject('block',{lotCode,date:iso});
-    prepared.push({subject, data:{lotCode,date:iso,subLbs:data.substrateLbs,buckets:data.buckets,gallons:data.gallonsWater,blocksProduced:data.blocksProduced,crewText:'',rows:varieties.map(v=>({lot:v.lot,strain:v.variety,generation:v.generation,blockCount:v.blockCount,spawnLot:v.spawnLot})),imageUrl:s.pageUrl||''}, pageB64:s.pageB64,pageBytes:s.pageBytes,pageUrl:s.pageUrl||''});
+    prepared.push({subject, data:{lotCode,date:iso,subLbs:data.substrateLbs,buckets:data.buckets,gallons:data.gallonsWater,blocksProduced:data.blocksProduced,crewText:'',rows:varieties.map(v=>({lot:v.lot,strain:v.variety,generation:v.generation,blockCount:v.blockCount,spawnLot:v.spawnLot,spawnSources:v.spawnSources||[]})),imageUrl:s.pageUrl||''}, pageB64:s.pageB64,pageBytes:s.pageBytes,pageUrl:s.pageUrl||''});
   }
   _blockBatch=[]; _blockBatchReports=prepared;
   toast('pl-t',`✓ Logged ${prepared.length} cook(s)`); labBatchSendPanel('block');
@@ -5939,7 +5940,12 @@ function notifyReport(kind, subject, data){
     if(data.subLbs) L.push('Substrate: '+data.subLbs+' lb · '+(data.buckets||0)+' buckets · '+(data.gallons||0)+' gal water');
     if(data.crewText) L.push('Crew:      '+data.crewText);
     L.push(''); L.push('BLOCKS BY STRAIN');
-    let tb=0; (data.rows||[]).forEach(r=>{ tb+=(parseInt(r.blockCount)||0); L.push(` • ${r.lot?r.lot+' — ':''}${r.strain||r.variety||''}${r.generation?' ['+r.generation+']':''} — ${r.blockCount||0} blocks${r.spawnLot?' (spawn '+r.spawnLot+')':''}`); });
+    let tb=0; (data.rows||[]).forEach(r=>{ tb+=(parseInt(r.blockCount)||0);
+      const ss=(Array.isArray(r.spawnSources)?r.spawnSources:[]).filter(s=>s.lot||s.bags);
+      const spawnTxt = ss.length ? ss.map(s=>`${s.lot||'?'}${s.bags?' ×'+s.bags+'bg':''}`).join(', ') : (r.spawnLot||'');
+      L.push(` • ${r.lot?r.lot+' — ':''}${r.strain||r.variety||''}${r.generation?' ['+r.generation+']':''} — ${r.blockCount||0} blocks${spawnTxt?' (spawn: '+spawnTxt+')':''}`);
+      if(ss.length>1){ const tbg=ss.reduce((a,s)=>a+(parseInt(s.bags)||0),0); L.push(`     ↳ ${ss.length} spawn lots combined · ${tbg} bags total`); }
+    });
     const cooked=parseInt(data.blocksProduced)||tb;
     L.push(''); L.push('BLOCKS PRODUCED (total cooked): '+cooked);
     L.push('Allocated across lots: '+tb+' in '+((data.rows||[]).length)+' lot'+(((data.rows||[]).length)!==1?'s':''));
@@ -6350,8 +6356,13 @@ async function snapBlock(input){
     const spawnLotStr=(Array.isArray(d.spawnLots)?d.spawnLots:[]).map(s=>((s.source?s.source+'-':'')+(s.lot||'')+(s.qty?(' ×'+s.qty):'')).trim()).filter(Boolean).join(', ');
     const lotCode=(d.lotCode||'').trim();
     const suffixOf=lot=>{ lot=(lot||'').trim(); return (lotCode&&lot.toUpperCase().startsWith(lotCode.toUpperCase()))?lot.slice(lotCode.length).replace(/^[-\s]+/,'').trim():''; };
+    // each block-breakdown row inherits the LABORATORY spawn lots for its strain (parser row spawnSources preferred, else matched by strain)
+    const sourcesForStrain=(strain,rowSpawnSources)=>{
+      if(Array.isArray(rowSpawnSources)&&rowSpawnSources.length) return rowSpawnSources.map(s=>({lot:(s.lot||'').trim(),bags:parseInt(s.bags)||0}));
+      return matchSpawnByStrain(strain, d.spawnLots);
+    };
     if(rows.length && typeof plVarieties!=='undefined'){
-      plVarieties=rows.map(x=>({...blankPlVar(), suffix:suffixOf(x.lot), variety:(x.strain||'').trim(), generation:(x.generation||'').trim(), blockCount:x.blockCount||'', spawnLot:(x.spawnLot||'').trim()||spawnLotStr, spawnDate:_toISO(d.spawnDate)||'', spawnQuantity:d.spawnQty||'', spawnSource:d.spawnSource||'', rack:d.rackLocation||''}));
+      plVarieties=rows.map(x=>{ const ss=sourcesForStrain(x.strain,x.spawnSources); return ({...blankPlVar(), suffix:suffixOf(x.lot), variety:(x.strain||'').trim(), generation:(x.generation||'').trim(), blockCount:x.blockCount||'', spawnSources:ss, spawnLot:ss.map(s=>s.lot).filter(Boolean).join(', ')||(x.spawnLot||'').trim()||spawnLotStr, spawnDate:_toISO(d.spawnDate)||'', spawnQuantity:d.spawnQty||'', spawnSource:d.spawnSource||'', rack:d.rackLocation||''}); });
       if(typeof paintPlVarieties==='function') paintPlVarieties();
     }
     show(`✓ Read block log <b>${d.lotCode||''}</b> — <b>${rows.length} lot line(s)</b> populated below${spawnLotStr?` · spawn: ${spawnLotStr}`:''} — verify, then Log.`);
@@ -9749,7 +9760,9 @@ function _traceData(q, date, container){
     return batchVarietyLines(b).some(v=>{ const lot=(v.lot||((b.lotCode||'')+(v.suffix?' '+v.suffix:''))).trim(); return lot && (norm(lot)===nq || lotSet.has(norm(lot))); });
   });
   const spawnRunIds=new Set(), spawnLotSet=new Set();
-  labBatches.forEach(b=>batchVarietyLines(b).forEach(v=>{ if(v.spawnRunId) spawnRunIds.add(v.spawnRunId); if(v.spawnLot) spawnLotSet.add(norm(v.spawnLot)); }));
+  labBatches.forEach(b=>batchVarietyLines(b).forEach(v=>{ if(v.spawnRunId) spawnRunIds.add(v.spawnRunId);
+    if(Array.isArray(v.spawnSources)&&v.spawnSources.length){ v.spawnSources.forEach(s=>{ if(s.lot) spawnLotSet.add(norm(s.lot)); }); }
+    else if(v.spawnLot){ String(v.spawnLot).split(',').forEach(x=>{ x=x.trim(); if(x) spawnLotSet.add(norm(x)); }); } }));
   const spawnRuns=(DB.spawnRuns||[]).filter(s=> spawnRunIds.has(s.id) || spawnLotSet.has(norm(s.spawnLot)) );
   const cultureIds=new Set(spawnRuns.map(s=>s.sourceCultureId).filter(Boolean));
   const cultureLotSet=new Set(spawnRuns.map(s=>norm(s.sourceCultureLot)).filter(Boolean));
@@ -10171,7 +10184,32 @@ function _minsBetween(a,b){ const p=t=>{ t=String(t||'').trim(); if(!t) return n
 // legacy record → water/mix minutes (prefer new numeric fields, fall back to old clock strings)
 function _waterMin(b){ return (b&&b.waterMinutes!=null&&b.waterMinutes!=='')?b.waterMinutes:_minsBetween(b&&b.waterStartTime,b&&b.waterEndTime); }
 function _mixMin(b){ return (b&&b.mixMinutes!=null&&b.mixMinutes!=='')?b.mixMinutes:_num(b&&b.mixTime); }
-function blankPlVar(){ return {suffix:'',variety:'',generation:'',blockCount:'',spawnRunId:'',bagsUsed:'',spawnDate:'',spawnSource:'',spawnSupplier:'',spawnQuantity:'',spawnLot:'',rack:'',colDays:'',notes:''}; }
+function blankPlVar(){ return {suffix:'',variety:'',generation:'',blockCount:'',spawnRunId:'',bagsUsed:'',spawnDate:'',spawnSource:'',spawnSupplier:'',spawnQuantity:'',spawnLot:'',spawnSources:[],rack:'',colDays:'',notes:''}; }
+// one spawn-lot row inside a variety card — multiple spawn lots + their bag counts combined into this strain's inoculation
+function plSpawnSrcRow(i,ss){ ss=ss||{};
+  return `<div class="plv-srow-${i}" style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
+    <input class="fi plv-slot" list="lab-lotcode-l" value="${attrEsc(ss.lot||'')}" placeholder="spawn lot #" style="flex:1;min-width:120px;" autocomplete="off">
+    <input class="fi plv-sbags" type="number" min="0" step="1" value="${(ss.bags!=null&&ss.bags!=='')?ss.bags:''}" placeholder="bags" style="max-width:78px;" oninput="_plSpawnTotal(${i})"><span style="font-size:11px;color:var(--text3);">bags</span>
+    <button type="button" class="btn b-r b-sm" title="Remove spawn lot" onclick="this.closest('.plv-srow-${i}').remove();_plSpawnTotal(${i})">✕</button>
+  </div>`;
+}
+// Match a strain name to the sheet-level LABORATORY spawn lots (grouped by strain source) → [{lot,bags}]
+const _spawnStopW=['THE','AND','MUSHROOM','MUSHROOMS','SPAWN','LOT','LOTS','IH','HH','OYSTER','OYS','OYSTERS','TRAIL','TEARS','MANE','PAW','TOOTH'];
+function _spawnTok(s){ return (s||'').toUpperCase().replace(/[^A-Z]/g,' ').split(/\s+/).filter(w=>w.length>=3&&!_spawnStopW.includes(w)); }
+function matchSpawnByStrain(strain, spawnLots){
+  const st=_spawnTok(strain); if(!st.length||!Array.isArray(spawnLots)) return [];
+  // key each spawn lot by the strain it feeds (parser emits per-lot strain; falls back to the SRC-STRAIN-lot source string)
+  const groups=spawnLots.reduce((m,s)=>{ const k=((s.strain||s.source||'').trim()); (m[k]=m[k]||[]).push({lot:(s.lot||'').trim(),bags:parseInt(s.qty||s.bags)||0}); return m; },{});
+  let best=[]; Object.keys(groups).forEach(k=>{ const kt=_spawnTok(k); if(kt.length&&(kt.some(w=>st.includes(w))||st.some(w=>kt.includes(w)))) best=best.concat(groups[k]); });
+  return best.filter(s=>s.lot||s.bags);
+}
+// Parse a comma-separated "lot ×bags, lot ×bags" string → [{lot,bags}]
+function parseSpawnSrcText(txt){ txt=(txt||'').trim(); if(!txt) return [];
+  return txt.split(',').map(t=>{ const m=t.trim().match(/^(.*?)\s*[×xX]\s*(\d+)\s*(?:bg|bags?)?$/); return m?{lot:m[1].trim(),bags:parseInt(m[2])||0}:{lot:t.trim(),bags:0}; }).filter(s=>s.lot||s.bags);
+}
+function fmtSpawnSrc(ss){ return (Array.isArray(ss)?ss:[]).filter(s=>s.lot||s.bags).map(s=>`${s.lot||''}${s.bags?' ×'+s.bags:''}`).join(', '); }
+function addPlSpawnSource(i){ const w=document.getElementById('plv-spawnsrc-'+i); if(w){ w.insertAdjacentHTML('beforeend',plSpawnSrcRow(i,{})); } }
+function _plSpawnTotal(i){ const w=document.getElementById('plv-spawnsrc-'+i); if(!w) return; let n=0,lots=0; [...w.querySelectorAll('.plv-srow-'+i)].forEach(r=>{ const b=parseInt(r.querySelector('.plv-sbags')?.value)||0; const l=(r.querySelector('.plv-slot')?.value||'').trim(); if(l||b){ lots++; n+=b; } }); const t=document.getElementById('plv-spawntot-'+i); if(t) t.textContent=n?`= ${lots} lot(s) · ${n} bags combined`:''; }
 function attrEsc(s){ return String(s==null?'':s).replace(/"/g,'&quot;'); }
 
 // Read the current per-variety DOM inputs back into the plVarieties array
@@ -10187,7 +10225,8 @@ function readPlVarieties(){
     spawnSource   : document.getElementById('plv-spawnsource-'+i)?.value || '',
     spawnSupplier : document.getElementById('plv-spawnsupplier-'+i)?.value || '',
     spawnQuantity : document.getElementById('plv-spawnqty-'+i)?.value || '',
-    spawnLot      : document.getElementById('plv-spawnlot-'+i)?.value || '',
+    spawnSources  : [...(document.getElementById('plv-spawnsrc-'+i)?.querySelectorAll('.plv-srow-'+i)||[])].map(r=>({lot:(r.querySelector('.plv-slot')?.value||'').trim(),bags:parseInt(r.querySelector('.plv-sbags')?.value)||0})).filter(x=>x.lot||x.bags),
+    spawnLot      : ([...(document.getElementById('plv-spawnsrc-'+i)?.querySelectorAll('.plv-slot')||[])].map(e=>e.value.trim()).filter(Boolean).join(', ')) || '',
     rack          : document.getElementById('plv-rack-'+i)?.value || '',
     colDays       : document.getElementById('plv-coldays-'+i)?.value || '',
     notes         : document.getElementById('plv-notes-'+i)?.value || ''
@@ -10227,8 +10266,13 @@ function renderPlVarietiesHTML(){
         <div class="fgl"><label>Spawn Type</label><select class="fs" id="plv-spawnsource-${i}">${srcOpts}</select></div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Spawn Supplier / Origin</label><input class="fi" id="plv-spawnsupplier-${i}" value="${attrEsc(row.spawnSupplier)}" placeholder="e.g. North Spore, in-house culture" list="pl-supplier-list"></div>
-        <div class="fgl"><label>Spawn Lot #</label><input class="fi" id="plv-spawnlot-${i}" value="${attrEsc(row.spawnLot)}" placeholder="e.g. GS-2026-007"></div>
+        <div class="fgl" style="grid-column:1/-1;"><label>Spawn Supplier / Origin</label><input class="fi" id="plv-spawnsupplier-${i}" value="${attrEsc(row.spawnSupplier)}" placeholder="e.g. North Spore, in-house culture" list="pl-supplier-list"></div>
+      </div>
+      <div class="fgl" style="margin-bottom:10px;">
+        <label>Spawn Lots Combined <span style="color:var(--text3);font-size:11px;text-transform:none;letter-spacing:0;">every spawn lot # + bags mixed into this strain's inoculation</span></label>
+        <div class="plv-spawnsrc" id="plv-spawnsrc-${i}">${((row.spawnSources&&row.spawnSources.length)?row.spawnSources:[{lot:row.spawnLot||'',bags:row.bagsUsed||''}]).map(ss=>plSpawnSrcRow(i,ss)).join('')}</div>
+        <button type="button" class="btn b-g b-sm" onclick="addPlSpawnSource(${i})" style="margin-top:4px;">+ spawn lot</button>
+        <span id="plv-spawntot-${i}" style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--fern);margin-left:8px;"></span>
       </div>
       <div class="fg2">
         <div class="fgl"><label>Spawn Quantity / Rate</label><input class="fi" id="plv-spawnqty-${i}" value="${attrEsc(row.spawnQuantity)}" placeholder="e.g. 10% by weight, 2 qt jars"></div>
@@ -10244,7 +10288,7 @@ function renderPlVarietiesHTML(){
 
 function paintPlVarieties(){
   const c = document.getElementById('pl-varieties');
-  if(c) c.innerHTML = renderPlVarietiesHTML();
+  if(c){ c.innerHTML = renderPlVarietiesHTML(); plVarieties.forEach((_,i)=>_plSpawnTotal(i)); }
 }
 
 // Picking spawn from the pool auto-fills the lot/supplier and (if empty) variety.
@@ -11160,7 +11204,7 @@ function rLabSubstrate(el){
     plVarieties = batchVarietyLines(editBatch).map(v=>({
       suffix:v.suffix||'', variety:v.variety||'', blockCount:v.blockCount||'',
       spawnDate:v.spawnDate||'', spawnSource:v.spawnSource||'', spawnSupplier:v.spawnSupplier||'',
-      spawnQuantity:v.spawnQuantity||'', spawnLot:v.spawnLot||'', rack:v.rack||'', colDays:v.colDays||'', notes:v.notes||''
+      spawnQuantity:v.spawnQuantity||'', spawnLot:v.spawnLot||'', spawnSources:(Array.isArray(v.spawnSources)?v.spawnSources:[]), rack:v.rack||'', colDays:v.colDays||'', notes:v.notes||''
     }));
     if(!plVarieties.length) plVarieties=[blankPlVar()];
   }
@@ -11331,7 +11375,7 @@ function rLabSubstrate(el){
                       ${lost?`<div style="font-size:11px;color:#9a2a2a;font-weight:600;">⚠ ${lost} lost pre-fruiting → ${Math.max(0,made-lost)} to fruiting</div>`:''}
                       ${v.spawnDate?`<div style="font-size:11px;color:var(--text2);">Spawn: ${fDate(v.spawnDate)}${v.spawnSource?' · '+v.spawnSource:''}</div>`:(v.spawnSource?`<div style="font-size:11px;color:var(--text2);">Spawn Type: ${v.spawnSource}</div>`:'')}
                       ${v.spawnSupplier?`<div style="font-size:11px;color:var(--text2);">Supplier: ${v.spawnSupplier}</div>`:''}
-                      ${v.spawnLot?`<div style="font-size:11px;color:var(--text2);">Spawn Lot: <span style="font-family:'Syne Mono',monospace;font-weight:700;">${v.spawnLot}</span>${v.bagsUsed?' · '+v.bagsUsed+' bags':''}${v.spawnQuantity?' · '+v.spawnQuantity:''}</div>`:(v.spawnQuantity?`<div style="font-size:11px;color:var(--text2);">${v.spawnQuantity}</div>`:'')}
+                      ${(Array.isArray(v.spawnSources)&&v.spawnSources.filter(s=>s.lot||s.bags).length)?(()=>{ const ss=v.spawnSources.filter(s=>s.lot||s.bags); const tb=ss.reduce((a,s)=>a+(parseInt(s.bags)||0),0); return `<div style="font-size:11px;color:var(--text2);">Spawn Lots${ss.length>1?` (${ss.length} combined${tb?' · '+tb+' bags':''})`:''}: ${ss.map(s=>`<span style="font-family:'Syne Mono',monospace;font-weight:700;">${s.lot||'?'}</span>${s.bags?' ×'+s.bags:''}`).join(', ')}</div>`; })():(v.spawnLot?`<div style="font-size:11px;color:var(--text2);">Spawn Lot: <span style="font-family:'Syne Mono',monospace;font-weight:700;">${v.spawnLot}</span>${v.bagsUsed?' · '+v.bagsUsed+' bags':''}${v.spawnQuantity?' · '+v.spawnQuantity:''}</div>`:(v.spawnQuantity?`<div style="font-size:11px;color:var(--text2);">${v.spawnQuantity}</div>`:''))}
                       ${v.rack?`<div style="font-size:11px;color:var(--text2);">Rack: ${v.rack}${v.colDays?' · ~'+v.colDays+'d colonize':''}</div>`:(v.colDays?`<div style="font-size:11px;color:var(--text2);">~${v.colDays}d colonize</div>`:'')}
                       ${v.notes?`<div style="font-size:11px;color:var(--text3);font-style:italic;margin-top:2px;">${v.notes}</div>`:''}
                     </div>`;
@@ -11377,6 +11421,7 @@ async function logProductionBatch(){
       spawnSupplier: (v.spawnSupplier||'').trim(),
       spawnQuantity: (v.spawnQuantity||'').trim(),
       spawnLot     : (v.spawnLot||'').trim(),
+      spawnSources : (Array.isArray(v.spawnSources)?v.spawnSources:[]).map(s=>({lot:(s.lot||'').trim(),bags:parseInt(s.bags)||0})).filter(s=>s.lot||s.bags),
       rack         : (v.rack||'').trim(),
       colDays      : parseInt(v.colDays)||0,
       notes        : (v.notes||'').trim()
@@ -11460,7 +11505,7 @@ async function logProductionBatch(){
   const snapUrl=(_lastSnap&&_lastSnap.kind==='block')?_lastSnap.url:'';
   const snapImg=(_lastSnap&&_lastSnap.kind==='block'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
   openEmailDispatch('block', notifySubject('block',{lotCode:data.lotCode,date:productionDate}), {label:'Block '+(data.lotCode||batchNum),
-    data:{lotCode:data.lotCode,date:productionDate,subLbs:data.substrateLbs,buckets:data.buckets,gallons:data.gallonsWater,blocksProduced:data.blocksProduced,crewText:[data.sterCrew,data.inocCrew].filter(Boolean).join(' / '),rows:varieties.map(v=>({lot:v.lot,strain:v.variety,generation:v.generation,blockCount:v.blockCount,spawnLot:v.spawnLot})),imageUrl:snapUrl}, image:snapImg});
+    data:{lotCode:data.lotCode,date:productionDate,subLbs:data.substrateLbs,buckets:data.buckets,gallons:data.gallonsWater,blocksProduced:data.blocksProduced,crewText:[data.sterCrew,data.inocCrew].filter(Boolean).join(' / '),rows:varieties.map(v=>({lot:v.lot,strain:v.variety,generation:v.generation,blockCount:v.blockCount,spawnLot:v.spawnLot,spawnSources:v.spawnSources||[]})),imageUrl:snapUrl}, image:snapImg});
 }
 
 // Draw produced spawn down as block production consumes it (create path only).
