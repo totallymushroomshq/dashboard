@@ -54,6 +54,10 @@ body{font-family:'Syne',sans-serif;background:var(--paper);color:var(--text);min
 .fl label{font-family:'Syne Mono',monospace;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--text3)}
 .fi,.fs,.fta{padding:11px 13px;background:var(--paper);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'Syne',sans-serif;font-size:14px;outline:none;transition:border-color .2s,background .15s;width:100%}
 .fi:focus,.fs:focus,.fta:focus{border-color:var(--gold);background:var(--white)}
+/* auto-filled by the app (e.g. variety looked up from a lot #) — highlighted so you know it wasn't typed */
+.fi.af,.fs.af,.fta.af{background:var(--gold-lt);border-color:var(--border-gold);box-shadow:inset 3px 0 0 var(--gold);font-weight:600}
+.af-wrap{position:relative}
+.af-tag{position:absolute;top:-8px;right:6px;background:var(--gold);color:#fff;font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.5px;padding:1px 6px;border-radius:8px;pointer-events:none;z-index:2}
 .fs option{background:var(--white)}
 .fta{resize:vertical;min-height:80px}
 .gbtn{width:100%;padding:14px;border:none;border-radius:3px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:600;letter-spacing:3px;text-transform:uppercase;transition:all .15s}
@@ -75,7 +79,7 @@ body{font-family:'Syne',sans-serif;background:var(--paper);color:var(--text);min
 /* ── APP ── */
 #app{min-height:100vh}
 .topbar{background:var(--black);border-bottom:none;position:sticky;top:0;z-index:200}
-.tbi{max-width:1280px;margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:58px}
+.tbi{max-width:min(1720px,96vw);margin:0 auto;padding:0 24px;display:flex;align-items:center;justify-content:space-between;height:58px}
 .tb-brand{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:700;color:var(--white);flex-shrink:0}
 .tb-brand em{color:var(--amber);font-style:normal}
 /* ── Hamburger button ── */
@@ -138,7 +142,7 @@ body{font-family:'Syne',sans-serif;background:var(--paper);color:var(--text);min
 .rpill.client{background:rgba(42,85,120,.3);color:#88bbdd;border:1px solid rgba(42,85,120,.5)}
 .out-btn{font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;text-transform:uppercase;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.5);padding:6px 12px;border-radius:3px;cursor:pointer;transition:all .15s}
 .out-btn:hover{border-color:rgba(255,255,255,.5);color:var(--white)}
-.main{max-width:1280px;margin:0 auto;padding:32px 24px}
+.main{max-width:min(1720px,96vw);margin:0 auto;padding:32px 24px}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
 /* ── PRIMITIVES ── */
@@ -365,7 +369,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #79</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #80</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -3881,16 +3885,20 @@ function onLotInput(){
   const match=typed?onHandReceivings().find(r=>(r.lotNumber||'').trim().toLowerCase()===typed):null;
   const hint=document.getElementById('fr-lot-hint');
   if(match){
-    if(vEl && match.variety){ vEl.value=match.variety; if(typeof onVarietyInput==='function') onVarietyInput(); }
-    if(vendorEl && match.vendor) vendorEl.value=match.vendor;
+    if(vEl && match.variety){ vEl.value=match.variety; markAF(vEl); if(typeof onVarietyInput==='function') onVarietyInput(); }
+    if(vendorEl && match.vendor){ vendorEl.value=match.vendor; markAF(vendorEl); }
     if(srcEl) srcEl.value=(match.source==='internal')?'internal':'supplier';
-    if(bwEl && match.blockWeightLb) bwEl.value=match.blockWeightLb;
+    if(bwEl && match.blockWeightLb){ bwEl.value=match.blockWeightLb; markAF(bwEl); }
     const batch=document.getElementById('fr-batch'); if(batch) batch.value=match.id;
     const bc=document.getElementById('fr-bc'); if(bc){ bc.max=receivingOnHand(match); if(!bc.value) bc.value=receivingOnHand(match); }
     if(hint){ hint.style.color='var(--fern)'; hint.textContent=`✓ ${match.variety} · ${receivingOnHand(match)} blocks on hand · draws down on placement`; }
-  } else if(hint){
-    hint.style.color='var(--text3)';
-    hint.textContent = typed ? '⚠ NOT IN INVENTORY — will prompt for an explanation on submit' : 'TYPE TO MATCH BLOCKS ON HAND';
+  } else {
+    // not on-hand, but the lot may still be known (in-house spawn/block or history) → fill the variety anyway, highlighted
+    [vEl,vendorEl,bwEl].forEach(clearAF);
+    const known=typed?lotToVariety(lot):'';
+    if(known && vEl && !info?.variety){ vEl.value=known; markAF(vEl); if(typeof onVarietyInput==='function') onVarietyInput(); }
+    if(hint){ hint.style.color='var(--text3)';
+      hint.textContent = typed ? (known?`✓ ${known} (known lot) — not currently on hand`:'⚠ NOT IN INVENTORY — will prompt for an explanation on submit') : 'TYPE TO MATCH BLOCKS ON HAND'; }
   }
   updateFruitingPreview();
 }
@@ -4105,7 +4113,7 @@ function rReceiving(el){
         <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="rc-variety" list="rc-variety-dl" placeholder="Type or pick variety…" autocomplete="off"><datalist id="rc-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Lot / Block #</label><input class="fi" id="rc-lot" placeholder="e.g. 10184 or WSY00Y"></div>
+        <div class="fgl"><label>Lot / Block #</label><input class="fi" id="rc-lot" placeholder="e.g. 10184 or WSY00Y" oninput="onRecvLot()"></div>
         <div class="fgl"><label># of Blocks</label><input class="fi" type="number" min="1" id="rc-bc" placeholder="# blocks received"></div>
         <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="rc-bw" placeholder="e.g. 5.5"></div>
         <div class="fgl"><label>Received By</label><input class="fi" id="rc-by" value="${(S.name||'').replace(/"/g,'&quot;')}"></div>
@@ -4834,15 +4842,41 @@ function lotToVariety(lot){
   const h=find(DB.harvests); if(h&&h.variety) return h.variety;
   const f=find(DB.fruitings); if(f&&f.variety) return f.variety;
   const r=find(DB.receivings); if(r&&r.variety) return r.variety;
+  // in-house lineage: grain-spawn strain lots (060526A) and block-cook variety lots
+  for(const s of [...(DB.spawnRuns||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''))){
+    const st=(Array.isArray(s.strains)?s.strains:[]).find(x=>(x.lot||'').toLowerCase()===L); if(st&&st.strain) return st.strain;
+  }
+  for(const b of [...(DB.labBatches||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''))){
+    const v=(typeof batchVarietyLines==='function'?batchVarietyLines(b):(b.varieties||[])).find(x=>{ const lt=(x.lot||((b.lotCode||'')+(x.suffix?' '+x.suffix:''))).trim().toLowerCase(); return lt===L; }); if(v&&v.variety) return v.variety;
+  }
   return '';
+}
+// highlight a field the app auto-filled (variety looked up from a lot, etc.) so it's obvious it wasn't typed; clears when the user edits it
+function markAF(el){ if(!el) return; el.classList.add('af'); el.title='Auto-filled by the app — edit to override';
+  const p=el.parentElement;
+  if(p && !p.querySelector(':scope > .af-tag')){ p.classList.add('af-wrap'); const tag=document.createElement('span'); tag.className='af-tag'; tag.textContent='AUTO'; p.appendChild(tag); }
+  const clear=()=>{ clearAF(el); el.removeEventListener('input',clear); el.removeEventListener('change',clear); };
+  el.addEventListener('input',clear); el.addEventListener('change',clear);
+}
+function clearAF(el){ if(!el) return; el.classList.remove('af'); const p=el.parentElement; if(p){ const t=p.querySelector(':scope > .af-tag'); if(t) t.remove(); p.classList.remove('af-wrap'); } }
+// Receiving: reading a known lot # auto-fills the variety (+ vendor), highlighted
+function onRecvLot(){
+  const lot=(document.getElementById('rc-lot')?.value||'').trim();
+  const vEl=document.getElementById('rc-variety'); const venEl=document.getElementById('rc-vendor');
+  const v=lot?lotToVariety(lot):'';
+  if(v && vEl){ vEl.value=v; markAF(vEl); if(typeof onSimpleVarietyAdd==='function') onSimpleVarietyAdd(vEl); }
+  else clearAF(vEl);
+  // vendor/source from a prior receiving of the same lot
+  if(lot){ const r=[...(DB.receivings||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).find(x=>(x.lotNumber||'').trim().toLowerCase()===lot.toLowerCase());
+    if(r && venEl && r.vendor && !venEl.value){ venEl.value=r.vendor; markAF(venEl); } }
 }
 function onHarvestLot(){
   const lot=(document.getElementById('hl-lot')?.value||'').trim();
   const v=lotToVariety(lot);
   const vEl=document.getElementById('hl-v'); const hint=document.getElementById('hl-lot-hint');
-  if(v && vEl){ vEl.value=v; if(typeof onSimpleVarietyAdd==='function') onSimpleVarietyAdd(vEl);
+  if(v && vEl){ vEl.value=v; markAF(vEl); if(typeof onSimpleVarietyAdd==='function') onSimpleVarietyAdd(vEl);
     if(hint){ hint.textContent='✓ Variety remembered for lot '+lot+' → '+v; hint.style.display='block'; } }
-  else if(hint){ hint.style.display='none'; }
+  else { clearAF(vEl); if(hint) hint.style.display='none'; }
 }
 
 function onContainerSelect(code){
@@ -5136,12 +5170,12 @@ async function snapSpawnBatch(input){
 }
 function bbRemoveSpawnSheet(btn){ if(confirm('Remove this whole spawn run from the batch?')) btn.closest('.sb-sheet').remove(); }
 function sbStrainRowHTML(row,i,base){ row=row||{}; const sfx=(row.suffix||'').trim()||_autoSuffix(i); const lot=row.lot||(base?`${base}${sfx}`:'');
-  return `<div class="sb-srow" style="display:grid;grid-template-columns:minmax(120px,2fr) minmax(56px,.6fr) minmax(50px,.5fr) minmax(90px,1fr) auto;gap:6px;align-items:center;margin-bottom:5px;">
-    <input class="fi sb-sstrain" list="sb-var-dl" value="${attrEsc(row.strain||'')}" placeholder="strain" autocomplete="off" onchange="if(typeof hbResolveVariety==='function'){this.value=hbResolveVariety(this.value);}">
-    <input class="fi sb-sbags" type="number" min="0" value="${(row.bags!=null&&row.bags!=='')?row.bags:''}" placeholder="bags">
-    <input class="fi sb-ssuffix" value="${attrEsc(row.suffix||sfx)}" placeholder="${_autoSuffix(i)}" maxlength="3" style="text-transform:uppercase;">
-    <input class="fi sb-slot" value="${attrEsc(lot)}" placeholder="lot" title="lot # (auto from Lot Code + suffix)" style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);">
-    <button type="button" class="btn b-r b-sm" onclick="this.closest('.sb-srow').remove()">✕</button>
+  return `<div class="sb-srow" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:5px;">
+    <input class="fi sb-sstrain" list="sb-var-dl" value="${attrEsc(row.strain||'')}" placeholder="strain" autocomplete="off" onchange="if(typeof hbResolveVariety==='function'){this.value=hbResolveVariety(this.value);}" style="flex:3 1 130px;min-width:110px;">
+    <input class="fi sb-sbags" type="number" min="0" value="${(row.bags!=null&&row.bags!=='')?row.bags:''}" placeholder="bags" style="flex:1 1 56px;min-width:52px;">
+    <input class="fi sb-ssuffix" value="${attrEsc(row.suffix||sfx)}" placeholder="${_autoSuffix(i)}" maxlength="3" style="text-transform:uppercase;flex:1 1 50px;min-width:48px;">
+    <input class="fi sb-slot" value="${attrEsc(lot)}" placeholder="lot" title="lot # (auto from Lot Code + suffix)" style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);flex:2 1 90px;min-width:86px;">
+    <button type="button" class="btn b-r b-sm" onclick="this.closest('.sb-srow').remove()" style="flex:0 0 auto;">✕</button>
   </div>`;
 }
 function sbAddStrain(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('sb-strains')){ const i=w.querySelectorAll('.sb-srow').length; w.insertAdjacentHTML('beforeend',sbStrainRowHTML({},i,'')); } }
@@ -6355,12 +6389,20 @@ async function snapSpawn(input){
     const r=await processScan(file,'spawn'); const d=r.data;
     _lastSnap={kind:'spawn',url:r.imageUrl,name:'spawn-log.pdf',b64:r.pdfB64,dataUrl:r.thumb,mime:'application/pdf',bytes:r.pdfBytes};
     const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null&&v!=='') e.value=v; };
-    set('sp-pdate',_toISO(d.productionDate)); set('sp-lotcode',d.lotCode); set('sp-subbatch',d.substrateBatch); set('sp-batchno',d.batch);
-    set('sp-grain',d.grainType); set('sp-grainwt',d.grainWeight); set('sp-grainlot',d.grainLot);
-    set('sp-additives',d.additives); set('sp-subnotes',d.subNotes);
+    // set a <select> to the option that best matches free text (case-insensitive, contains either way)
+    const setSel=(id,v)=>{ const e=document.getElementById(id); if(!e||v==null||v==='') return ''; const t=String(v).trim().toLowerCase();
+      let opt=[...e.options].find(o=>o.value.toLowerCase()===t) || [...e.options].find(o=>o.value&&(o.value.toLowerCase().includes(t)||t.includes(o.value.toLowerCase())))
+        || [...e.options].find(o=>{ const w=o.value.toLowerCase().split(/[^a-z]+/).filter(Boolean); return w.some(x=>x.length>2&&t.includes(x)); });
+      if(opt){ e.value=opt.value; return ''; } return String(v).trim(); };
+    set('sp-pdate',_toISO(d.productionDate)); set('sp-lotcode',d.lotCode); set('sp-subbatch',d.substrateBatch); set('sp-order',d.order); set('sp-batchno',d.batch);
+    const grainLeft=setSel('sp-grain',d.grainType); set('sp-grainwt',d.grainWeight); set('sp-grainlot',d.grainLot);
+    set('sp-additives',d.additives); set('sp-subnotes',[d.subNotes,grainLeft&&('grain: '+grainLeft)].filter(Boolean).join(' · '));
     set('sp-sterdate',_toISO(d.sterDate)); set('sp-actemp',d.autoclaveTemp); set('sp-cookhrs',d.cookHrs); set('sp-cookstart',d.cookStart); set('sp-cookend',d.cookEnd); set('sp-sternotes',d.sterNotes);
-    set('sp-inocdate',_toISO(d.inocDate)); set('sp-method',d.method); set('sp-graintemp',d.grainTemp);
-    set('sp-culsource',d.cultureSource); set('sp-lclot',(d.strainLots&&d.strainLots.length?d.strainLots.join(', '):d.lcLot)); set('sp-spawnqty',d.spawnQty); set('sp-inocnotes',d.inocNotes);
+    set('sp-inocdate',_toISO(d.inocDate)); const methodLeft=setSel('sp-method',d.method||d.cultureType); set('sp-graintemp',d.grainTemp);
+    set('sp-culsource',d.cultureSource); set('sp-lclot',(d.strainLots&&d.strainLots.length?d.strainLots.join(', '):d.lcLot)); set('sp-spawnqty',d.spawnQty);
+    // capture everything else that doesn't have a dedicated box (raw method text, culture-type checkbox) into Inoc Notes so nothing on the sheet is lost
+    const inocExtra=[d.inocNotes, methodLeft&&('method: '+methodLeft), (d.cultureType&&!/liquid|hyphae/i.test(methodLeft||'')&&d.method&&d.method!==d.cultureType)?('type: '+d.cultureType):''].filter(Boolean).join(' · ');
+    set('sp-inocnotes',inocExtra);
     // per-strain rows: prefer parsed strains[], else fall back to a single strain
     const base=(d.lotCode||'').trim().replace(/^#/,'');
     const ps=(Array.isArray(d.strains)?d.strains:[]).filter(x=>x&&(x.strain||x.bags));
@@ -10226,8 +10268,8 @@ function _mixMin(b){ return (b&&b.mixMinutes!=null&&b.mixMinutes!=='')?b.mixMinu
 function blankPlVar(){ return {suffix:'',variety:'',generation:'',blockCount:'',spawnRunId:'',bagsUsed:'',spawnDate:'',spawnSource:'',spawnSupplier:'',spawnQuantity:'',spawnLot:'',spawnSources:[],rack:'',colDays:'',notes:''}; }
 // one spawn-lot row inside a variety card — multiple spawn lots + their bag counts combined into this strain's inoculation
 function plSpawnSrcRow(i,ss){ ss=ss||{};
-  return `<div class="plv-srow-${i}" style="display:flex;gap:6px;align-items:center;margin-bottom:4px;">
-    <input class="fi plv-slot" list="lab-lotcode-l" value="${attrEsc(ss.lot||'')}" placeholder="spawn lot #" style="flex:1;min-width:120px;" autocomplete="off">
+  return `<div class="plv-srow-${i}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:4px;">
+    <input class="fi plv-slot" list="lab-lotcode-l" value="${attrEsc(ss.lot||'')}" placeholder="spawn lot #" style="flex:1 1 130px;min-width:110px;" autocomplete="off">
     <input class="fi plv-sbags" type="number" min="0" step="1" value="${(ss.bags!=null&&ss.bags!=='')?ss.bags:''}" placeholder="bags" style="max-width:78px;" oninput="_plSpawnTotal(${i})"><span style="font-size:11px;color:var(--text3);">bags</span>
     <button type="button" class="btn b-r b-sm" title="Remove spawn lot" onclick="this.closest('.plv-srow-${i}').remove();_plSpawnTotal(${i})">✕</button>
   </div>`;
@@ -10993,12 +11035,12 @@ function readSpawnStrains(){
   }));
 }
 function spawnStrainRowHTML(row,i){ row=row||{}; const sfx=(row.suffix||'').trim()||_autoSuffix(i); const lot=spawnStrainLot({...row,suffix:sfx},i);
-  return `<div class="sp-srow" style="display:grid;grid-template-columns:minmax(150px,2fr) minmax(70px,.7fr) minmax(60px,.6fr) minmax(110px,1.1fr) auto;gap:8px;align-items:end;margin-bottom:8px;">
-    <div class="fgl"><label style="font-size:11px;">Strain</label><input class="fi sp-sstrain" list="sp-strainl" value="${attrEsc(row.strain||'')}" placeholder="e.g. Blue Oyster" autocomplete="off" oninput="onSpawnStrainInput(${i})"></div>
-    <div class="fgl"><label style="font-size:11px;">Bags</label><input class="fi sp-sbags" type="number" min="0" step="1" value="${attrEsc(row.bags||'')}" placeholder="#" oninput="onSpawnStrainInput(${i})"></div>
-    <div class="fgl"><label style="font-size:11px;">Suffix</label><input class="fi sp-ssuffix" value="${attrEsc(row.suffix||sfx)}" placeholder="${_autoSuffix(i)}" maxlength="3" oninput="onSpawnStrainInput(${i})" style="text-transform:uppercase;"></div>
-    <div class="fgl"><label style="font-size:11px;">Lot #</label><input class="fi sp-slot" value="${attrEsc(lot)}" readonly title="auto: Lot Code + suffix" style="background:var(--gold-lt);font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);"></div>
-    <button type="button" class="btn b-r b-sm" title="remove strain" onclick="removeSpawnStrain(${i})" style="margin-bottom:2px;">✕</button>
+  return `<div class="sp-srow" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:8px;">
+    <div class="fgl" style="flex:3 1 160px;min-width:130px;"><label style="font-size:11px;">Strain</label><input class="fi sp-sstrain" list="sp-strainl" value="${attrEsc(row.strain||'')}" placeholder="e.g. Blue Oyster" autocomplete="off" oninput="onSpawnStrainInput(${i})"></div>
+    <div class="fgl" style="flex:1 1 64px;min-width:60px;"><label style="font-size:11px;">Bags</label><input class="fi sp-sbags" type="number" min="0" step="1" value="${attrEsc(row.bags||'')}" placeholder="#" oninput="onSpawnStrainInput(${i})"></div>
+    <div class="fgl" style="flex:1 1 60px;min-width:56px;"><label style="font-size:11px;">Suffix</label><input class="fi sp-ssuffix" value="${attrEsc(row.suffix||sfx)}" placeholder="${_autoSuffix(i)}" maxlength="3" oninput="onSpawnStrainInput(${i})" style="text-transform:uppercase;"></div>
+    <div class="fgl" style="flex:2 1 110px;min-width:100px;"><label style="font-size:11px;">Lot #</label><input class="fi sp-slot" value="${attrEsc(lot)}" readonly title="auto: Lot Code + suffix" style="background:var(--gold-lt);font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);"></div>
+    <button type="button" class="btn b-r b-sm" title="remove strain" onclick="removeSpawnStrain(${i})" style="margin-bottom:2px;flex:0 0 auto;">✕</button>
   </div>`;
 }
 function renderSpawnStrainsHTML(){ if(!spawnStrains.length) spawnStrains=[blankSpawnStrain()]; return spawnStrains.map((r,i)=>spawnStrainRowHTML(r,i)).join(''); }
@@ -11057,13 +11099,13 @@ function clrSpawn(){ ['sp-lotcode','sp-subbatch','sp-order','sp-batchno','sp-gra
 let _esStrains=[];
 function esCookBase(){ return (document.getElementById('es-lotcode')?.value||'').trim().replace(/^#/,''); }
 function esStrainRowHTML(row,i){ row=row||{}; const sfx=(row.suffix||'').trim()||_autoSuffix(i); const base=esCookBase(); const lot=row.lot||(base?`${base}${sfx}`:'');
-  return `<div class="es-srow" style="display:grid;grid-template-columns:minmax(130px,2fr) minmax(60px,.7fr) minmax(70px,.7fr) minmax(50px,.6fr) minmax(100px,1.1fr) auto;gap:8px;align-items:end;margin-bottom:8px;">
-    <div class="fgl"><label style="font-size:11px;">Strain</label><input class="fi es-sstrain" list="sp-strainl" value="${attrEsc(row.strain||'')}" placeholder="strain" autocomplete="off" oninput="onEsStrainInput()"></div>
-    <div class="fgl"><label style="font-size:11px;">Bags</label><input class="fi es-sbags" type="number" min="0" value="${attrEsc(row.bags!=null?row.bags:'')}" placeholder="#" oninput="onEsStrainInput()"></div>
-    <div class="fgl"><label style="font-size:11px;">Used</label><input class="fi es-sused" type="number" min="0" value="${attrEsc(row.used!=null?row.used:0)}" placeholder="0"></div>
-    <div class="fgl"><label style="font-size:11px;">Suffix</label><input class="fi es-ssuffix" value="${attrEsc(row.suffix||sfx)}" maxlength="3" oninput="onEsStrainInput()" style="text-transform:uppercase;"></div>
-    <div class="fgl"><label style="font-size:11px;">Lot #</label><input class="fi es-slot" value="${attrEsc(lot)}" readonly style="background:var(--gold-lt);font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);"></div>
-    <button type="button" class="btn b-r b-sm" onclick="esRemoveStrain(${i})" style="margin-bottom:2px;">✕</button>
+  return `<div class="es-srow" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:8px;">
+    <div class="fgl" style="flex:3 1 150px;min-width:120px;"><label style="font-size:11px;">Strain</label><input class="fi es-sstrain" list="sp-strainl" value="${attrEsc(row.strain||'')}" placeholder="strain" autocomplete="off" oninput="onEsStrainInput()"></div>
+    <div class="fgl" style="flex:1 1 60px;min-width:56px;"><label style="font-size:11px;">Bags</label><input class="fi es-sbags" type="number" min="0" value="${attrEsc(row.bags!=null?row.bags:'')}" placeholder="#" oninput="onEsStrainInput()"></div>
+    <div class="fgl" style="flex:1 1 60px;min-width:56px;"><label style="font-size:11px;">Used</label><input class="fi es-sused" type="number" min="0" value="${attrEsc(row.used!=null?row.used:0)}" placeholder="0"></div>
+    <div class="fgl" style="flex:1 1 60px;min-width:52px;"><label style="font-size:11px;">Suffix</label><input class="fi es-ssuffix" value="${attrEsc(row.suffix||sfx)}" maxlength="3" oninput="onEsStrainInput()" style="text-transform:uppercase;"></div>
+    <div class="fgl" style="flex:2 1 100px;min-width:96px;"><label style="font-size:11px;">Lot #</label><input class="fi es-slot" value="${attrEsc(lot)}" readonly style="background:var(--gold-lt);font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);"></div>
+    <button type="button" class="btn b-r b-sm" onclick="esRemoveStrain(${i})" style="margin-bottom:2px;flex:0 0 auto;">✕</button>
   </div>`;
 }
 function readEsStrains(){ return [...document.querySelectorAll('#es-strains .es-srow')].map(r=>({
