@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #89</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #90</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -9152,7 +9152,13 @@ function rDashboard(el){
     </table></div>
     <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-bottom:24px;">lb/block color: <span style="color:var(--fern);">■</span> ≥1.0 &nbsp; <span style="color:var(--moss);">■</span> ≥0.8 &nbsp; <span style="color:var(--amber);">■</span> ≥0.6 &nbsp; <span style="color:var(--rust);">■</span> below · WS target 0.8 · internal 1.0–1.25 lb/block<br><span style="color:var(--gold);">EST</span> = blocks estimated from receiving (no placement logged) · <span style="color:var(--rust);">⚠</span> = harvest can't be matched to placed blocks (check data) — excluded from averages · yield counts harvest only from the container a lot was placed in</div>
 
-    <div class="card" id="dash-lot-lookup" style="margin-top:8px;">
+    <!-- 2 · TRUSTWORTHY lot-level performance vs target (the deep view) -->
+    <details ${_dashOpen.yield?'open':''} ontoggle="_dashOpen.yield=this.open" style="margin-top:6px;"><summary style="cursor:pointer;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text2);padding:8px 0;">🎯 SUPPLIER &amp; INTERNAL YIELD PERFORMANCE (drill by species → lot → container)</summary>
+      <div style="margin-top:10px;">${buildYieldAnalysis()}</div>
+    </details>
+
+    <!-- 3 · Investigate a single lot end-to-end -->
+    <div class="card" id="dash-lot-lookup" style="margin-top:18px;">
       <div class="card-t">🔎 Lot Breakdown</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Pick any lot to see its full story — blocks received, placed, that didn't fruit, yield harvested, waste, preserved, and what's still on hand.</div>
       <input class="fi" id="ana-lot-input" list="ana-lotl" placeholder="Type or pick a lot #…" value="${(_anaLot||'').replace(/"/g,'&quot;')}" autocomplete="off" oninput="onAnaLotSelect(this.value)">
@@ -9160,10 +9166,8 @@ function rDashboard(el){
       <div id="ana-lot-panel" style="margin-top:16px;">${_anaLot?lotBreakdownHTML(_anaLot):'<div class="empty" style="padding:16px;">Pick a lot above to see its breakdown.</div>'}</div>
     </div>
 
-    <details ${_dashOpen.yield?'open':''} ontoggle="_dashOpen.yield=this.open" style="margin-top:18px;"><summary style="cursor:pointer;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text2);padding:8px 0;">🎯 SUPPLIER &amp; INTERNAL YIELD PERFORMANCE (drill by species → lot → container)</summary>
-      <div style="margin-top:10px;">${buildYieldAnalysis()}</div>
-    </details>
-    <details ${_dashOpen.avg?'open':''} ontoggle="_dashOpen.avg=this.open" style="margin-top:8px;"><summary style="cursor:pointer;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text2);padding:8px 0;">📐 QUOTED vs ACTUAL YIELD AVERAGES</summary>
+    <!-- 4 · Secondary container-level cross-check (kept last, collapsed) -->
+    <details ${_dashOpen.avg?'open':''} ontoggle="_dashOpen.avg=this.open" style="margin-top:18px;"><summary style="cursor:pointer;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text3);padding:8px 0;">📐 CONTAINER-LEVEL CROSS-CHECK <span style="text-transform:none;letter-spacing:0;font-size:11px;">— secondary; period harvest ÷ container blocks. Trust the lot-level views above.</span></summary>
       <div style="margin-top:10px;">${(typeof buildYieldAverages==='function')?buildYieldAverages():''}</div>
     </details>
   `;
@@ -9528,7 +9532,7 @@ function buildYieldAverages(){
     <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px 24px;margin-bottom:8px;">
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
         <div>
-          <div style="font-size:11px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:.08em;margin-bottom:4px;">PRIMARY METRIC</div>
+          <div style="font-size:11px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:.08em;margin-bottom:4px;">CONTAINER-LEVEL CROSS-CHECK</div>
           <div style="font-size:18px;font-weight:700;color:var(--text1);">Yield Per Block</div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">${periodBtns}</div>
@@ -9543,7 +9547,7 @@ function buildYieldAverages(){
       <!-- Header + period selector -->
       <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
         <div>
-          <div style="font-size:10px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:.1em;margin-bottom:3px;">PRIMARY METRIC</div>
+          <div style="font-size:10px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:.1em;margin-bottom:3px;">CONTAINER-LEVEL CROSS-CHECK</div>
           <div style="font-size:20px;font-weight:700;color:var(--text1);">Yield Per Block</div>
           <div style="font-size:11px;color:var(--text3);margin-top:2px;">${periodLabel} · ${totalHarvestCount} harvest event${totalHarvestCount!==1?'s':''} · ${masterLbs.toFixed(1)} lb total</div>
         </div>
