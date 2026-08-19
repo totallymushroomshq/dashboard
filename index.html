@@ -369,7 +369,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #84</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #85</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -568,7 +568,7 @@ const ALL_INTERNAL_TABS = [
   {id:'trace',l:'🔍 Trace'},
   {id:'lab',l:'🧫 Lab'},
   {id:'cordyceps',l:'🐛 Cordyceps'},
-  {id:'analytics',l:'Analytics'},
+  {id:'analytics',l:'📊 Dashboard'},
   {id:'admin',l:'⚙ Admin',c:'at'},{id:'security',l:'🔒 Security',c:'at'},
   {id:'orders-all',l:'Orders',c:'ct'},{id:'reports',l:'📊 Reports',c:'at'},
   {id:'qb',l:'📒 QB',c:'at'}
@@ -700,6 +700,11 @@ async function loadDB(){
         });
       }
     }catch(e){ console.warn('Custom varieties not found — using built-in list'); }
+    // Load admin-defined variety merges (aliases) and layer them onto the built-in alias map
+    try{
+      const aDoc=await fdb.collection('appConfig').doc('variety-aliases').get();
+      if(aDoc.exists) applyStoredVarietyAliases(aDoc.data().map||{});
+    }catch(e){ /* no custom merges yet */ }
     // Load custom suppliers (added on the fly) from appConfig
     try{
       const sDoc=await fdb.collection('appConfig').doc('suppliers').get();
@@ -2243,7 +2248,11 @@ function buildWeeklyDashboard(){
 }
 // ── YIELD PER BLOCK — supplier/internal performance vs quoted targets (species → lot → container) ──
 let _yieldExpanded = {};
+let _yieldSrc = 'all';   // all | ws | internal
+let _yieldWin = 'all';   // all | period  (period = the dashboard's selected window)
 function toggleYield(k){ _yieldExpanded[k]=!_yieldExpanded[k]; renderC(); }
+function setYieldSrc(s){ _yieldSrc=s; renderC(); }
+function setYieldWin(w){ _yieldWin=w; renderC(); }
 function daysBetween(a,b){ if(!a||!b) return null; const d1=new Date(a+'T12:00:00'),d2=new Date(b+'T12:00:00'); if(isNaN(d1)||isNaN(d2)) return null; return Math.round((d2-d1)/86400000); }
 // Quoted targets: Wild Spore = 1.0 lb/block; internal blocks 1.25–1.5 across two flushes.
 function lotBench(lot){
@@ -2261,21 +2270,31 @@ function yieldColor(ypb,bench){
 function buildYieldAnalysis(){
   const data={}; // lot -> {variety, containers:{con:{blocks,harv,placed:[],hd:{date:lb}}}}
   DB.fruitings.forEach(f=>{ const lot=f.lotNumber; if(!lot||!f.blockCount) return;
-    const D=data[lot]||(data[lot]={variety:f.variety||'—',containers:{}}); if(f.variety) D.variety=f.variety;
+    const _cv=(typeof canonicalVariety==='function')?canonicalVariety:(x=>x);
+    const D=data[lot]||(data[lot]={variety:f.variety?_cv(f.variety):'—',containers:{}}); if(f.variety) D.variety=_cv(f.variety);
     const con=f.containerID||'—'; const C=D.containers[con]||(D.containers[con]={blocks:0,harv:0,placed:[],hd:{}});
     C.blocks+=parseInt(f.blockCount)||0; if(f.date) C.placed.push(f.date); });
   DB.harvests.forEach(h=>{ const lot=h.lotNumber; if(!lot||!data[lot]) return;
     const con=h.container||'—'; const D=data[lot]; const C=D.containers[con]||(D.containers[con]={blocks:0,harv:0,placed:[],hd:{}});
     C.harv+=(h.weight||0); if(h.date) C.hd[h.date]=(C.hd[h.date]||0)+(h.weight||0); });
   const bySpecies={};
+  const win=(_yieldWin==='period' && typeof _dashRange==='function')?_dashRange(_dashPeriod):null;
+  const inWin=dstr=>{ if(!win) return true; return (typeof _inRange==='function')?_inRange(dstr,win):true; };
   Object.entries(data).forEach(([lot,D])=>{
-    const bench=lotBench(lot); let blocks=0,harv=0; const cons=[];
+    const bench=lotBench(lot);
+    // source filter: Wild Spore vs Internal
+    if(_yieldSrc==='ws' && bench.label!=='Wild Spore') return;
+    if(_yieldSrc==='internal' && bench.label==='Wild Spore') return;
+    let blocks=0,harv=0; const cons=[]; let anyDate=false, anyInWin=false;
     Object.entries(D.containers).forEach(([con,C])=>{
       blocks+=C.blocks; harv+=C.harv;
       const pMin=C.placed.length?C.placed.slice().sort()[0]:null;
       const hd=Object.keys(C.hd).sort(); const hMax=hd.length?hd[hd.length-1]:null;
+      [...C.placed, ...Object.keys(C.hd)].forEach(dt=>{ if(dt){ anyDate=true; if(inWin(dt)) anyInWin=true; } });
       cons.push({con,blocks:C.blocks,harv:C.harv,ypb:C.blocks>0?C.harv/C.blocks:0,days:daysBetween(pMin,hMax),flushes:hd.length});
     });
+    // time-window filter: keep a lot only if it has placement/harvest activity inside the window
+    if(win && anyDate && !anyInWin) return;
     (bySpecies[D.variety]=bySpecies[D.variety]||[]).push({lot,variety:D.variety,bench,blocks,harv,ypb:blocks>0?harv/blocks:0,cons});
   });
   const rows=Object.keys(bySpecies).sort().map(sp=>{
@@ -2306,8 +2325,15 @@ function buildYieldAnalysis(){
     });
     return out;
   }).join('');
+  const srcBtn=(k,l)=>`<button class="btn ${_yieldSrc===k?'b-m':'b-g'} b-sm" onclick="setYieldSrc('${k}')" style="margin:0 4px 4px 0;">${l}</button>`;
+  const winBtn=(k,l)=>`<button class="btn ${_yieldWin===k?'b-m':'b-g'} b-sm" onclick="setYieldWin('${k}')" style="margin:0 4px 4px 0;">${l}</button>`;
+  const winLbl={week:'this week',lastweek:'last week',month:'this month',year:'this year',all:'all time',custom:'selected range'}[_dashPeriod]||'period';
   return `<div class="sh" style="margin-top:18px;"><span>🎯 Yield per Block — Supplier & Internal Performance</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">WS TARGET 1.0 · INTERNAL 1.25–1.5 lb/block · TAP TO DRILL</span></div>
-    <div class="tw" style="margin-bottom:22px;overflow-x:auto;"><table><thead><tr><th>Species / Lot / Container</th><th>Blocks</th><th>Harv lb</th><th>lb/block</th><th>Target</th><th>Flushes</th><th>Days in</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="empty">No placed-lot yield data yet.</td></tr>'}</tbody></table></div>`;
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px;">
+      <span style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text3);">SOURCE:</span>${srcBtn('all','All')}${srcBtn('ws','Wild Spore')}${srcBtn('internal','In-house')}
+      <span style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text3);margin-left:10px;">WINDOW:</span>${winBtn('all','All time')}${winBtn('period','Selected ('+winLbl+')')}
+    </div>
+    <div class="tw" style="margin-bottom:22px;overflow-x:auto;"><table><thead><tr><th>Species / Lot / Container</th><th>Blocks</th><th>Harv lb</th><th>lb/block</th><th>Target</th><th>Flushes</th><th>Days in</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="empty">No lots match these filters — widen the source or window.</td></tr>'}</tbody></table></div>`;
 }
 function rWeek(el){
   const wo=wkOrds(), tB=wo.reduce((s,o)=>s+bxs(o),0), rev=wo.filter(o=>['confirmed','packed','invoiced'].includes(o.status)).reduce((s,o)=>s+eRev(o),0);
@@ -3701,13 +3727,39 @@ function varietyKey(n){ return (n||'').toString().toLowerCase().replace(/[^a-z0-
 function titleCaseVariety(name){ return (name||'').trim().replace(/\s+/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
 // Variety aliases → one canonical spelling. "TOT Oyster" / "TOT OYSTER" / "Trail of Tears Oyster" all become
 // "Trail of Tears Oyster (ToT)". (Note: "TOT Enoki" is a DIFFERENT variety and is intentionally NOT mapped here.)
-const VARIETY_ALIASES = {
+let VARIETY_ALIASES = {
   'totoyster'            : 'Trail of Tears Oyster (ToT)',
   'totoystergtg'         : 'Trail of Tears Oyster (ToT)',
   'trailoftears'         : 'Trail of Tears Oyster (ToT)',
   'trailoftearsoyster'   : 'Trail of Tears Oyster (ToT)',
-  'trailoftearsoystertot': 'Trail of Tears Oyster (ToT)'
+  'trailoftearsoystertot': 'Trail of Tears Oyster (ToT)',
+  // Lynx Paw (L. Levis) — the L. Levis is the species, same mushroom
+  'lynxpawllevis'        : 'Lynx Paw',
+  'llevislynxpaw'        : 'Lynx Paw',
+  'lynxpawllevis2'       : 'Lynx Paw',
+  // Gold / Golden Oyster are the same
+  'goldenoyster'         : 'Gold Oyster'
 };
+// Admin-defined merges persist here (appConfig doc 'variety-aliases') and layer on top of the built-ins.
+function applyStoredVarietyAliases(map){ if(!map||typeof map!=='object') return; Object.entries(map).forEach(([k,v])=>{ if(k&&v) VARIETY_ALIASES[varietyKey(k)]=v; }); }
+// Merge one variety spelling into another everywhere: alias + rewrite in-memory + Firestore. Returns count changed.
+async function mergeVariety(fromName, toName){
+  const to=(toName||'').trim(); if(!to) return 0;
+  const fromKey=varietyKey(fromName); if(!fromKey) return 0;
+  VARIETY_ALIASES[fromKey]=to;
+  // persist the alias
+  try{ const snap=await fdb.collection('appConfig').doc('variety-aliases').get(); const map=(snap.exists&&snap.data().map)||{}; map[fromKey]=to; await fdb.collection('appConfig').doc('variety-aliases').set({map}); }catch(e){ console.warn('alias persist',e); }
+  // ensure target is a known variety
+  if(typeof addVariety==='function') addVariety(to);
+  // rewrite existing records (in-memory + Firestore) whose variety collapses to this key
+  let n=0;
+  const fix=async(col,arr,field)=>{ for(const rec of (arr||[])){ const cur=rec[field]; if(cur && varietyKey(cur)===fromKey && cur!==to){ rec[field]=to; n++; try{ await FS.update(col,rec.id,{[field]:to}); }catch(e){ console.warn('merge upd',col,rec.id,e); } } } };
+  await fix('harvests',DB.harvests,'variety');
+  await fix('fruitings',DB.fruitings,'variety');
+  await fix('receivings',DB.receivings,'variety');
+  await fix('samples',DB.samples,'variety');
+  return n;
+}
 // Snap a typed name to its existing canonical spelling; new names get Title Case.
 function canonicalVariety(name){
   const k=varietyKey(name); if(!k) return (name||'').trim();
@@ -8920,30 +8972,37 @@ function lotBreakdownHTML(lot){
 }
 
 // ═════════════ PRODUCTION DASHBOARD (opener) — yield/production by variety → lot, period-filterable ═════════════
-let _dashPeriod='all'; let _dashVarExp={};
+let _dashPeriod='week'; let _dashVarExp={}; let _dashCustomFrom=''; let _dashCustomTo='';
 function setDashPeriod(p){ _dashPeriod=p; _dashVarExp={}; renderC(); }
+function setDashCustom(){ const f=document.getElementById('dash-cust-from')?.value||''; const t=document.getElementById('dash-cust-to')?.value||''; if(!f||!t){ alert('Pick both a start and end date.'); return; } if(f>t){ alert('Start date must be on or before the end date.'); return; } _dashCustomFrom=f; _dashCustomTo=t; _dashPeriod='custom'; _dashVarExp={}; renderC(); }
 function toggleDashVar(v){ _dashVarExp[v]=!_dashVarExp[v]; renderC(); }
+function _mondayOf(d){ const mon=new Date(d); mon.setHours(0,0,0,0); mon.setDate(d.getDate()-((d.getDay()+6)%7)); return mon; }
 function _dashRange(p){
   const now=new Date(); const y=now.getFullYear(), m=now.getMonth();
-  if(p==='week'){ const mon=new Date(now); mon.setHours(0,0,0,0); mon.setDate(now.getDate()-((now.getDay()+6)%7)); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
+  if(p==='week'){ const mon=_mondayOf(now); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
+  if(p==='lastweek'){ const mon=_mondayOf(now); mon.setDate(mon.getDate()-7); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
   if(p==='month') return {s:new Date(y,m,1), e:new Date(y,m+1,0)};
   if(p==='year')  return {s:new Date(y,0,1), e:new Date(y,11,31)};
+  if(p==='custom' && _dashCustomFrom && _dashCustomTo){ return {s:new Date(_dashCustomFrom+'T00:00:00'), e:new Date(_dashCustomTo+'T00:00:00')}; }
   return {s:new Date(1970,0,1), e:new Date(3000,0,1)};
 }
 function _dashPrevRange(p){
   const now=new Date(); const y=now.getFullYear(), m=now.getMonth();
-  if(p==='week'){ const mon=new Date(now); mon.setHours(0,0,0,0); mon.setDate(now.getDate()-((now.getDay()+6)%7)-7); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
+  if(p==='week'){ const mon=_mondayOf(now); mon.setDate(mon.getDate()-7); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
+  if(p==='lastweek'){ const mon=_mondayOf(now); mon.setDate(mon.getDate()-14); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
+  if(p==='custom' && _dashCustomFrom && _dashCustomTo){ const s=new Date(_dashCustomFrom+'T00:00:00'), e=new Date(_dashCustomTo+'T00:00:00'); const len=Math.round((e-s)/86400000)+1; const pe=new Date(s); pe.setDate(s.getDate()-1); const ps=new Date(pe); ps.setDate(pe.getDate()-len+1); return {s:ps,e:pe}; }
   if(p==='month') return {s:new Date(y,m-1,1), e:new Date(y,m,0)};
   if(p==='year')  return {s:new Date(y-1,0,1), e:new Date(y-1,11,31)};
   return null;
 }
 function _inRange(dstr,r){ if(!dstr||!r) return false; const d=new Date((''+dstr).slice(0,10)+'T12:00:00'); if(isNaN(d)) return false; const e=new Date(r.e.getFullYear(),r.e.getMonth(),r.e.getDate(),23,59,59); return d>=r.s && d<=e; }
 function _dashTrend(p){
-  if(p==='all') return null;
-  const now=new Date(); const out=[];
+  if(p==='all'||p==='custom') return null;
+  const now=new Date(); const out=[]; const wkBase=(p==='lastweek')?1:0; // last-week trend ends on last week
+  const mode=(p==='lastweek')?'week':p;
   for(let i=5;i>=0;i--){ let s,e;
-    if(p==='week'){ const mon=new Date(now); mon.setHours(0,0,0,0); mon.setDate(now.getDate()-((now.getDay()+6)%7)-i*7); s=mon; e=new Date(mon); e.setDate(mon.getDate()+6); }
-    else if(p==='month'){ s=new Date(now.getFullYear(),now.getMonth()-i,1); e=new Date(now.getFullYear(),now.getMonth()-i+1,0); }
+    if(mode==='week'){ const mon=new Date(now); mon.setHours(0,0,0,0); mon.setDate(now.getDate()-((now.getDay()+6)%7)-(i+wkBase)*7); s=mon; e=new Date(mon); e.setDate(mon.getDate()+6); }
+    else if(mode==='month'){ s=new Date(now.getFullYear(),now.getMonth()-i,1); e=new Date(now.getFullYear(),now.getMonth()-i+1,0); }
     else { s=new Date(now.getFullYear()-i,0,1); e=new Date(now.getFullYear()-i,11,31); }
     out.push(DB.harvests.reduce((sum,h)=>sum+(_inRange(h.date,{s,e})?(h.weight||0):0),0));
   }
@@ -8980,7 +9039,7 @@ function rDashboard(el){
   DB.fruitings.filter(f=>f.status==='fruiting').forEach(f=>{ const td=(typeof VARIETY_TURNAROUND!=='undefined'&&VARIETY_TURNAROUND[cvv(f.variety)])||{min:7,max:14}; const st=new Date((''+f.date).slice(0,10)+'T12:00:00'); const hm=new Date(st); hm.setDate(hm.getDate()+td.min); if(hm>=t0&&hm<=t7){ const rate=yld[cvv(f.variety)]?yld[cvv(f.variety)].rate:(f.rateLbPerBlock||LBSPERBLOCK); fc+=(f.blockCount||0)*rate; } });
   const dstr=d=>`<span style="color:${d.col};font-weight:700;">${d.arrow} ${d.txt}</span>`;
   const spark=_dashTrend(_dashPeriod);
-  const perLbl={week:'this week',month:'this month',year:'this year',all:'all time'}[_dashPeriod];
+  const perLbl={week:'this week',lastweek:'last week',month:'this month',year:'this year',all:'all time',custom:'selected range'}[_dashPeriod]||'period';
   const tile=(cls,label,val,sub,extra)=>`<div class="sc ${cls}" style="min-width:150px;"><div class="sc-l">${label}</div><div class="sc-v">${val}</div><div class="sc-n">${sub||''}</div>${extra||''}</div>`;
   const tiles=`<div class="stats" style="margin-bottom:8px;">
     ${tile('g','Harvest Yield',harvP.toFixed(1)+' lb', pr?('vs prev '+dstr(pctDelta(harvP,harvPrev))):perLbl, spark?`<div style="margin-top:4px;">${miniSpark(spark)}</div>`:'')}
@@ -9018,14 +9077,22 @@ function rDashboard(el){
     }).join(''); }
     return out;
   }).join('');
-  const per=[['week','This Week'],['month','This Month'],['year','This Year'],['all','All Time']];
-  const selHTML=per.map(([k,l])=>`<button class="btn ${_dashPeriod===k?'b-m':'b-g'} b-sm" onclick="setDashPeriod('${k}')" style="margin:0 4px 4px 0;">${l}</button>`).join('');
+  const per=[['week','This Week'],['lastweek','Last Week'],['month','This Month'],['year','This Year'],['all','All Time']];
+  const selHTML=per.map(([k,l])=>`<button class="btn ${_dashPeriod===k?'b-m':'b-g'} b-sm" onclick="setDashPeriod('${k}')" style="margin:0 4px 4px 0;">${l}</button>`).join('')
+    +`<button class="btn ${_dashPeriod==='custom'?'b-m':'b-g'} b-sm" onclick="document.getElementById('dash-cust-wrap').style.display=(document.getElementById('dash-cust-wrap').style.display==='none'?'flex':'none');" style="margin:0 4px 4px 0;">📅 Custom${_dashPeriod==='custom'?' ✓':''}</button>`;
+  const custHTML=`<div id="dash-cust-wrap" style="display:${_dashPeriod==='custom'?'flex':'none'};flex-wrap:wrap;align-items:flex-end;gap:8px;margin:2px 0 12px;padding:10px 12px;background:var(--paper);border:1px solid var(--border);border-radius:6px;">
+      <div class="fgl" style="flex:0 0 auto;"><label style="font-size:11px;">From</label><input class="fi" type="date" id="dash-cust-from" value="${attrEsc(_dashCustomFrom||'')}" style="min-width:150px;"></div>
+      <div class="fgl" style="flex:0 0 auto;"><label style="font-size:11px;">To</label><input class="fi" type="date" id="dash-cust-to" value="${attrEsc(_dashCustomTo||'')}" style="min-width:150px;"></div>
+      <button class="btn b-m b-sm" onclick="setDashCustom()" style="margin-bottom:1px;">Apply range</button>
+      ${(_dashPeriod==='custom'&&_dashCustomFrom&&_dashCustomTo)?`<span style="font-size:11px;color:var(--text3);align-self:center;">${_dashCustomFrom} → ${_dashCustomTo}</span>`:''}
+    </div>`;
   const rTxt=_dashPeriod==='all'?'all records':`${r.s.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${r.e.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}`;
   el.innerHTML=`
     <div class="ph"><div class="ph-t">📊 Production Dashboard</div><div class="ph-s">Yield &amp; block flow by variety → lot · ${rTxt}</div></div>
-    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:14px;">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px;">
       <span style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);">PERIOD:</span> ${selHTML}
     </div>
+    ${custHTML}
     ${tiles}
     <div class="sh" style="margin-top:18px;"><span>Harvest &amp; Yield — by Variety → Lot</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">TAP A VARIETY FOR ITS LOTS · TAP A LOT FOR FULL BREAKDOWN</span></div>
     <div class="tw" style="margin-bottom:8px;overflow-x:auto;"><table>
@@ -12474,6 +12541,18 @@ function buildSuggestionsManager(){
         <button class="btn b-m" onclick="addVarietyManual()" style="flex:0 0 auto;">+ Add variety</button>
       </div>
       <div style="margin-bottom:18px;">${vars.length?vars.map(v=>chip(v,'delCustomVariety')).join(''):'<span style="font-size:11px;color:var(--text3);">None added yet \u2014 built-in varieties can\'t be removed.</span>'}</div>
+      <div style="border-top:1px dashed var(--border);padding-top:14px;margin-bottom:18px;">
+        <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin-bottom:4px;">\u{1F517} MERGE / UNIFY A VARIETY</div>
+        <div style="font-size:12px;color:var(--text3);margin-bottom:8px;line-height:1.55;">Two spellings of the same mushroom (e.g. <em>TOT Oyster</em> \u2192 <em>Trail of Tears Oyster</em>, <em>Lynx Paw L. Levis</em> \u2192 <em>Lynx Paw</em>)? Merge them: every existing record is rewritten and the app remembers the mapping so it never splits again.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;max-width:620px;">
+          <div class="fgl" style="flex:1 1 200px;min-width:160px;"><label style="font-size:11px;">Merge this spelling</label><input class="fi" id="mv-from" list="mv-all-dl" placeholder="wrong / duplicate spelling" autocomplete="off"></div>
+          <span style="align-self:center;color:var(--text3);font-weight:700;">\u2192</span>
+          <div class="fgl" style="flex:1 1 200px;min-width:160px;"><label style="font-size:11px;">into this canonical name</label><input class="fi" id="mv-to" list="mv-all-dl" placeholder="keep this one" autocomplete="off"></div>
+          <button class="btn b-m" onclick="doMergeVariety()" style="flex:0 0 auto;">Merge</button>
+        </div>
+        <datalist id="mv-all-dl">${[...new Set([...VARIETIES,...customVarieties,...DB.harvests.map(h=>h.variety),...DB.fruitings.map(f=>f.variety),...(DB.receivings||[]).map(r=>r.variety)].filter(Boolean))].sort().map(v=>`<option value="${(v||'').replace(/"/g,'&quot;')}">`).join('')}</datalist>
+        <div id="mv-status" style="font-size:12px;margin-top:8px;"></div>
+      </div>
       <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;">VENDORS / SUPPLIERS (${sups.length})</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;max-width:460px;">
         <input class="fi" id="sug-add-supplier" placeholder="Add a vendor / supplier\u2026" autocomplete="off" style="flex:1 1 220px;min-width:180px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addSupplierManual();}">
@@ -12491,6 +12570,19 @@ async function addVarietyManual(){
   if(customVarieties.length===before && !VARIETIES.some(v=>v.toLowerCase()===canonicalVariety(name).toLowerCase())){ alert(`"${name}" is already a known variety.`); }
   if(el) el.value='';
   renderC();
+}
+async function doMergeVariety(){
+  const from=(document.getElementById('mv-from')?.value||'').trim();
+  const to=(document.getElementById('mv-to')?.value||'').trim();
+  const st=document.getElementById('mv-status');
+  const show=(h,c)=>{ if(st){ st.innerHTML=h; st.style.color=c||'var(--text2)'; } };
+  if(!from||!to){ show('Enter both a duplicate spelling and the canonical name.','var(--rust)'); return; }
+  if(varietyKey(from)===varietyKey(to)){ show('Those are already the same variety.','var(--rust)'); return; }
+  if(!confirm(`Merge every record of "${from}" into "${to}"?\n\nThis rewrites existing harvest/fruiting/receiving/sample records and makes the app always use "${to}" going forward.`)) return;
+  show('⏳ Merging…','var(--text3)');
+  try{ const n=await mergeVariety(from,to); show(`✓ Merged — ${n} record(s) updated. "${from}" now maps to "${to}" everywhere.`,'var(--fern)');
+    setTimeout(renderC, 1200);
+  }catch(e){ show('⚠ '+e.message,'var(--rust)'); }
 }
 async function addSupplierManual(){
   const el=document.getElementById('sug-add-supplier'); const name=(el?.value||'').trim();
