@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #90</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #91</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -9012,11 +9012,12 @@ function _reDash(){ const y=window.scrollY; _dashNoScroll=true; const el=documen
 function setDashPeriod(p){ _dashPeriod=p; _dashVarExp={}; renderC(); }
 function setDashCustom(){ const f=document.getElementById('dash-cust-from')?.value||''; const t=document.getElementById('dash-cust-to')?.value||''; if(!f||!t){ alert('Pick both a start and end date.'); return; } if(f>t){ alert('Start date must be on or before the end date.'); return; } _dashCustomFrom=f; _dashCustomTo=t; _dashPeriod='custom'; _dashVarExp={}; renderC(); }
 function toggleDashVar(v){ _dashVarExp[v]=!_dashVarExp[v]; _reDash(); }
-function _mondayOf(d){ const mon=new Date(d); mon.setHours(0,0,0,0); mon.setDate(d.getDate()-((d.getDay()+6)%7)); return mon; }
+// dashboard operating week runs SUNDAY → Saturday
+function _weekStart(d){ const s=new Date(d); s.setHours(0,0,0,0); s.setDate(d.getDate()-d.getDay()); return s; }
 function _dashRange(p){
   const now=new Date(); const y=now.getFullYear(), m=now.getMonth();
-  if(p==='week'){ const mon=_mondayOf(now); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
-  if(p==='lastweek'){ const mon=_mondayOf(now); mon.setDate(mon.getDate()-7); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
+  if(p==='week'){ const mon=_weekStart(now); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
+  if(p==='lastweek'){ const mon=_weekStart(now); mon.setDate(mon.getDate()-7); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
   if(p==='month') return {s:new Date(y,m,1), e:new Date(y,m+1,0)};
   if(p==='year')  return {s:new Date(y,0,1), e:new Date(y,11,31)};
   if(p==='custom' && _dashCustomFrom && _dashCustomTo){ return {s:new Date(_dashCustomFrom+'T00:00:00'), e:new Date(_dashCustomTo+'T00:00:00')}; }
@@ -9024,8 +9025,8 @@ function _dashRange(p){
 }
 function _dashPrevRange(p){
   const now=new Date(); const y=now.getFullYear(), m=now.getMonth();
-  if(p==='week'){ const mon=_mondayOf(now); mon.setDate(mon.getDate()-7); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
-  if(p==='lastweek'){ const mon=_mondayOf(now); mon.setDate(mon.getDate()-14); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
+  if(p==='week'){ const mon=_weekStart(now); mon.setDate(mon.getDate()-7); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
+  if(p==='lastweek'){ const mon=_weekStart(now); mon.setDate(mon.getDate()-14); const sun=new Date(mon); sun.setDate(mon.getDate()+6); return {s:mon,e:sun}; }
   if(p==='custom' && _dashCustomFrom && _dashCustomTo){ const s=new Date(_dashCustomFrom+'T00:00:00'), e=new Date(_dashCustomTo+'T00:00:00'); const len=Math.round((e-s)/86400000)+1; const pe=new Date(s); pe.setDate(s.getDate()-1); const ps=new Date(pe); ps.setDate(pe.getDate()-len+1); return {s:ps,e:pe}; }
   if(p==='month') return {s:new Date(y,m-1,1), e:new Date(y,m,0)};
   if(p==='year')  return {s:new Date(y-1,0,1), e:new Date(y-1,11,31)};
@@ -9037,7 +9038,7 @@ function _dashTrend(p){
   const now=new Date(); const out=[]; const wkBase=(p==='lastweek')?1:0; // last-week trend ends on last week
   const mode=(p==='lastweek')?'week':p;
   for(let i=5;i>=0;i--){ let s,e;
-    if(mode==='week'){ const mon=new Date(now); mon.setHours(0,0,0,0); mon.setDate(now.getDate()-((now.getDay()+6)%7)-(i+wkBase)*7); s=mon; e=new Date(mon); e.setDate(mon.getDate()+6); }
+    if(mode==='week'){ const mon=new Date(now); mon.setHours(0,0,0,0); mon.setDate(now.getDate()-now.getDay()-(i+wkBase)*7); s=mon; e=new Date(mon); e.setDate(mon.getDate()+6); }
     else if(mode==='month'){ s=new Date(now.getFullYear(),now.getMonth()-i,1); e=new Date(now.getFullYear(),now.getMonth()-i+1,0); }
     else { s=new Date(now.getFullYear()-i,0,1); e=new Date(now.getFullYear()-i,11,31); }
     out.push(DB.harvests.reduce((sum,h)=>sum+(_inRange(h.date,{s,e})?(h.weight||0):0),0));
@@ -9093,7 +9094,7 @@ function rDashboard(el){
   const perLbl={week:'this week',lastweek:'last week',month:'this month',year:'this year',all:'all time',custom:'selected range'}[_dashPeriod]||'period';
   const tile=(cls,label,val,sub,extra)=>`<div class="sc ${cls}" style="min-width:150px;"><div class="sc-l">${label}</div><div class="sc-v">${val}</div><div class="sc-n">${sub||''}</div>${extra||''}</div>`;
   const tiles=`<div class="stats" style="margin-bottom:8px;">
-    ${tile('g','Harvest Yield',harvP.toFixed(1)+' lb', pr?('vs prev '+dstr(pctDelta(harvP,harvPrev))):perLbl, spark?`<div style="margin-top:4px;">${miniSpark(spark)}</div>`:'')}
+    ${tile('g','Harvest Yield',harvP.toFixed(1)+' lb', (_dashPeriod==='week'?('day '+(new Date().getDay()+1)+' of 7 · '):'')+(pr?('vs prev '+dstr(pctDelta(harvP,harvPrev))):perLbl), spark?`<div style="margin-top:4px;">${miniSpark(spark)}</div>`:'')}
     ${tile('','Blocks Produced',blocksProduced, 'cooked '+perLbl)}
     ${tile('','Blocks Received',blocksReceived, 'in '+perLbl)}
     ${tile('g','Blocks → Fruiting',blocksPlacedP, 'placed '+perLbl)}
