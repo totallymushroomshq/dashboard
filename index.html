@@ -165,9 +165,10 @@ body{font-family:'Syne',sans-serif;background:var(--paper);color:var(--text);min
 .card-t{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;color:var(--black);margin-bottom:18px}
 
 /* ── TABLE ── */
-.tw{background:var(--white);border:1px solid var(--border);border-radius:var(--r);overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;margin-bottom:20px;box-shadow:var(--shadow)}
+.tw{background:var(--white);border:1px solid var(--border);border-radius:var(--r);overflow:auto;max-height:80vh;-webkit-overflow-scrolling:touch;margin-bottom:20px;box-shadow:var(--shadow)}
 table{width:100%;border-collapse:collapse}
-th{font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);padding:11px 16px;text-align:left;background:var(--gold-lt);border-bottom:1px solid var(--border)}
+/* header row floats to the top of its scroll box while you scroll through a long table */
+th{font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);padding:11px 16px;text-align:left;background:var(--gold-lt);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:3;box-shadow:inset 0 -1px 0 var(--border)}
 td{padding:11px 16px;font-size:13px;color:var(--text2);border-bottom:1px solid var(--border)}
 tr:last-child td{border-bottom:none}
 tr:hover td{background:#faf8f3}
@@ -369,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #85</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #86</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2250,17 +2251,17 @@ function buildWeeklyDashboard(){
 let _yieldExpanded = {};
 let _yieldSrc = 'all';   // all | ws | internal
 let _yieldWin = 'all';   // all | period  (period = the dashboard's selected window)
-function toggleYield(k){ _yieldExpanded[k]=!_yieldExpanded[k]; renderC(); }
-function setYieldSrc(s){ _yieldSrc=s; renderC(); }
-function setYieldWin(w){ _yieldWin=w; renderC(); }
+function toggleYield(k){ _yieldExpanded[k]=!_yieldExpanded[k]; (typeof _reDash==='function'?_reDash:renderC)(); }
+function setYieldSrc(s){ _yieldSrc=s; (typeof _reDash==='function'?_reDash:renderC)(); }
+function setYieldWin(w){ _yieldWin=w; (typeof _reDash==='function'?_reDash:renderC)(); }
 function daysBetween(a,b){ if(!a||!b) return null; const d1=new Date(a+'T12:00:00'),d2=new Date(b+'T12:00:00'); if(isNaN(d1)||isNaN(d2)) return null; return Math.round((d2-d1)/86400000); }
 // Quoted targets: Wild Spore = 1.0 lb/block; internal blocks 1.25–1.5 across two flushes.
 function lotBench(lot){
   const L=(lot||'').trim();
   const f=DB.fruitings.find(x=>x.lotNumber===lot);
   const vendor=(f&&f.vendor)||'';
-  if(/^ws/i.test(L)||/wild\s*spore/i.test(vendor)) return {label:'Wild Spore',target:1.0};
-  return {label:'Internal',target:1.25,goal:1.5};
+  if(/^ws/i.test(L)||/wild\s*spore/i.test(vendor)) return {label:'Wild Spore',target:0.8};
+  return {label:'Internal',target:1.0,goal:1.25};
 }
 function yieldColor(ypb,bench){
   const t=bench.target;
@@ -2328,7 +2329,7 @@ function buildYieldAnalysis(){
   const srcBtn=(k,l)=>`<button class="btn ${_yieldSrc===k?'b-m':'b-g'} b-sm" onclick="setYieldSrc('${k}')" style="margin:0 4px 4px 0;">${l}</button>`;
   const winBtn=(k,l)=>`<button class="btn ${_yieldWin===k?'b-m':'b-g'} b-sm" onclick="setYieldWin('${k}')" style="margin:0 4px 4px 0;">${l}</button>`;
   const winLbl={week:'this week',lastweek:'last week',month:'this month',year:'this year',all:'all time',custom:'selected range'}[_dashPeriod]||'period';
-  return `<div class="sh" style="margin-top:18px;"><span>🎯 Yield per Block — Supplier & Internal Performance</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">WS TARGET 1.0 · INTERNAL 1.25–1.5 lb/block · TAP TO DRILL</span></div>
+  return `<div class="sh" style="margin-top:18px;"><span>🎯 Yield per Block — Supplier & Internal Performance</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">WS TARGET 0.8 · INTERNAL 1.0–1.25 lb/block · TAP TO DRILL</span></div>
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px;">
       <span style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text3);">SOURCE:</span>${srcBtn('all','All')}${srcBtn('ws','Wild Spore')}${srcBtn('internal','In-house')}
       <span style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text3);margin-left:10px;">WINDOW:</span>${winBtn('all','All time')}${winBtn('period','Selected ('+winLbl+')')}
@@ -3710,7 +3711,7 @@ function importP(){ if(!pBuf) return; sw('new-order'); setTimeout(()=>{ const p=
 
 // ── HARVEST ──
 // Built-in varieties. Custom ones added on the fly are merged in from appConfig/varieties at load.
-const BASE_VARIETIES = ['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl','Chestnut','Shiitake',"Lion's Mane",'Gold Enoki','White Enoki','Lynx Paw','Coral Tooth'];
+const BASE_VARIETIES = ['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Trail of Tears Oyster (ToT)','Black Pearl','Chestnut','Shiitake',"Lion's Mane",'Golden Enoki','White Enoki','Lynx Paw','Coral Tooth'];
 let VARIETIES = [...BASE_VARIETIES];
 let customVarieties = [];
 // Standard variety <option> list, including the "add new" row used by the logging dropdowns.
@@ -3738,7 +3739,12 @@ let VARIETY_ALIASES = {
   'llevislynxpaw'        : 'Lynx Paw',
   'lynxpawllevis2'       : 'Lynx Paw',
   // Gold / Golden Oyster are the same
-  'goldenoyster'         : 'Gold Oyster'
+  'goldenoyster'         : 'Gold Oyster',
+  // Enoki: Gold Enoki / Golden Needle / golden needle enoki are all the same → Golden Enoki
+  'goldenoki'            : 'Golden Enoki',
+  'goldenneedle'         : 'Golden Enoki',
+  'goldenneedleenoki'    : 'Golden Enoki',
+  'goldneedle'           : 'Golden Enoki'
 };
 // Admin-defined merges persist here (appConfig doc 'variety-aliases') and layer on top of the built-ins.
 function applyStoredVarietyAliases(map){ if(!map||typeof map!=='object') return; Object.entries(map).forEach(([k,v])=>{ if(k&&v) VARIETY_ALIASES[varietyKey(k)]=v; }); }
@@ -8973,9 +8979,12 @@ function lotBreakdownHTML(lot){
 
 // ═════════════ PRODUCTION DASHBOARD (opener) — yield/production by variety → lot, period-filterable ═════════════
 let _dashPeriod='week'; let _dashVarExp={}; let _dashCustomFrom=''; let _dashCustomTo='';
+let _dashOpen={yield:false,avg:false}; let _dashNoScroll=false;
+// re-render the dashboard in place WITHOUT jumping to the top or collapsing open sections (used by all in-dashboard toggles)
+function _reDash(){ const y=window.scrollY; _dashNoScroll=true; const el=document.getElementById('main-views'); if(el&&typeof rDashboard==='function'){ rDashboard(el); window.scrollTo(0,y); } else { _dashNoScroll=false; renderC(); } }
 function setDashPeriod(p){ _dashPeriod=p; _dashVarExp={}; renderC(); }
 function setDashCustom(){ const f=document.getElementById('dash-cust-from')?.value||''; const t=document.getElementById('dash-cust-to')?.value||''; if(!f||!t){ alert('Pick both a start and end date.'); return; } if(f>t){ alert('Start date must be on or before the end date.'); return; } _dashCustomFrom=f; _dashCustomTo=t; _dashPeriod='custom'; _dashVarExp={}; renderC(); }
-function toggleDashVar(v){ _dashVarExp[v]=!_dashVarExp[v]; renderC(); }
+function toggleDashVar(v){ _dashVarExp[v]=!_dashVarExp[v]; _reDash(); }
 function _mondayOf(d){ const mon=new Date(d); mon.setHours(0,0,0,0); mon.setDate(d.getDate()-((d.getDay()+6)%7)); return mon; }
 function _dashRange(p){
   const now=new Date(); const y=now.getFullYear(), m=now.getMonth();
@@ -9052,7 +9061,7 @@ function rDashboard(el){
     ${tile('m','Forecast · 7d',fc.toFixed(0)+' lb', 'projected harvest')}
   </div>`;
   // ── main table: by variety → lot ──
-  const genColor=ypb=>ypb>=1.25?'var(--fern)':ypb>=1.0?'var(--moss)':ypb>=0.75?'var(--amber)':ypb>0?'var(--rust)':'var(--text3)';
+  const genColor=ypb=>ypb>=1.0?'var(--fern)':ypb>=0.8?'var(--moss)':ypb>=0.6?'var(--amber)':ypb>0?'var(--rust)':'var(--text3)';
   const rowsHTML=vList.map(x=>{
     const exp=_dashVarExp[x.v]; const vEsc=x.v.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     const ypb=x.blocksPlaced>0?x.harvAll/x.blocksPlaced:0;
@@ -9099,7 +9108,7 @@ function rDashboard(el){
       <thead><tr><th>Variety / Lot</th><th>Blocks</th><th>Harvest (${_dashPeriod==='all'?'all':perLbl})</th><th>lb/block</th><th>On Hand</th><th>Waste</th></tr></thead>
       <tbody>${rowsHTML||'<tr><td colspan="6" class="empty">No production data in this period — try a wider period.</td></tr>'}</tbody>
     </table></div>
-    <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-bottom:24px;">lb/block color: <span style="color:var(--fern);">■</span> ≥1.25 &nbsp; <span style="color:var(--moss);">■</span> ≥1.0 &nbsp; <span style="color:var(--amber);">■</span> ≥0.75 &nbsp; <span style="color:var(--rust);">■</span> below · WS target 1.0 · internal 1.25–1.5 lb/block</div>
+    <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-bottom:24px;">lb/block color: <span style="color:var(--fern);">■</span> ≥1.0 &nbsp; <span style="color:var(--moss);">■</span> ≥0.8 &nbsp; <span style="color:var(--amber);">■</span> ≥0.6 &nbsp; <span style="color:var(--rust);">■</span> below · WS target 0.8 · internal 1.0–1.25 lb/block</div>
 
     <div class="card" id="dash-lot-lookup" style="margin-top:8px;">
       <div class="card-t">🔎 Lot Breakdown</div>
@@ -9109,14 +9118,14 @@ function rDashboard(el){
       <div id="ana-lot-panel" style="margin-top:16px;">${_anaLot?lotBreakdownHTML(_anaLot):'<div class="empty" style="padding:16px;">Pick a lot above to see its breakdown.</div>'}</div>
     </div>
 
-    <details style="margin-top:18px;"><summary style="cursor:pointer;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text2);padding:8px 0;">🎯 SUPPLIER &amp; INTERNAL YIELD PERFORMANCE (lifetime, drill by species → lot → container)</summary>
+    <details ${_dashOpen.yield?'open':''} ontoggle="_dashOpen.yield=this.open" style="margin-top:18px;"><summary style="cursor:pointer;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text2);padding:8px 0;">🎯 SUPPLIER &amp; INTERNAL YIELD PERFORMANCE (drill by species → lot → container)</summary>
       <div style="margin-top:10px;">${buildYieldAnalysis()}</div>
     </details>
-    <details style="margin-top:8px;"><summary style="cursor:pointer;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text2);padding:8px 0;">📐 QUOTED vs ACTUAL YIELD AVERAGES</summary>
+    <details ${_dashOpen.avg?'open':''} ontoggle="_dashOpen.avg=this.open" style="margin-top:8px;"><summary style="cursor:pointer;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text2);padding:8px 0;">📐 QUOTED vs ACTUAL YIELD AVERAGES</summary>
       <div style="margin-top:10px;">${(typeof buildYieldAverages==='function')?buildYieldAverages():''}</div>
     </details>
   `;
-  try{ window.scrollTo(0,0); }catch(e){}
+  if(_dashNoScroll){ _dashNoScroll=false; } else { try{ window.scrollTo(0,0); }catch(e){} }
 }
 
 function rAna(el){
