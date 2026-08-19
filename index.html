@@ -152,13 +152,13 @@ body{font-family:'Syne',sans-serif;background:var(--paper);color:var(--text);min
 .sh{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
 
 /* ── STATS ── */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:28px}
-.sc{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;position:relative;overflow:hidden;box-shadow:var(--shadow)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:14px;margin-bottom:28px}
+.sc{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:18px 20px;position:relative;overflow:hidden;box-shadow:var(--shadow);min-width:0}
 .sc::after{content:'';position:absolute;bottom:0;left:0;right:0;height:3px;background:var(--border)}
 .sc.g::after{background:var(--gold)}.sc.m::after{background:#3a6030}.sc.r::after{background:var(--rust)}
-.sc-l{font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px}
-.sc-v{font-family:'Cormorant Garamond',serif;font-size:36px;font-weight:700;color:var(--black);line-height:1}
-.sc-n{font-size:11px;color:var(--text3);margin-top:3px}
+.sc-l{font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;overflow-wrap:anywhere;word-break:break-word}
+.sc-v{font-family:'Cormorant Garamond',serif;font-size:34px;font-weight:700;color:var(--black);line-height:1.05;overflow-wrap:anywhere;word-break:break-word;max-width:100%}
+.sc-n{font-size:11px;color:var(--text3);margin-top:3px;overflow-wrap:anywhere;word-break:break-word}
 
 /* ── CARD ── */
 .card{background:var(--white);border:1px solid var(--border);border-radius:var(--r);padding:24px;margin-bottom:20px;box-shadow:var(--shadow)}
@@ -219,7 +219,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 .fg2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:16px}
 .fgl{display:flex;flex-direction:column;gap:7px;min-width:0}
 .fgl label{font-family:'Syne Mono',monospace;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:var(--text3)}
-.vg{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;margin:18px 0}
+.vg{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(190px,100%),1fr));gap:12px;margin:18px 0}
 .vi{background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:14px;transition:border-color .2s}
 .vi:focus-within{border-color:var(--gold);background:var(--white)}
 .vi-n{font-size:13px;font-weight:600;color:var(--black);margin-bottom:3px}
@@ -317,7 +317,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 .oz-unit{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);letter-spacing:1px;margin-top:4px;}
 
 /* ── INVENTORY SNAPSHOT ── */
-.inv-snap{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:24px;}
+.inv-snap{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr));gap:10px;margin-bottom:24px;}
 /* ── PACK DAY ── */
 .pack-lots-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:4px;}
 .pack-lot{background:var(--white);border:2px solid var(--border);border-radius:var(--r);padding:12px;cursor:pointer;transition:border-color .15s,background .15s;user-select:none;}
@@ -369,7 +369,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #83</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #84</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
