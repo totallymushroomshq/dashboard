@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #91</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #92</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4458,6 +4458,9 @@ function rFruiting(el){
 
   // Enrich active blocks with forecast data — real per-variety yield rates + low–high range
   const yld=varietyYield();
+  // harvest weight per lot (to tell a producing lot from a dead one)
+  const _hlk=(typeof _lotKey==='function')?_lotKey:(s=>(s||'').trim().toLowerCase());
+  const harvByLot={}; DB.harvests.forEach(h=>{ if(!h.lotNumber) return; const k=_hlk(h.lotNumber); harvByLot[k]=(harvByLot[k]||0)+(h.weight||0); });
   const withForecast=active.map(f=>{
     const td=VARIETY_TURNAROUND[f.variety]||{min:7,max:14};
     const startD=new Date(f.date); startD.setHours(0,0,0,0);
@@ -4472,17 +4475,23 @@ function rFruiting(el){
     const projHigh=bc*(y?y.high:rate);
     const yieldN=y?y.n:0;
     const windowStatus=daysIn<td.min?'early':daysIn<=td.max?'ready':'overdue';
-    return {...f,daysIn,harvestMin,harvestMax,projLbs,projLow,projHigh,yieldN,rateUsed:rate,windowStatus,td};
+    const harvestedLb=harvByLot[_hlk(f.lotNumber)]||0;
+    // STALE = well past its harvest window (a full week beyond max) with nothing ever harvested → dead, should be kicked
+    const stale=daysIn>(td.max+7) && harvestedLb<0.1;
+    return {...f,daysIn,harvestMin,harvestMax,projLbs,projLow,projHigh,yieldN,rateUsed:rate,windowStatus,td,harvestedLb,stale};
   }).sort((a,b)=>a.harvestMin-b.harvestMin);
-  const fruitRows=sByKey('fruit-act',withForecast,{date:f=>f.date,daysIn:f=>f.daysIn,containerID:f=>f.containerID,lotNumber:f=>f.lotNumber,vendor:f=>f.vendor||'',variety:f=>f.variety,blockCount:f=>f.blockCount||0,blockWeightLb:f=>f.blockWeightLb||0,projLbs:f=>f.projLbs||0,harvestMin:f=>f.harvestMin.getTime(),windowStatus:f=>['early','ready','overdue'].indexOf(f.windowStatus)});
+  const staleLots=withForecast.filter(f=>f.stale);
+  const staleBlocks=staleLots.reduce((s,f)=>s+(f.blockCount||0),0);
+  const liveForecast=withForecast.filter(f=>!f.stale); // stale lots no longer count as live capacity
+  const fruitRows=sByKey('fruit-act',liveForecast,{date:f=>f.date,daysIn:f=>f.daysIn,containerID:f=>f.containerID,lotNumber:f=>f.lotNumber,vendor:f=>f.vendor||'',variety:f=>f.variety,blockCount:f=>f.blockCount||0,blockWeightLb:f=>f.blockWeightLb||0,projLbs:f=>f.projLbs||0,harvestMin:f=>f.harvestMin.getTime(),windowStatus:f=>['early','ready','overdue'].indexOf(f.windowStatus)});
 
-  const readyCount=withForecast.filter(f=>f.windowStatus==='ready').length;
-  const overdueCount=withForecast.filter(f=>f.windowStatus==='overdue').length;
-  const totalProjLbs=withForecast.reduce((s,f)=>s+f.projLbs,0);
+  const readyCount=liveForecast.filter(f=>f.windowStatus==='ready').length;
+  const overdueCount=liveForecast.filter(f=>f.windowStatus==='overdue').length;
+  const totalProjLbs=liveForecast.reduce((s,f)=>s+f.projLbs,0);
 
-  // Build week-by-week forecast
+  // Build week-by-week forecast (live lots only — stale/dead don't project)
   const weekForecast={};
-  withForecast.forEach(f=>{
+  liveForecast.forEach(f=>{
     const mon=new Date(f.harvestMin);
     mon.setDate(mon.getDate()-(mon.getDay()||7)+1);
     const wk=mon.toISOString().split('T')[0];
@@ -4504,11 +4513,28 @@ function rFruiting(el){
     <div class="ph"><div class="ph-t">Fruiting</div><div class="ph-s">Track blocks in the grow room · forecast upcoming harvests</div></div>
 
     <div class="stats">
-      <div class="sc m"><div class="sc-l">Active Blocks</div><div class="sc-v">${active.length}</div><div class="sc-n">lots in fruiting now</div></div>
+      <div class="sc m"><div class="sc-l">Live Lots</div><div class="sc-v">${liveForecast.length}</div><div class="sc-n">${staleLots.length?staleLots.length+' stale excluded':'in fruiting now'}</div></div>
       <div class="sc g"><div class="sc-l">Harvest Ready</div><div class="sc-v">${readyCount}</div><div class="sc-n">within window</div></div>
       <div class="sc ${overdueCount>0?'r':''}"><div class="sc-l">Past Window</div><div class="sc-v">${overdueCount}</div><div class="sc-n">overdue to harvest</div></div>
-      <div class="sc"><div class="sc-l">Projected Yield</div><div class="sc-v" style="font-size:26px;">${totalProjLbs.toFixed(1)}<span style="font-size:14px"> lb</span></div><div class="sc-n">from active lots</div></div>
+      <div class="sc"><div class="sc-l">Projected Yield</div><div class="sc-v" style="font-size:26px;">${totalProjLbs.toFixed(1)}<span style="font-size:14px"> lb</span></div><div class="sc-n">from live lots</div></div>
     </div>
+    ${staleLots.length?`<div class="card" style="border-color:rgba(184,76,32,.4);background:rgba(184,76,32,.05);margin-bottom:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div><div style="font-weight:700;color:var(--rust);">⚠ ${staleLots.length} stale lot${staleLots.length!==1?'s':''} · ${staleBlocks} blocks — past window, no harvest</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px;">These are &gt;1 week past their harvest window with nothing harvested — almost certainly dead. They're excluded from Live Lots &amp; Projected Yield. Kick them to write them off.</div></div>
+        ${canEdit()?`<button class="btn b-r" onclick="kickAllStale()">🔥 Kick all ${staleLots.length}</button>`:''}
+      </div>
+      <div class="tw" style="margin-top:10px;max-height:none;"><table>
+        <thead><tr><th>Lot #</th><th>Variety</th><th>Container</th><th>Blocks</th><th>Days In</th>${canEdit()?'<th>Action</th>':''}</tr></thead>
+        <tbody>${staleLots.map(f=>`<tr>
+          <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}</td>
+          <td>${f.variety}</td>
+          <td style="font-size:11px;color:var(--text3);">${f.containerID||'—'}</td>
+          <td class="mn">${f.blockCount||0}</td>
+          <td class="mn" style="color:var(--rust);font-weight:700;">${f.daysIn}d</td>
+          ${canEdit()?`<td><button class="btn b-r b-sm" onclick="kickFruiting('${f.id}')">🔥 Kick</button></td>`:''}
+        </tr>`).join('')}</tbody></table></div>
+    </div>`:''}
     <!-- ── LOG FORM ── -->
     ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
       <div class="card-t">📸 Snap / Upload Fruiting Sheet</div>
@@ -4844,6 +4870,29 @@ function markFruitingHarvested(id){
   if(!confirm('Mark as harvested? This will move it to completed.')) return;
   f.status='harvested'; f.harvestedAt=tday();
   FS.update('fruitings',id,{status:'harvested',harvestedAt:f.harvestedAt});
+  renderC();
+}
+
+// Kick a stale lot (past window, no harvest) → mark removed + write it off as spent blocks so records match reality
+async function kickFruiting(id, skipConfirm){
+  const f=DB.fruitings.find(x=>x.id===id); if(!f) return;
+  if(!skipConfirm && !confirm(`Kick Lot ${f.lotNumber||''} (${f.variety||''} · ${f.blockCount||0} blocks)? It's past its window with nothing harvested — this writes it off as spent.`)) return;
+  f.status='removed'; f.removedAt=tday(); f.removedReason='stale — no harvest';
+  try{ await FS.update('fruitings',id,{status:'removed',removedAt:f.removedAt,removedReason:f.removedReason}); }catch(e){ console.warn('kick update',e); }
+  const dData={date:tday(),stage:'fruiting',container:f.containerID||'',cookLot:'',lotNumber:f.lotNumber||'',labBatchId:'',variety:f.variety||'',source:f.source||'',supplier:f.vendor||'',blockCount:parseInt(f.blockCount)||0,reason:'stale — no harvest',notes:`Kicked stale lot ${f.lotNumber||''} — past window, nothing harvested`,fruitingId:id,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+  try{ const did=await FS.add('blockDisposals',dData); dData.id=did; DB.blockDisposals.push(dData); }catch(e){ console.warn('kick disposal',e); }
+  logAudit('fruiting_kicked',`Kicked stale Lot ${f.lotNumber||''} — ${f.variety||''} (${f.blockCount||0} blocks) · past window, no harvest`);
+  if(!skipConfirm) renderC();
+}
+async function kickAllStale(){
+  const today=new Date(); today.setHours(0,0,0,0);
+  const _hlk=(typeof _lotKey==='function')?_lotKey:(s=>(s||'').trim().toLowerCase());
+  const harvByLot={}; DB.harvests.forEach(h=>{ if(!h.lotNumber) return; const k=_hlk(h.lotNumber); harvByLot[k]=(harvByLot[k]||0)+(h.weight||0); });
+  const stale=DB.fruitings.filter(f=>{ if(f.status!=='fruiting') return false; const td=VARIETY_TURNAROUND[f.variety]||{min:7,max:14}; const startD=new Date(f.date); startD.setHours(0,0,0,0); const daysIn=Math.floor((today-startD)/86400000); return daysIn>(td.max+7) && (harvByLot[_hlk(f.lotNumber)]||0)<0.1; });
+  if(!stale.length){ alert('No stale lots to kick.'); return; }
+  if(!confirm(`Kick all ${stale.length} stale lots (${stale.reduce((s,f)=>s+(parseInt(f.blockCount)||0),0)} blocks)? They're past window with nothing harvested — this writes them off.`)) return;
+  for(const f of stale){ await kickFruiting(f.id,true); }
+  logAudit('fruiting_kicked_bulk',`Kicked ${stale.length} stale lots (${stale.reduce((s,f)=>s+(parseInt(f.blockCount)||0),0)} blocks) in bulk`);
   renderC();
 }
 
