@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #92</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #93</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4093,7 +4093,7 @@ async function logReceiving(){
   const temperature=document.getElementById('rc-temp')?.value.trim()||'';
   const rows=[..._recvQueue];
   const cur=_readRecvRow();
-  if(cur.variety||cur.lotNumber||cur.blockCount){ if(!_validRecvRow(cur)) return; rows.push(cur); }
+  if(cur.variety||cur.lotNumber||cur.blockCount){ if(!_validRecvRow(cur)) return; if(_wsFormMeta){ cur.wsMeta=_wsFormMeta; } rows.push(cur); }
   if(!rows.length){ alert('Enter at least one lot to receive.'); return; }
   if(!normalizeRowVarieties(rows)) return; // standardize each variety + warn on new
   rows.forEach(r=>addVariety(r.variety));
@@ -4104,7 +4104,8 @@ async function logReceiving(){
   const tempLogUrl=_rcTempUrl, invoiceUrl=_rcInvoiceUrl;
   const createdIds=[];
   for(const r of rows){
-    const rData={date,facility:'Hydes Ferry',source,vendor,soNum,receiptStatus,variety:r.variety,lotNumber:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes,temperature,scanUrl:snapUrl,tempLogUrl,invoiceUrl,status:'on-hand',createdAt:new Date().toISOString()};
+    const rowNotes=(r.wsNote?[notes,r.wsNote].filter(Boolean).join(' · '):notes);
+    const rData={date,facility:'Hydes Ferry',source,vendor,soNum,receiptStatus,variety:r.variety,lotNumber:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes:rowNotes,temperature,scanUrl:snapUrl,tempLogUrl,invoiceUrl,status:'on-hand',createdAt:new Date().toISOString(),...(r.wsMeta?{wsLabel:r.wsMeta,organic:!!r.wsMeta.organic}:{})};
     const rId=await FS.add('receivings',rData); DB.receivings.push({id:rId,...rData}); createdIds.push(rId);
   }
   const totalBlocks=rows.reduce((s,r)=>s+r.blockCount,0);
@@ -4121,7 +4122,7 @@ async function logReceiving(){
     mark:{col:'receivings',ids:createdIds},
     data:{date,vendor,source,soNum,poNum,temperature,tempLogUrl,invoiceUrl,imageUrl:snapUrl,rows:rows.map(r=>({variety:r.variety,lot:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb}))}, image:snapImg});
 }
-function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes','rc-temp','rc-so'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); const v=document.getElementById('rc-variety'); if(v) v.value=''; _recvQueue=[]; renderRecvQueue(); }
+function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes','rc-temp','rc-so'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); const v=document.getElementById('rc-variety'); if(v) v.value=''; _recvQueue=[]; _wsFormMeta=null; renderRecvQueue(); }
 
 function buildIncomingShipments(){
   const inc=(DB.shipments||[]).filter(s=>s.status==='in-transit').sort((a,b)=>(a.date||'').localeCompare(b.date||''));
@@ -4197,6 +4198,10 @@ function rReceiving(el){
       <label class="btn b-lg" style="cursor:pointer;display:inline-block;margin-left:8px;background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.3);">📚 Batch PDF (multiple deliveries)
         <input type="file" accept="application/pdf,.pdf" style="display:none;" onchange="snapReceivingBatch(this)">
       </label>
+      <label class="btn b-lg" style="cursor:pointer;display:inline-block;margin-left:8px;background:rgba(184,130,10,.12);color:var(--gold);border:1px solid var(--border-gold);">🏷 Wild Spore pallet label
+        <input type="file" accept="image/*" style="display:none;" onchange="snapWSLabel(this)">
+      </label>
+      <div style="font-size:11px;color:var(--text3);margin-top:8px;">🏷 <b>Wild Spore pallet label</b> — snap the printed block label (WS-SH-260423-01…); reads the lot, variety &amp; block count and sets the source to Wild Spore. Snap one pallet at a time.</div>
       <div id="rc-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
     </div>`:''}
     ${canEdit()?`<div class="card"><div class="card-t">Log Received Blocks</div>
@@ -6818,6 +6823,47 @@ async function snapReceiving(input){
     if(typeof renderRecvQueue==='function') renderRecvQueue();
     const tb=clean.reduce((s,x)=>s+(parseInt(x.blockCount)||0),0);
     show(`✓ Read <b>${clean.length} lot${clean.length!==1?'s':''}</b> · ${tb} blocks${d.soNum?' · SO '+d.soNum:' · <span style="color:#b84c20;font-weight:700;">NO SO — will open as a receipt</span>'} — <b>verify below</b>, then Log.`);
+  }catch(e){ show('⚠ '+e.message); }
+  finally{ input.value=''; }
+}
+// ── WILD SPORE pallet label snap → parse → prefill receiving (from Wild Spore) ──
+let _wsFormMeta=null;
+async function snapWSLabel(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('rc-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
+  show('⏳ Reading Wild Spore pallet label…');
+  try{
+    const user=firebase.auth().currentUser; if(!user) throw new Error('Not signed in — reload and log in.');
+    const tok=await user.getIdToken(); const b64=await _fileToB64(file);
+    const resp=await fetch(PARSE_URL,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+tok},body:JSON.stringify({image:b64,mime:file.type||'image/jpeg',kind:'wslabel'})});
+    let j={}; try{ j=await resp.json(); }catch(e){}
+    if(!resp.ok) throw new Error(j.error||('Server error '+resp.status));
+    if(!j.ok) throw new Error(j.error||'Could not read the label.');
+    const labels=((j.data&&j.data.labels)||[]).filter(l=>l&&(l.lot||l.variety||l.blockCount));
+    if(!labels.length){ show('⚠ Couldn’t read a Wild Spore label in that photo — try a clearer, straight-on shot of the printed text.'); return; }
+    _lastSnap={kind:'receiving',url:j.imageUrl||'',b64,mime:file.type||'image/jpeg'};
+    const set=(id,v)=>{ const e=document.getElementById(id); if(e&&v!=null&&v!=='') e.value=v; };
+    const canon=v=>(typeof canonicalVariety==='function')?canonicalVariety(v):v;
+    const wsNote=l=>[l.inoculatedDate?('Inoc '+l.inoculatedDate):'',l.farm,l.invoice?('Inv '+l.invoice):'',l.spawnLot?('Spawn '+l.spawnLot):'',l.shipBy?('Ship by '+l.shipBy):'',l.organic?'ORGANIC':'',l.strainCode,l.note?('“'+l.note+'”'):''].filter(Boolean).join(' · ');
+    // shared delivery header: received today, from Wild Spore (external vendor)
+    set('rc-date',tday());
+    const srcEl=document.getElementById('rc-source'); if(srcEl){ srcEl.value='vendor'; if(typeof onRecSourceChange==='function') onRecSourceChange(); }
+    const vEl=document.getElementById('rc-vendor'); if(vEl){ vEl.value='Wild Spore'; if(typeof markAF==='function') markAF(vEl); }
+    _recvQueue=[]; _wsFormMeta=null;
+    labels.forEach((l,idx)=>{
+      const variety=canon((l.variety||'').trim()); const lot=(l.lot||'').trim(); const bc=parseInt(l.blockCount)||0;
+      if(variety) addVariety(variety);
+      if(idx===0){
+        set('rc-variety',variety); const vv=document.getElementById('rc-variety'); if(vv&&typeof markAF==='function') markAF(vv);
+        set('rc-lot',lot); if(bc) set('rc-bc',bc); set('rc-notes',wsNote(l));
+        _wsFormMeta=l;
+      } else {
+        _recvQueue.push({variety,lotNumber:lot,blockCount:bc,blockWeightLb:0,wsMeta:l,wsNote:wsNote(l)});
+      }
+    });
+    if(typeof renderRecvQueue==='function') renderRecvQueue();
+    const tb=labels.reduce((s,l)=>s+(parseInt(l.blockCount)||0),0);
+    show(`✓ Read <b>${labels.length} Wild Spore pallet${labels.length!==1?'s':''}</b> · ${tb} blocks · source set to <b>Wild Spore</b> — verify, then Log. (No SO → opens as a receipt.)`);
   }catch(e){ show('⚠ '+e.message); }
   finally{ input.value=''; }
 }
