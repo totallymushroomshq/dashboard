@@ -369,7 +369,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #80</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #81</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -3880,9 +3880,9 @@ function onLotInput(){
   if(srcEl && info && info.vendor!=='Unknown') srcEl.value = info.vendor==='In-house' ? 'internal' : 'supplier';
   if(info?.variety && vEl){ vEl.value=info.variety; onVarietyInput(); }
   if(info?.blockWeightLb && bwEl) bwEl.value=info.blockWeightLb;
-  // exact match against blocks ON HAND → pull real inventory data + link the batch so placement draws it down
-  const typed=lot.trim().toLowerCase();
-  const match=typed?onHandReceivings().find(r=>(r.lotNumber||'').trim().toLowerCase()===typed):null;
+  // match against blocks ON HAND (whitespace/case-insensitive) → pull real inventory data + link the batch so placement draws it down
+  const typed=_lotKey(lot);
+  const match=typed?onHandReceivings().find(r=>_lotKey(r.lotNumber)===typed):null;
   const hint=document.getElementById('fr-lot-hint');
   if(match){
     if(vEl && match.variety){ vEl.value=match.variety; markAF(vEl); if(typeof onVarietyInput==='function') onVarietyInput(); }
@@ -4836,18 +4836,24 @@ async function toggleContainer(code, active){
 
 // #5 — lot ↔ variety memory: find the variety previously recorded for a lot number,
 // checking harvests, then fruitings, then receivings (most recent first).
+// normalize a lot # for comparison — real lots are written inconsistently (spaces, case): "10223 A" == "10223A"
+function _lotKey(s){ return (s==null?'':String(s)).trim().toLowerCase().replace(/\s+/g,''); }
 function lotToVariety(lot){
-  const L=(lot||'').trim().toLowerCase(); if(!L) return '';
-  const find=(arr)=>[...(arr||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).find(x=>(x.lotNumber||'').toLowerCase()===L);
+  const L=_lotKey(lot); if(!L) return '';
+  const find=(arr)=>[...(arr||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).find(x=>_lotKey(x.lotNumber)===L);
   const h=find(DB.harvests); if(h&&h.variety) return h.variety;
   const f=find(DB.fruitings); if(f&&f.variety) return f.variety;
   const r=find(DB.receivings); if(r&&r.variety) return r.variety;
   // in-house lineage: grain-spawn strain lots (060526A) and block-cook variety lots
   for(const s of [...(DB.spawnRuns||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''))){
-    const st=(Array.isArray(s.strains)?s.strains:[]).find(x=>(x.lot||'').toLowerCase()===L); if(st&&st.strain) return st.strain;
+    if(Array.isArray(s.strains)){ const st=s.strains.find(x=>_lotKey(x.lot)===L); if(st&&st.strain) return st.strain; }
+    // legacy spawn runs store strains as one string: "Blue Oyster #061226A, Italian Oyster #061226B"
+    if(typeof s.strain==='string' && s.strain.includes('#')){
+      for(const seg of s.strain.split(',')){ const m=seg.match(/^(.*?)#\s*([A-Za-z0-9-]+)/); if(m && _lotKey(m[2])===L){ const nm=m[1].replace(/\([^)]*\)/g,'').trim(); if(nm) return nm; } }
+    }
   }
   for(const b of [...(DB.labBatches||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||''))){
-    const v=(typeof batchVarietyLines==='function'?batchVarietyLines(b):(b.varieties||[])).find(x=>{ const lt=(x.lot||((b.lotCode||'')+(x.suffix?' '+x.suffix:''))).trim().toLowerCase(); return lt===L; }); if(v&&v.variety) return v.variety;
+    const v=(typeof batchVarietyLines==='function'?batchVarietyLines(b):(b.varieties||[])).find(x=>{ const lt=_lotKey(x.lot||((b.lotCode||'')+(x.suffix||''))); return lt===L; }); if(v&&v.variety) return v.variety;
   }
   return '';
 }
@@ -5002,7 +5008,7 @@ function hbLotVariety(inp){
   const v=(typeof lotToVariety==='function')?lotToVariety(lot):'';
   if(!v) return;
   const row=inp.closest('.hb-lotrow'); const vEl=row&&row.querySelector('.hb-var');
-  if(vEl) vEl.value=v;
+  if(vEl){ vEl.value=v; if(typeof markAF==='function') markAF(vEl); }
 }
 function hbAddLot(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('hb-lots')) w.insertAdjacentHTML('beforeend',hbLotRow({})); }
 function hbAddCrew(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('hb-crew')) w.insertAdjacentHTML('beforeend',hbCrewRow({})); }
@@ -5645,7 +5651,7 @@ async function snapFruitingBatch(input){
 }
 function fbLotRow(r){ r=r||{};
   return `<div class="fb-lotrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
-    <input class="fi fb-lot" list="fb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:110px;" autocomplete="off" onchange="fbLearnLot(this)">
+    <input class="fi fb-lot" list="fb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:110px;" autocomplete="off" oninput="fbFillVar(this)" onchange="fbLearnLot(this)">
     <input class="fi fb-var" list="fb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Variety" style="flex:1;min-width:120px;" autocomplete="off" onchange="if(typeof hbResolveVariety==='function'){this.value=hbResolveVariety(this.value);}">
     <input class="fi fb-bc" type="number" min="0" value="${(r.blocksUsed!=null&&r.blocksUsed!=='')?r.blocksUsed:((r.blockCount!=null&&r.blockCount!=='')?r.blockCount:'')}" placeholder="blocks" style="max-width:96px;">
     <button type="button" class="btn b-r b-sm" title="Remove lot" onclick="this.closest('.fb-lotrow').remove()">✕</button>
@@ -5662,6 +5668,8 @@ function fbAddLot(btn){ const w=btn.previousElementSibling; if(w&&w.classList.co
 function fbAddCrew(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('fb-crew')) w.insertAdjacentHTML('beforeend',fbCrewRow({})); }
 function fbRemoveSheet(btn){ if(confirm('Remove this whole dated sheet from the batch?')) btn.closest('.fb-sheet').remove(); }
 function fbLearnLot(inp){ const v=(inp.value||'').trim(); if(!v) return; const dl=document.getElementById('fb-lot-dl'); if(dl && ![...dl.options].some(o=>o.value===v)){ const o=document.createElement('option'); o.value=v; dl.appendChild(o); } }
+// fruiting batch: reading a known lot # fills the row's Variety if it's empty
+function fbFillVar(inp){ const lot=(inp.value||'').trim(); if(!lot) return; const row=inp.closest('.fb-lotrow'); const vEl=row&&row.querySelector('.fb-var'); if(!vEl||vEl.value.trim()) return; const v=(typeof lotToVariety==='function')?lotToVariety(lot):''; if(v){ vEl.value=v; if(typeof markAF==='function') markAF(vEl); } }
 function _readFruitBatchFromDOM(){
   const out=[];
   document.querySelectorAll('.fb-sheet').forEach(el=>{
@@ -12125,11 +12133,35 @@ function buildSuggestionsManager(){
     <div class="card">
       <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Remove a mistyped or wrong entry so it stops appearing in the dropdowns app-wide. These are values the app learned as you typed. <span style="color:var(--text2);">Lot #s &amp; containers come from your actual records \u2014 fix those by editing/deleting the record.</span></div>
       <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;">CUSTOM VARIETIES (${vars.length})</div>
-      <div style="margin-bottom:18px;">${vars.length?vars.map(v=>chip(v,'delCustomVariety')).join(''):'<span style="font-size:11px;color:var(--text3);">None learned yet \u2014 built-in varieties can\'t be removed.</span>'}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;max-width:460px;">
+        <input class="fi" id="sug-add-variety" placeholder="Add a variety to the dropdowns\u2026" autocomplete="off" style="flex:1 1 220px;min-width:180px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addVarietyManual();}">
+        <button class="btn b-m" onclick="addVarietyManual()" style="flex:0 0 auto;">+ Add variety</button>
+      </div>
+      <div style="margin-bottom:18px;">${vars.length?vars.map(v=>chip(v,'delCustomVariety')).join(''):'<span style="font-size:11px;color:var(--text3);">None added yet \u2014 built-in varieties can\'t be removed.</span>'}</div>
       <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;">VENDORS / SUPPLIERS (${sups.length})</div>
-      <div>${sups.length?sups.map(x=>chip(x,'delCustomSupplier')).join(''):'<span style="font-size:11px;color:var(--text3);">None learned yet.</span>'}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;max-width:460px;">
+        <input class="fi" id="sug-add-supplier" placeholder="Add a vendor / supplier\u2026" autocomplete="off" style="flex:1 1 220px;min-width:180px;" onkeydown="if(event.key==='Enter'){event.preventDefault();addSupplierManual();}">
+        <button class="btn b-m" onclick="addSupplierManual()" style="flex:0 0 auto;">+ Add vendor</button>
+      </div>
+      <div>${sups.length?sups.map(x=>chip(x,'delCustomSupplier')).join(''):'<span style="font-size:11px;color:var(--text3);">None added yet.</span>'}</div>
     </div>
   </div>`;
+}
+async function addVarietyManual(){
+  const el=document.getElementById('sug-add-variety'); const name=(el?.value||'').trim();
+  if(!name){ el?.focus(); return; }
+  const before=customVarieties.length;
+  await addVariety(name);
+  if(customVarieties.length===before && !VARIETIES.some(v=>v.toLowerCase()===canonicalVariety(name).toLowerCase())){ alert(`"${name}" is already a known variety.`); }
+  if(el) el.value='';
+  renderC();
+}
+async function addSupplierManual(){
+  const el=document.getElementById('sug-add-supplier'); const name=(el?.value||'').trim();
+  if(!name){ el?.focus(); return; }
+  await addSupplier(name);
+  if(el) el.value='';
+  renderC();
 }
 async function delCustomVariety(name){
   if(!customVarieties.includes(name)) return;
