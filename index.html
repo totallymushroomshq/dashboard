@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #87</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #88</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2276,15 +2276,22 @@ function yieldColor(ypb,bench){
   if(ypb>=t) return 'var(--fern)'; if(ypb>=t*0.85) return 'var(--amber)'; return 'var(--rust)';
 }
 function buildYieldAnalysis(){
-  const data={}; // lot -> {variety, containers:{con:{blocks,harv,placed:[],hd:{date:lb}}}}
+  const _cv=(typeof canonicalVariety==='function')?canonicalVariety:(x=>x);
+  const _lk=(typeof _lotKey==='function')?_lotKey:(s=>(s||'').trim().toLowerCase());
+  const data={}; // lot -> {variety, containers:{con:{blocks,harv,placed:[],hd:{date:lb}}}, estBlocks}
+  const getD=(lot,variety)=>{ const D=data[lot]||(data[lot]={variety:'—',containers:{},estBlocks:0}); if(variety) D.variety=_cv(variety); return D; };
+  const getC=(D,con)=>D.containers[con]||(D.containers[con]={blocks:0,harv:0,placed:[],hd:{}});
   DB.fruitings.forEach(f=>{ const lot=f.lotNumber; if(!lot||!f.blockCount) return;
-    const _cv=(typeof canonicalVariety==='function')?canonicalVariety:(x=>x);
-    const D=data[lot]||(data[lot]={variety:f.variety?_cv(f.variety):'—',containers:{}}); if(f.variety) D.variety=_cv(f.variety);
-    const con=f.containerID||'—'; const C=D.containers[con]||(D.containers[con]={blocks:0,harv:0,placed:[],hd:{}});
-    C.blocks+=parseInt(f.blockCount)||0; if(f.date) C.placed.push(f.date); });
-  DB.harvests.forEach(h=>{ const lot=h.lotNumber; if(!lot||!data[lot]) return;
-    const con=h.container||'—'; const D=data[lot]; const C=D.containers[con]||(D.containers[con]={blocks:0,harv:0,placed:[],hd:{}});
-    C.harv+=(h.weight||0); if(h.date) C.hd[h.date]=(C.hd[h.date]||0)+(h.weight||0); });
+    const C=getC(getD(lot,f.variety), f.containerID||'—'); C.blocks+=parseInt(f.blockCount)||0; if(f.date) C.placed.push(f.date); });
+  // harvests now CREATE a lot entry even with no placement (so nothing is dropped), keyed to their own container
+  DB.harvests.forEach(h=>{ const lot=h.lotNumber; if(!lot) return;
+    const C=getC(getD(lot,h.variety), h.container||'—'); C.harv+=(h.weight||0); if(h.date) C.hd[h.date]=(C.hd[h.date]||0)+(h.weight||0); });
+  // BACKFILL: a lot with harvest but zero placement anywhere borrows its RECEIVING block count as an estimated placement
+  Object.entries(data).forEach(([lot,D])=>{
+    const tb=Object.values(D.containers).reduce((s,c)=>s+c.blocks,0);
+    const th=Object.values(D.containers).reduce((s,c)=>s+c.harv,0);
+    if(tb===0 && th>0){ const rec=(DB.receivings||[]).find(x=>_lk(x.lotNumber)===_lk(lot)); if(rec&&parseInt(rec.blockCount)>0){ D.estBlocks=parseInt(rec.blockCount)||0; if(rec.variety) D.variety=_cv(rec.variety); } }
+  });
   const bySpecies={};
   const win=(_yieldWin==='period' && typeof _dashRange==='function')?_dashRange(_dashPeriod):null;
   const inWin=dstr=>{ if(!win) return true; return (typeof _inRange==='function')?_inRange(dstr,win):true; };
@@ -2293,28 +2300,31 @@ function buildYieldAnalysis(){
     // source filter: Wild Spore vs Internal
     if(_yieldSrc==='ws' && bench.label!=='Wild Spore') return;
     if(_yieldSrc==='internal' && bench.label==='Wild Spore') return;
-    let blocks=0,harv=0; const cons=[]; let anyDate=false, anyInWin=false;
+    let placedBlocks=0, orphanHarv=0, totalHarv=0; const cons=[]; let anyDate=false, anyInWin=false;
     Object.entries(D.containers).forEach(([con,C])=>{
-      blocks+=C.blocks; harv+=C.harv;
+      placedBlocks+=C.blocks; totalHarv+=C.harv;
+      if(C.blocks===0) orphanHarv+=C.harv; // harvest in a container this lot wasn't placed in — diagnostic only
       const pMin=C.placed.length?C.placed.slice().sort()[0]:null;
       const hd=Object.keys(C.hd).sort(); const hMax=hd.length?hd[hd.length-1]:null;
       [...C.placed, ...Object.keys(C.hd)].forEach(dt=>{ if(dt){ anyDate=true; if(inWin(dt)) anyInWin=true; } });
-      cons.push({con,blocks:C.blocks,harv:C.harv,ypb:C.blocks>0?C.harv/C.blocks:0,days:daysBetween(pMin,hMax),flushes:hd.length});
+      cons.push({con,blocks:C.blocks,harv:C.harv,matched:C.blocks>0,ypb:C.blocks>0?C.harv/C.blocks:0,days:daysBetween(pMin,hMax),flushes:hd.length});
     });
-    // time-window filter: keep a lot only if it has placement/harvest activity inside the window
     if(win && anyDate && !anyInWin) return;
+    // yield = total harvest ÷ placed blocks (container labels don't align reliably between placement & harvest, so we don't drop harvest by container);
+    // estimated backfill when no placement was logged: use the RECEIVING count.
+    let blocks=placedBlocks, est=false;
+    if(placedBlocks===0 && D.estBlocks>0){ blocks=D.estBlocks; est=true; }
+    const harv=totalHarv;
     const ypb=blocks>0?harv/blocks:0;
-    // harvest recorded in containers this lot was NEVER placed in → can't be attributed (mislabeled / cross-container)
-    const orphanHarv=cons.reduce((s,c)=>s+((c.blocks===0&&c.harv>0)?c.harv:0),0);
-    const suspect = (blocks>0 && ypb>3) || (harv>1 && orphanHarv>0.5*harv);
-    (bySpecies[D.variety]=bySpecies[D.variety]||[]).push({lot,variety:D.variety,bench,blocks,harv,ypb,cons,orphanHarv,suspect});
+    const suspect = blocks>0 && ypb>3; // impossible lb/block → data error (bad placement count or mislabeled harvest)
+    (bySpecies[D.variety]=bySpecies[D.variety]||[]).push({lot,variety:D.variety,bench,blocks,harv,totalHarv,orphanHarv,ypb,cons,est,suspect});
   });
   const rows=Object.keys(bySpecies).sort().map(sp=>{
     const lots=bySpecies[sp].filter(l=>l.blocks>0); if(!lots.length) return '';
     const good=lots.filter(l=>!l.suspect); const nSus=lots.length-good.length;
     // species average ignores suspect (data-error) lots so one bad join can't skew it
     const tB=good.reduce((s,l)=>s+l.blocks,0), tH=good.reduce((s,l)=>s+l.harv,0), avg=tB>0?tH/tB:0;
-    const dispB=lots.reduce((s,l)=>s+l.blocks,0), dispH=lots.reduce((s,l)=>s+l.harv,0);
+    const dispB=lots.reduce((s,l)=>s+l.blocks,0), dispH=lots.reduce((s,l)=>s+(l.totalHarv!=null?l.totalHarv:l.harv),0);
     const spExp=_yieldExpanded['sp:'+sp]; const spEsc=sp.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     let out=`<tr style="cursor:pointer;border-top:2px solid var(--border);background:rgba(0,0,0,.02);" onclick="toggleYield('sp:${spEsc}')">
       <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${spExp?'▾':'▸'}</span> ${sp}${nSus?` <span class="bdg bp" style="font-size:9px;" title="${nSus} lot(s) with impossible lb/block excluded from this average — check data">⚠ ${nSus}</span>`:''}</td>
@@ -2325,11 +2335,12 @@ function buildYieldAnalysis(){
       const bT=l.bench.goal?`${l.bench.target}–${l.bench.goal}`:l.bench.target.toFixed(2);
       const dMax=(()=>{const ds=l.cons.map(c=>c.days).filter(x=>x!=null);return ds.length?Math.max(...ds):null;})();
       const fl=l.cons.reduce((s,c)=>s+(c.flushes||0),0);
-      const susTitle=l.suspect?`Impossible lb/block — ${l.orphanHarv>0.5*l.harv?(l.orphanHarv.toFixed(1)+' lb harvested in container(s) this lot was never placed in (mislabeled / cross-container)'):'more harvested than the placed blocks can yield'}. Excluded from the species average.`:'';
+      const susTitle=l.suspect?`Check data — ${(l.orphanHarv>0.5*(l.totalHarv||l.harv))?(l.orphanHarv.toFixed(1)+' lb harvested in container(s) this lot was never placed in (mislabeled / cross-container)'):'more harvested than the placed blocks can yield'}. Excluded from the species average.`:'';
+      const th=(l.totalHarv!=null?l.totalHarv:l.harv);
       out+=`<tr style="cursor:pointer;${l.suspect?'background:rgba(184,76,32,.06);':''}" onclick="toggleYield('lot:${lotEsc}')"${l.suspect?` title="${susTitle}"`:''}>
-        <td style="padding-left:20px;font-family:'Syne Mono',monospace;font-size:12px;"><span style="color:var(--text3);">${lotExp?'▾':'▸'}</span> ${l.lot} <span class="bdg ${l.bench.label==='Wild Spore'?'bp':'bc'}" style="font-size:10px;">${l.bench.label}</span>${l.suspect?' <span class="bdg bp" style="font-size:9px;">⚠ CHECK DATA</span>':''}</td>
-        <td class="mn">${l.blocks}</td><td class="mn">${l.harv.toFixed(1)}</td>
-        <td class="mn" style="font-weight:700;color:${l.suspect?'var(--rust)':col};">${l.ypb.toFixed(2)} ${l.suspect?'⚠':(meets?'✓':'✗')}</td>
+        <td style="padding-left:20px;font-family:'Syne Mono',monospace;font-size:12px;"><span style="color:var(--text3);">${lotExp?'▾':'▸'}</span> ${l.lot} <span class="bdg ${l.bench.label==='Wild Spore'?'bp':'bc'}" style="font-size:10px;">${l.bench.label}</span>${l.est?' <span class="bdg bcu" style="font-size:9px;" title="Blocks estimated from the receiving count — no fruiting placement was logged for this lot">EST</span>':''}${l.suspect?' <span class="bdg bp" style="font-size:9px;">⚠ CHECK DATA</span>':''}</td>
+        <td class="mn">${l.blocks}${l.est?'*':''}</td><td class="mn">${th.toFixed(1)}</td>
+        <td class="mn" style="font-weight:700;color:${l.suspect?'var(--rust)':col};">${l.suspect?'—':l.ypb.toFixed(2)} ${l.suspect?'⚠':(meets?'✓':'✗')}</td>
         <td class="mn" style="font-size:10px;color:var(--text3);">vs ${bT}</td>
         <td class="mn" style="font-size:11px;">${fl} fl</td><td class="mn" style="font-size:11px;">${dMax!=null?dMax+'d':'—'}</td></tr>`;
       if(lotExp) l.cons.sort((a,b)=>b.ypb-a.ypb).forEach(c=>{
@@ -9037,19 +9048,33 @@ function rDashboard(el){
   const r=_dashRange(_dashPeriod), pr=_dashPrevRange(_dashPeriod);
   // ── build lot index: blocks placed (lifetime), harvest (period/prev/lifetime), on-hand (current), waste (period) ──
   const lots={};
-  const getLot=num=>{ const k=_lotKey(num); return lots[k]||(lots[k]={lot:num,variety:'',blocksPlaced:0,harvP:0,harvPrev:0,harvAll:0,onHand:0,waste:0}); };
-  DB.fruitings.forEach(f=>{ if(!f.lotNumber) return; const li=getLot(f.lotNumber); if(!li.variety&&f.variety) li.variety=cvv(f.variety); li.blocksPlaced+=parseInt(f.blockCount)||0; });
-  (DB.receivings||[]).forEach(x=>{ if(!x.lotNumber) return; const li=getLot(x.lotNumber); if(!li.variety&&x.variety) li.variety=cvv(x.variety); });
+  const getLot=num=>{ const k=_lotKey(num); return lots[k]||(lots[k]={lot:num,variety:'',blocksPlaced:0,harvP:0,harvPrev:0,harvAll:0,harvMatched:0,onHand:0,waste:0,placedCons:{},recvBlocks:0,estBlocks:0,suspect:false}); };
+  DB.fruitings.forEach(f=>{ if(!f.lotNumber) return; const li=getLot(f.lotNumber); if(!li.variety&&f.variety) li.variety=cvv(f.variety); const b=parseInt(f.blockCount)||0; li.blocksPlaced+=b; if(b>0){ const con=f.containerID||'—'; li.placedCons[con]=(li.placedCons[con]||0)+b; } });
+  (DB.receivings||[]).forEach(x=>{ if(!x.lotNumber) return; const li=getLot(x.lotNumber); if(!li.variety&&x.variety) li.variety=cvv(x.variety); li.recvBlocks+=parseInt(x.blockCount)||0; });
   DB.harvests.forEach(h=>{ if(!h.lotNumber) return; const li=getLot(h.lotNumber); if(h.variety) li.variety=cvv(h.variety); const w=h.weight||0;
     li.harvAll+=w; if(_inRange(h.date,r)) li.harvP+=w; if(pr&&_inRange(h.date,pr)) li.harvPrev+=w;
+    // MATCH BY CONTAINER: only harvest from a container this lot was placed in counts toward its yield
+    if(li.placedCons[h.container||'—']) li.harvMatched+=w;
     li.onHand+=Math.max(0,w-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); });
+  // yield basis per lot: total harvest ÷ placed blocks (real placement, else estimated from receiving); flag only impossible lb/block
+  Object.values(lots).forEach(li=>{
+    if(li.blocksPlaced>0){ li.yBlocks=li.blocksPlaced; li.est=false; }
+    else if(li.harvAll>0.01 && li.recvBlocks>0){ li.yBlocks=li.recvBlocks; li.est=true; li.estBlocks=li.recvBlocks; }
+    else { li.yBlocks=0; li.est=false; }
+    li.yHarv = li.yBlocks>0 ? li.harvAll : 0;
+    li.lypb = li.yBlocks>0 ? li.harvAll/li.yBlocks : 0;
+    li.orphan = li.harvAll - li.harvMatched; // harvest in unplaced containers — diagnostic for suspect lots
+    li.suspect = li.yBlocks>0 && li.lypb>3;
+  });
   (DB.blockDisposals||[]).forEach(d=>{ if(!d.cookLot) return; const li=lots[_lotKey(d.cookLot)]; if(li&&_inRange(d.date,r)) li.waste+=parseInt(d.blockCount)||0; });
   // ── group by variety ──
   const byVar={};
   Object.values(lots).forEach(li=>{ if(li.harvAll<=0.01 && li.onHand<=0.01 && li.blocksPlaced<=0) return; const v=li.variety||'—'; (byVar[v]=byVar[v]||[]).push(li); });
   const vList=Object.keys(byVar).map(v=>{
     const ls=byVar[v]; const sum=k=>ls.reduce((s,l)=>s+(l[k]||0),0);
-    return {v, lots:ls, blocksPlaced:sum('blocksPlaced'), harvP:sum('harvP'), harvPrev:sum('harvPrev'), harvAll:sum('harvAll'), onHand:sum('onHand'), waste:sum('waste')};
+    const good=ls.filter(l=>!l.suspect); // yield basis excludes impossible/mislabeled lots
+    const yB=good.reduce((s,l)=>s+(l.yBlocks||0),0), yH=good.reduce((s,l)=>s+(l.yHarv||0),0);
+    return {v, lots:ls, blocksPlaced:sum('blocksPlaced'), harvP:sum('harvP'), harvPrev:sum('harvPrev'), harvAll:sum('harvAll'), onHand:sum('onHand'), waste:sum('waste'), yBlocks:yB, yHarv:yH, nSus:ls.length-good.length};
   }).sort((a,b)=>b.harvP-a.harvP || b.harvAll-a.harvAll || a.v.localeCompare(b.v));
   // ── period KPI tiles ──
   const harvP=vList.reduce((s,x)=>s+x.harvP,0), harvPrev=vList.reduce((s,x)=>s+x.harvPrev,0);
@@ -9057,7 +9082,7 @@ function rDashboard(el){
   const blocksProduced=(DB.labBatches||[]).reduce((s,b)=>s+(_inRange(b.productionDate||b.date,r)?(parseInt(b.blocksProduced)||parseInt(b.blockCount)||0):0),0);
   const blocksReceived=(DB.receivings||[]).reduce((s,x)=>s+(_inRange(x.date,r)?(parseInt(x.blockCount)||0):0),0);
   const blocksPlacedP=DB.fruitings.reduce((s,f)=>s+(_inRange(f.date,r)?(parseInt(f.blockCount)||0):0),0);
-  const avgYpb=(()=>{ const tb=vList.reduce((s,x)=>s+x.blocksPlaced,0), th=vList.reduce((s,x)=>s+x.harvAll,0); return tb>0?th/tb:0; })();
+  const avgYpb=(()=>{ const tb=vList.reduce((s,x)=>s+x.yBlocks,0), th=vList.reduce((s,x)=>s+x.yHarv,0); return tb>0?th/tb:0; })();
   // forecast next 7 days
   const yld=(typeof varietyYield==='function')?varietyYield():{}; let fc=0; const t0=new Date(); t0.setHours(0,0,0,0); const t7=new Date(t0); t7.setDate(t0.getDate()+7);
   DB.fruitings.filter(f=>f.status==='fruiting').forEach(f=>{ const td=(typeof VARIETY_TURNAROUND!=='undefined'&&VARIETY_TURNAROUND[cvv(f.variety)])||{min:7,max:14}; const st=new Date((''+f.date).slice(0,10)+'T12:00:00'); const hm=new Date(st); hm.setDate(hm.getDate()+td.min); if(hm>=t0&&hm<=t7){ const rate=yld[cvv(f.variety)]?yld[cvv(f.variety)].rate:(f.rateLbPerBlock||LBSPERBLOCK); fc+=(f.blockCount||0)*rate; } });
@@ -9072,30 +9097,30 @@ function rDashboard(el){
     ${tile('g','Blocks → Fruiting',blocksPlacedP, 'placed '+perLbl)}
     ${tile('b','On Hand',onHandTot.toFixed(1)+' lb', 'fresh, right now')}
     ${tile(wasteTot>0?'r':'','Waste',wasteTot+' blk', 'disposed '+perLbl)}
-    ${tile('','Avg Yield / Block',avgYpb.toFixed(2)+' lb', 'lifetime, all lots')}
+    ${tile('','Avg Yield / Block',avgYpb.toFixed(2)+' lb', 'lifetime · valid lots')}
     ${tile('m','Forecast · 7d',fc.toFixed(0)+' lb', 'projected harvest')}
   </div>`;
   // ── main table: by variety → lot ──
   const genColor=ypb=>ypb>=1.0?'var(--fern)':ypb>=0.8?'var(--moss)':ypb>=0.6?'var(--amber)':ypb>0?'var(--rust)':'var(--text3)';
   const rowsHTML=vList.map(x=>{
     const exp=_dashVarExp[x.v]; const vEsc=x.v.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    const ypb=x.blocksPlaced>0?x.harvAll/x.blocksPlaced:0;
+    const ypb=x.yBlocks>0?x.yHarv/x.yBlocks:0;
     let out=`<tr style="cursor:pointer;border-top:1px solid var(--border);background:rgba(0,0,0,.015);" onclick="toggleDashVar('${vEsc}')">
-      <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${exp?'▾':'▸'}</span> ${x.v} <span style="color:var(--text3);font-weight:400;font-size:11px;">${x.lots.length} lot${x.lots.length!==1?'s':''}</span></td>
+      <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${exp?'▾':'▸'}</span> ${x.v} <span style="color:var(--text3);font-weight:400;font-size:11px;">${x.lots.length} lot${x.lots.length!==1?'s':''}</span>${x.nSus?` <span class="bdg bp" style="font-size:9px;" title="${x.nSus} lot(s) with impossible lb/block excluded from yield — check data">⚠ ${x.nSus}</span>`:''}</td>
       <td class="mn">${x.blocksPlaced||'—'}</td>
       <td class="mn" style="font-weight:700;color:var(--fern);">${x.harvP>0?x.harvP.toFixed(1):'—'}</td>
       <td class="mn" style="font-weight:700;color:${genColor(ypb)};">${ypb>0?ypb.toFixed(2):'—'}</td>
       <td class="mn" style="font-weight:700;color:var(--gold);">${x.onHand>0?x.onHand.toFixed(1):'—'}</td>
       <td class="mn" style="color:${x.waste>0?'var(--rust)':'var(--text3)'};">${x.waste||'—'}</td></tr>`;
     if(exp){ out+=x.lots.slice().sort((a,b)=>b.harvP-a.harvP||b.harvAll-a.harvAll).map(l=>{
-      const bench=(typeof lotBench==='function')?lotBench(l.lot):{label:'',target:1.25}; const lypb=l.blocksPlaced>0?l.harvAll/l.blocksPlaced:0;
-      const col=(typeof yieldColor==='function'&&l.blocksPlaced>0)?yieldColor(lypb,bench):genColor(lypb);
+      const bench=(typeof lotBench==='function')?lotBench(l.lot):{label:'',target:1.25}; const lypb=l.lypb||0;
+      const col=l.suspect?'var(--rust)':((typeof yieldColor==='function'&&l.yBlocks>0)?yieldColor(lypb,bench):genColor(lypb));
       const lotEsc=(l.lot||'').replace(/'/g,"\\'");
-      return `<tr style="background:rgba(0,0,0,.02);font-size:12px;cursor:pointer;" onclick="onAnaLotSelect('${lotEsc}');document.getElementById('dash-lot-lookup')&&document.getElementById('dash-lot-lookup').scrollIntoView({behavior:'smooth',block:'center'});">
-        <td style="padding-left:26px;font-family:'Syne Mono',monospace;color:var(--text2);">${l.lot}${bench.label?` <span class="bdg ${bench.label==='Wild Spore'?'bp':'bc'}" style="font-size:9px;">${bench.label}</span>`:''}</td>
-        <td class="mn">${l.blocksPlaced||'—'}</td>
+      return `<tr style="background:${l.suspect?'rgba(184,76,32,.06)':'rgba(0,0,0,.02)'};font-size:12px;cursor:pointer;"${l.suspect?' title="Impossible lb/block — harvest recorded in a container this lot was never placed in, or more than the placed blocks can yield. Excluded from yield."':''} onclick="onAnaLotSelect('${lotEsc}');document.getElementById('dash-lot-lookup')&&document.getElementById('dash-lot-lookup').scrollIntoView({behavior:'smooth',block:'center'});">
+        <td style="padding-left:26px;font-family:'Syne Mono',monospace;color:var(--text2);">${l.lot}${bench.label?` <span class="bdg ${bench.label==='Wild Spore'?'bp':'bc'}" style="font-size:9px;">${bench.label}</span>`:''}${l.est?' <span class="bdg bcu" style="font-size:9px;" title="Blocks estimated from receiving count — no placement logged">EST</span>':''}${l.suspect?' <span class="bdg bp" style="font-size:9px;">⚠</span>':''}</td>
+        <td class="mn">${l.blocksPlaced||(l.est?l.estBlocks+'*':'—')}</td>
         <td class="mn" style="color:var(--fern);">${l.harvP>0?l.harvP.toFixed(1):'—'}</td>
-        <td class="mn" style="font-weight:700;color:${col};">${lypb>0?lypb.toFixed(2):'—'}</td>
+        <td class="mn" style="font-weight:700;color:${col};">${l.suspect?'⚠':(lypb>0?lypb.toFixed(2):'—')}</td>
         <td class="mn" style="color:var(--gold);">${l.onHand>0?l.onHand.toFixed(1):'—'}</td>
         <td class="mn" style="color:${l.waste>0?'var(--rust)':'var(--text3)'};">${l.waste||'—'}</td></tr>`;
     }).join(''); }
@@ -9123,7 +9148,7 @@ function rDashboard(el){
       <thead><tr><th>Variety / Lot</th><th>Blocks</th><th>Harvest (${_dashPeriod==='all'?'all':perLbl})</th><th>lb/block</th><th>On Hand</th><th>Waste</th></tr></thead>
       <tbody>${rowsHTML||'<tr><td colspan="6" class="empty">No production data in this period — try a wider period.</td></tr>'}</tbody>
     </table></div>
-    <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-bottom:24px;">lb/block color: <span style="color:var(--fern);">■</span> ≥1.0 &nbsp; <span style="color:var(--moss);">■</span> ≥0.8 &nbsp; <span style="color:var(--amber);">■</span> ≥0.6 &nbsp; <span style="color:var(--rust);">■</span> below · WS target 0.8 · internal 1.0–1.25 lb/block</div>
+    <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-bottom:24px;">lb/block color: <span style="color:var(--fern);">■</span> ≥1.0 &nbsp; <span style="color:var(--moss);">■</span> ≥0.8 &nbsp; <span style="color:var(--amber);">■</span> ≥0.6 &nbsp; <span style="color:var(--rust);">■</span> below · WS target 0.8 · internal 1.0–1.25 lb/block<br><span style="color:var(--gold);">EST</span> = blocks estimated from receiving (no placement logged) · <span style="color:var(--rust);">⚠</span> = harvest can't be matched to placed blocks (check data) — excluded from averages · yield counts harvest only from the container a lot was placed in</div>
 
     <div class="card" id="dash-lot-lookup" style="margin-top:8px;">
       <div class="card-t">🔎 Lot Breakdown</div>
