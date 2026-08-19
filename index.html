@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #86</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #87</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2258,9 +2258,16 @@ function daysBetween(a,b){ if(!a||!b) return null; const d1=new Date(a+'T12:00:0
 // Quoted targets: Wild Spore = 1.0 lb/block; internal blocks 1.25–1.5 across two flushes.
 function lotBench(lot){
   const L=(lot||'').trim();
-  const f=DB.fruitings.find(x=>x.lotNumber===lot);
-  const vendor=(f&&f.vendor)||'';
-  if(/^ws/i.test(L)||/wild\s*spore/i.test(vendor)) return {label:'Wild Spore',target:0.8};
+  const key=(typeof _lotKey==='function')?_lotKey(lot):L.toLowerCase();
+  const match=arr=>(arr||[]).find(x=>((typeof _lotKey==='function')?_lotKey(x.lotNumber):(x.lotNumber||'').toLowerCase())===key);
+  // Block ORIGIN is recorded on the RECEIVING (internal vs vendor); trust that over the sometimes-stale fruiting vendor copy.
+  const rec=match(DB.receivings)||match(DB.fruitings);
+  const src=(rec&&rec.source)||'';
+  const vendor=(rec&&rec.vendor)||'';
+  const internal = src==='internal' || /in[-\s]?house|carthage|hfp|^tm\b/i.test(vendor);
+  if(internal) return {label:'Internal',target:1.0,goal:1.25};
+  const isWS = /wild\s*spore/i.test(vendor) || src==='vendor' || src==='supplier' || /^ws/i.test(L);
+  if(isWS) return {label:'Wild Spore',target:0.8};
   return {label:'Internal',target:1.0,goal:1.25};
 }
 function yieldColor(ypb,bench){
@@ -2296,25 +2303,33 @@ function buildYieldAnalysis(){
     });
     // time-window filter: keep a lot only if it has placement/harvest activity inside the window
     if(win && anyDate && !anyInWin) return;
-    (bySpecies[D.variety]=bySpecies[D.variety]||[]).push({lot,variety:D.variety,bench,blocks,harv,ypb:blocks>0?harv/blocks:0,cons});
+    const ypb=blocks>0?harv/blocks:0;
+    // harvest recorded in containers this lot was NEVER placed in → can't be attributed (mislabeled / cross-container)
+    const orphanHarv=cons.reduce((s,c)=>s+((c.blocks===0&&c.harv>0)?c.harv:0),0);
+    const suspect = (blocks>0 && ypb>3) || (harv>1 && orphanHarv>0.5*harv);
+    (bySpecies[D.variety]=bySpecies[D.variety]||[]).push({lot,variety:D.variety,bench,blocks,harv,ypb,cons,orphanHarv,suspect});
   });
   const rows=Object.keys(bySpecies).sort().map(sp=>{
     const lots=bySpecies[sp].filter(l=>l.blocks>0); if(!lots.length) return '';
-    const tB=lots.reduce((s,l)=>s+l.blocks,0), tH=lots.reduce((s,l)=>s+l.harv,0), avg=tB>0?tH/tB:0;
+    const good=lots.filter(l=>!l.suspect); const nSus=lots.length-good.length;
+    // species average ignores suspect (data-error) lots so one bad join can't skew it
+    const tB=good.reduce((s,l)=>s+l.blocks,0), tH=good.reduce((s,l)=>s+l.harv,0), avg=tB>0?tH/tB:0;
+    const dispB=lots.reduce((s,l)=>s+l.blocks,0), dispH=lots.reduce((s,l)=>s+l.harv,0);
     const spExp=_yieldExpanded['sp:'+sp]; const spEsc=sp.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     let out=`<tr style="cursor:pointer;border-top:2px solid var(--border);background:rgba(0,0,0,.02);" onclick="toggleYield('sp:${spEsc}')">
-      <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${spExp?'▾':'▸'}</span> ${sp}</td>
-      <td class="mn">${tB}</td><td class="mn">${tH.toFixed(1)}</td><td class="mn" style="font-weight:700;">${avg.toFixed(2)}</td><td></td><td></td><td></td></tr>`;
+      <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${spExp?'▾':'▸'}</span> ${sp}${nSus?` <span class="bdg bp" style="font-size:9px;" title="${nSus} lot(s) with impossible lb/block excluded from this average — check data">⚠ ${nSus}</span>`:''}</td>
+      <td class="mn">${dispB}</td><td class="mn">${dispH.toFixed(1)}</td><td class="mn" style="font-weight:700;">${avg.toFixed(2)}</td><td></td><td></td><td></td></tr>`;
     if(spExp) lots.sort((a,b)=>b.ypb-a.ypb).forEach(l=>{
       const col=yieldColor(l.ypb,l.bench); const meets=l.ypb>=l.bench.target;
       const lotExp=_yieldExpanded['lot:'+l.lot]; const lotEsc=l.lot.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
       const bT=l.bench.goal?`${l.bench.target}–${l.bench.goal}`:l.bench.target.toFixed(2);
       const dMax=(()=>{const ds=l.cons.map(c=>c.days).filter(x=>x!=null);return ds.length?Math.max(...ds):null;})();
       const fl=l.cons.reduce((s,c)=>s+(c.flushes||0),0);
-      out+=`<tr style="cursor:pointer;" onclick="toggleYield('lot:${lotEsc}')">
-        <td style="padding-left:20px;font-family:'Syne Mono',monospace;font-size:12px;"><span style="color:var(--text3);">${lotExp?'▾':'▸'}</span> ${l.lot} <span class="bdg ${l.bench.label==='Wild Spore'?'bp':'bc'}" style="font-size:10px;">${l.bench.label}</span></td>
+      const susTitle=l.suspect?`Impossible lb/block — ${l.orphanHarv>0.5*l.harv?(l.orphanHarv.toFixed(1)+' lb harvested in container(s) this lot was never placed in (mislabeled / cross-container)'):'more harvested than the placed blocks can yield'}. Excluded from the species average.`:'';
+      out+=`<tr style="cursor:pointer;${l.suspect?'background:rgba(184,76,32,.06);':''}" onclick="toggleYield('lot:${lotEsc}')"${l.suspect?` title="${susTitle}"`:''}>
+        <td style="padding-left:20px;font-family:'Syne Mono',monospace;font-size:12px;"><span style="color:var(--text3);">${lotExp?'▾':'▸'}</span> ${l.lot} <span class="bdg ${l.bench.label==='Wild Spore'?'bp':'bc'}" style="font-size:10px;">${l.bench.label}</span>${l.suspect?' <span class="bdg bp" style="font-size:9px;">⚠ CHECK DATA</span>':''}</td>
         <td class="mn">${l.blocks}</td><td class="mn">${l.harv.toFixed(1)}</td>
-        <td class="mn" style="font-weight:700;color:${col};">${l.ypb.toFixed(2)} ${meets?'✓':'✗'}</td>
+        <td class="mn" style="font-weight:700;color:${l.suspect?'var(--rust)':col};">${l.ypb.toFixed(2)} ${l.suspect?'⚠':(meets?'✓':'✗')}</td>
         <td class="mn" style="font-size:10px;color:var(--text3);">vs ${bT}</td>
         <td class="mn" style="font-size:11px;">${fl} fl</td><td class="mn" style="font-size:11px;">${dMax!=null?dMax+'d':'—'}</td></tr>`;
       if(lotExp) l.cons.sort((a,b)=>b.ypb-a.ypb).forEach(c=>{
