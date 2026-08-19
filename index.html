@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #93</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #94</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -3180,14 +3180,15 @@ function openEditOrder(id){
     </div>
     <div class="fgl" style="margin-top:10px;"><label>Notes</label><textarea class="fta" id="eo-notes">${o.notes||''}</textarea></div>
     <div class="form-acts" style="margin-top:18px;">
-      <button class="btn b-m b-lg" onclick="saveOrderEdits('${id}')">Save Changes</button>
+      <button class="btn b-m b-lg" onclick="saveOrderEdits('${id}',true)">Save &amp; send UPDATED report</button>
+      <button class="btn b-g b-lg" onclick="saveOrderEdits('${id}',false)">Save only</button>
       <button class="btn b-g" onclick="closeModal()">Cancel</button>
     </div>
     <div class="toast" id="eo-t">✓ Order updated</div>`;
   document.getElementById('edit-modal').classList.add('open');
 }
 
-async function saveOrderEdits(id){
+async function saveOrderEdits(id, send){
   const o=DB.orders.find(x=>x.id===id); if(!o) return;
   const upd={};
   ALL_PRODS.forEach(p=>{ const v=Math.max(0,parseInt(document.getElementById('eo-'+p.dataKey)?.value)||0); o[p.dataKey]=v; upd[p.dataKey]=v; });
@@ -3202,6 +3203,7 @@ async function saveOrderEdits(id){
   try{ await FS.update('orders',id,upd); }catch(e){ console.error('saveOrderEdits:',e); alert('Save failed: '+(e.message||e)); return; }
   logAudit('order_edited',`Edited order for ${o.client} — ${oSum(o)}`);
   toast('eo-t','✓ Order updated');
+  if(send){ closeModal(); resendSlip(id, true); return; }
   setTimeout(()=>{ closeModal(); renderC(); },900);
 }
 
@@ -4620,7 +4622,8 @@ function rFruiting(el){
             <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);font-size:13px;">${g.container||'—'}</span>
             <span style="font-size:12px;color:var(--text2);">${g.rows.length} lot${g.rows.length!==1?'s':''} · ${totBlocks} blocks · <strong style="color:var(--fern);">${totProj.toFixed(1)} lb proj</strong></span>
             <span style="font-size:11px;color:var(--text3);flex:1;min-width:100px;">${varlist}</span>
-            ${canEdit()?`<button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send this whole session's report" onclick="event.preventDefault();event.stopPropagation();resendFruiting('${firstId}')">✉ resend session</button>`:''}
+            ${canEdit()?`<button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit this whole session — add/remove lots, fix fields, send UPDATED report" onclick="event.preventDefault();event.stopPropagation();openEditFruitSession('${firstId}')">✎ edit session</button>
+            <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send this whole session's report" onclick="event.preventDefault();event.stopPropagation();resendFruiting('${firstId}')">✉ resend session</button>`:''}
           </summary>
           <div class="tw" style="overflow-x:auto;">
             <table>
@@ -6723,12 +6726,82 @@ function _fruitingSiblings(f){
   return (DB.fruitings||[]).filter(x=>!x.sessionId && (x.date||'')===(f.date||'') && (x.containerID||'')===(f.containerID||''));
 }
 // re-send the WHOLE fruiting session's report (every lot placed that date/container), not a single lot
-function resendFruiting(id){ const f=DB.fruitings.find(x=>x.id===id); if(!f) return;
+function resendFruiting(id, updated){ const f=DB.fruitings.find(x=>x.id===id); if(!f) return;
   const sibs=_fruitingSiblings(f).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
   const facility=(getActiveContainers().find(c=>c.code===f.containerID)||{}).facility||'';
-  openEmailDispatch('fruiting', notifySubject('fruiting',{container:f.containerID,facility,date:f.date}),
-    {label:'Fruiting '+(f.containerID||'')+' · '+_mmddyy(f.date)+(sibs.length>1?` (${sibs.length} lots)`:''), resend:true,
+  let subj=notifySubject('fruiting',{container:f.containerID,facility,date:f.date}); if(updated) subj='UPDATED: '+subj;
+  openEmailDispatch('fruiting', subj,
+    {label:(updated?'UPDATED — ':'')+'Fruiting '+(f.containerID||'')+' · '+_mmddyy(f.date)+(sibs.length>1?` (${sibs.length} lots)`:''), resend:true,
     data:{prime:{container:f.containerID,date:f.date}, rows:sibs.map(x=>({lotNumber:x.lotNumber,variety:x.variety,blockCount:x.blockCount})), crew:[], imageUrl:f.scanUrl||''}}); }
+
+// ── EDIT A WHOLE FRUITING SESSION post-submission — fix fields, add/remove lots, then send an UPDATED report ──
+let _fruitSessEdit=null;
+function _fseRow(r){ r=r||{};
+  return `<div class="fse-row" data-id="${attrEsc(r.id||'')}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;margin-bottom:6px;">
+    <div class="fgl" style="flex:2 1 150px;min-width:120px;"><label style="font-size:11px;">Lot #</label><input class="fi fse-lot" value="${attrEsc(r.lotNumber||'')}" oninput="onFseLot(this)" autocomplete="off"></div>
+    <div class="fgl" style="flex:2 1 150px;min-width:120px;"><label style="font-size:11px;">Variety</label><input class="fi fse-var" list="fse-var-dl" value="${attrEsc(r.variety||'')}" autocomplete="off"></div>
+    <div class="fgl" style="flex:1 1 90px;min-width:78px;"><label style="font-size:11px;">Blocks</label><input class="fi fse-bc" type="number" min="0" value="${(r.blockCount!=null&&r.blockCount!=='')?r.blockCount:''}"></div>
+    <div class="fgl" style="flex:1 1 90px;min-width:78px;"><label style="font-size:11px;">Blk Wt</label><input class="fi fse-bw" type="number" min="0" step="0.1" value="${(r.blockWeightLb!=null&&r.blockWeightLb!=='')?r.blockWeightLb:''}"></div>
+    <button type="button" class="btn b-r b-sm" title="Remove lot" onclick="this.closest('.fse-row').remove()" style="flex:0 0 auto;">✕</button>
+  </div>`;
+}
+function fseAddLot(){ const w=document.getElementById('fse-lots'); if(w) w.insertAdjacentHTML('beforeend',_fseRow({})); }
+function onFseLot(inp){ const lot=(inp.value||'').trim(); if(!lot) return; const row=inp.closest('.fse-row'); const vEl=row&&row.querySelector('.fse-var'); if(!vEl||vEl.value.trim()) return; const v=(typeof lotToVariety==='function')?lotToVariety(lot):''; if(v){ vEl.value=v; if(typeof markAF==='function') markAF(vEl); } }
+function openEditFruitSession(id){
+  const f=DB.fruitings.find(x=>x.id===id); if(!f) return;
+  const sibs=_fruitingSiblings(f).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+  _fruitSessEdit={ ids:sibs.map(s=>s.id), sessionId:f.sessionId||'', scanUrl:f.scanUrl||'' };
+  const conOpts=getActiveContainers().map(c=>`<option value="${attrEsc(c.code)}">`).join('');
+  const mv=document.getElementById('main-views');
+  mv.innerHTML=`
+    <datalist id="fse-var-dl">${VARIETIES.map(v=>`<option value="${attrEsc(v)}">`).join('')}</datalist>
+    <datalist id="fse-con-dl">${conOpts}</datalist>
+    <div class="ph"><div class="ph-t">✎ Edit Fruiting Session</div><div class="ph-s">${attrEsc(f.containerID||'—')} · ${fDate(f.date)} — fix anything, add or remove lots, then save &amp; send an UPDATED report.</div></div>
+    <div class="card" style="max-width:900px;">
+      <div class="fg2">
+        <div class="fgl"><label>Date In</label><input class="fi" id="fse-date" type="date" value="${attrEsc(f.date)}"></div>
+        <div class="fgl"><label>Container</label><input class="fi" id="fse-con" list="fse-con-dl" value="${attrEsc(f.containerID||'')}" autocomplete="off"></div>
+        <div class="fgl"><label>Source</label><select class="fs" id="fse-source"><option value="supplier" ${f.source!=='internal'?'selected':''}>Outside Supplier</option><option value="internal" ${f.source==='internal'?'selected':''}>Internal</option></select></div>
+        <div class="fgl"><label>Supplier / Producer</label><input class="fi" id="fse-vendor" list="fse-vendl" value="${attrEsc(f.vendor||'')}" autocomplete="off"><datalist id="fse-vendl">${allSuppliers().map(s=>`<option value="${attrEsc(s)}">`).join('')}</datalist></div>
+      </div>
+      <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin:12px 0 6px;">LOTS PLACED — lot # · variety · blocks · block wt</div>
+      <div id="fse-lots">${(sibs.length?sibs:[{}]).map(_fseRow).join('')}</div>
+      <button type="button" class="btn b-g b-sm" onclick="fseAddLot()">+ Add lot</button>
+      <div class="form-acts" style="margin-top:16px;">
+        <button class="btn b-m b-lg" onclick="saveFruitSession(true)">Save &amp; send UPDATED report</button>
+        <button class="btn b-g b-lg" onclick="saveFruitSession(false)">Save only</button>
+        <button class="btn b-g" onclick="rFruiting(document.getElementById('main-views'))">Cancel</button>
+      </div>
+      <div class="toast" id="fse-t">✓ Saved</div>
+    </div>`;
+  try{ window.scrollTo(0,0); }catch(e){}
+}
+async function saveFruitSession(send){
+  const S0=_fruitSessEdit; if(!S0) return;
+  const date=document.getElementById('fse-date')?.value||tday();
+  const container=(document.getElementById('fse-con')?.value||'').trim();
+  const source=document.getElementById('fse-source')?.value||'supplier';
+  const vendor=(document.getElementById('fse-vendor')?.value||'').trim();
+  const rows=[...document.querySelectorAll('.fse-row')].map(r=>({ id:r.getAttribute('data-id')||'',
+    lotNumber:(r.querySelector('.fse-lot')?.value||'').trim(), variety:(r.querySelector('.fse-var')?.value||'').trim(),
+    blockCount:parseInt(r.querySelector('.fse-bc')?.value)||0, blockWeightLb:parseFloat(r.querySelector('.fse-bw')?.value)||0
+  })).filter(r=>r.lotNumber||r.variety||r.blockCount);
+  if(!rows.length){ alert('Add at least one lot, or cancel.'); return; }
+  if(!normalizeRowVarieties(rows)) return;
+  rows.forEach(r=>{ if(r.variety) addVariety(r.variety); });
+  const sessionId=S0.sessionId||('frs-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7));
+  const keptIds=new Set(); let firstId=null;
+  for(const r of rows){
+    const flds={date,containerID:container,source,vendor,lotNumber:r.lotNumber,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,sessionId};
+    if(r.id){ const f=DB.fruitings.find(x=>x.id===r.id); if(f){ Object.assign(f,flds); try{ await FS.update('fruitings',r.id,flds); }catch(e){ console.warn('fse upd',e); } keptIds.add(r.id); firstId=firstId||r.id; } }
+    else { const fData={...flds,rateLbPerBlock:LBSPERBLOCK,notes:'added on session edit',scanUrl:S0.scanUrl||'',status:'fruiting',createdAt:new Date().toISOString()}; const nid=await FS.add('fruitings',fData); DB.fruitings.push({id:nid,...fData}); keptIds.add(nid); firstId=firstId||nid; }
+  }
+  for(const id of S0.ids){ if(!keptIds.has(id)){ DB.fruitings=DB.fruitings.filter(x=>x.id!==id); try{ await FS.del('fruitings',id); }catch(e){ console.warn('fse del',e); } } }
+  logAudit('fruiting_edited',`Edited fruiting session ${container} ${_mmddyy(date)} — ${rows.length} lot(s)`);
+  _fruitSessEdit=null;
+  if(send && firstId){ resendFruiting(firstId, true); }
+  else { rFruiting(document.getElementById('main-views')); toast('fr-t','✓ Session updated'); }
+}
 
 // ── LAB: SPAWN log snap → parse → prefill the Grain Spawn form ──
 async function snapSpawn(input){
@@ -7047,7 +7120,7 @@ function rHarvest(el){
             <td class="mn">${h.weight?h.weight+' lb':'—'}</td>
             <td class="mn" style="font-weight:700;color:${col}">${onHand.toFixed(1)} lb</td>
             <td style="font-size:11px;color:var(--text3)">${h.notes||'—'}</td>
-            ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditHarvest('${h.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendHarvest('${h.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delHarvest('${h.id}')">✕</button>`:''}</td>`:''}
+            ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.16);color:var(--gold);border:1px solid var(--border-gold);" title="Edit the whole harvest session (this date + container) — add/remove lots, send UPDATED report" onclick="openEditHarvestSession('${h.id}')">✎ session</button> <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit just this lot" onclick="openEditHarvest('${h.id}')">✎ lot</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send this session's report" onclick="resendHarvestSession('${h.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delHarvest('${h.id}')">✕</button>`:''}</td>`:''}
           </tr>`}).join('')
       }</tbody>
     </table></div>
@@ -7343,6 +7416,77 @@ function delHarvest(id){
   FS.del('harvests',id);
   logAudit('harvest_deleted',`Deleted harvest Lot ${h.lotNumber||''} — ${h.variety||''} ${h.weight||0}lb`);
   rHarvest(document.getElementById('main-views'));
+}
+// ── EDIT A WHOLE HARVEST SESSION (one sheet = date + container) — fix rows, add/remove lots, send UPDATED report ──
+let _harvSessEdit=null;
+function _harvestSiblings(h){ return (DB.harvests||[]).filter(x=>(x.date||'')===(h.date||'') && (x.container||'')===(h.container||'')); }
+function resendHarvestSession(id, updated){ const h=DB.harvests.find(x=>x.id===id); if(!h) return;
+  const sibs=_harvestSiblings(h);
+  let subj=notifySubject('harvest',{facility:h.facility,container:h.container,date:h.date}); if(updated) subj='UPDATED: '+subj;
+  openEmailDispatch('harvest', subj, {label:(updated?'UPDATED — ':'')+'Harvest '+(h.container||'')+' · '+_mmddyy(h.date)+(sibs.length>1?` (${sibs.length} lots)`:''), resend:true,
+    data:{prime:{facility:h.facility,container:h.container,date:h.date}, rows:sibs.map(x=>({lotNumber:x.lotNumber,variety:x.variety,grade:x.grade,weight:x.weight})), crew:[], imageUrl:h.scanUrl||''}}); }
+function _hseRow(r){ r=r||{}; const grades=[['A','A'],['B','B'],['C','C']];
+  return `<div class="hse-row" data-id="${attrEsc(r.id||'')}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;margin-bottom:6px;">
+    <div class="fgl" style="flex:2 1 140px;min-width:110px;"><label style="font-size:11px;">Lot #</label><input class="fi hse-lot" value="${attrEsc(r.lotNumber||'')}" oninput="onHseLot(this)" autocomplete="off"></div>
+    <div class="fgl" style="flex:2 1 140px;min-width:110px;"><label style="font-size:11px;">Variety</label><input class="fi hse-var" list="hse-var-dl" value="${attrEsc(r.variety||'')}" autocomplete="off"></div>
+    <div class="fgl" style="flex:0 1 70px;min-width:60px;"><label style="font-size:11px;">Grade</label><select class="fs hse-grade">${grades.map(g=>`<option value="${g[0]}" ${((r.grade||'A')===g[0])?'selected':''}>${g[1]}</option>`).join('')}</select></div>
+    <div class="fgl" style="flex:1 1 90px;min-width:78px;"><label style="font-size:11px;">Weight lb</label><input class="fi hse-wt" type="number" min="0" step="0.1" value="${(r.weight!=null&&r.weight!=='')?r.weight:''}"></div>
+    <button type="button" class="btn b-r b-sm" title="Remove lot" onclick="this.closest('.hse-row').remove()" style="flex:0 0 auto;">✕</button>
+  </div>`;
+}
+function hseAddLot(){ const w=document.getElementById('hse-lots'); if(w) w.insertAdjacentHTML('beforeend',_hseRow({})); }
+function onHseLot(inp){ const lot=(inp.value||'').trim(); if(!lot) return; const row=inp.closest('.hse-row'); const vEl=row&&row.querySelector('.hse-var'); if(!vEl||vEl.value.trim()) return; const v=(typeof lotToVariety==='function')?lotToVariety(lot):''; if(v){ vEl.value=v; if(typeof markAF==='function') markAF(vEl); } }
+function openEditHarvestSession(id){
+  const h=DB.harvests.find(x=>x.id===id); if(!h) return;
+  const sibs=_harvestSiblings(h).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
+  _harvSessEdit={ ids:sibs.map(s=>s.id), scanUrl:h.scanUrl||'', facility:h.facility||'' };
+  const conOpts=getActiveContainers().map(c=>`<option value="${attrEsc(c.code)}">`).join('');
+  const mv=document.getElementById('main-views');
+  mv.innerHTML=`
+    <datalist id="hse-var-dl">${VARIETIES.map(v=>`<option value="${attrEsc(v)}">`).join('')}</datalist>
+    <datalist id="hse-con-dl">${conOpts}</datalist>
+    <div class="ph"><div class="ph-t">✎ Edit Harvest Session</div><div class="ph-s">${attrEsc(h.container||'—')} · ${fDate(h.date)} — fix rows, add or remove lots, then save &amp; send an UPDATED report.</div></div>
+    <div class="card" style="max-width:900px;">
+      <div class="fg2">
+        <div class="fgl"><label>Date</label><input class="fi" id="hse-date" type="date" value="${attrEsc(h.date)}"></div>
+        <div class="fgl"><label>Container</label><input class="fi" id="hse-con" list="hse-con-dl" value="${attrEsc(h.container||'')}" autocomplete="off"></div>
+        <div class="fgl"><label>Facility</label><input class="fi" id="hse-fac" value="${attrEsc(h.facility||'')}"></div>
+      </div>
+      <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin:12px 0 6px;">HARVESTED — lot # · variety · grade · weight</div>
+      <div id="hse-lots">${(sibs.length?sibs:[{}]).map(_hseRow).join('')}</div>
+      <button type="button" class="btn b-g b-sm" onclick="hseAddLot()">+ Add lot</button>
+      <div class="form-acts" style="margin-top:16px;">
+        <button class="btn b-m b-lg" onclick="saveHarvestSession(true)">Save &amp; send UPDATED report</button>
+        <button class="btn b-g b-lg" onclick="saveHarvestSession(false)">Save only</button>
+        <button class="btn b-g" onclick="rHarvest(document.getElementById('main-views'))">Cancel</button>
+      </div>
+      <div class="toast" id="hse-t">✓ Saved</div>
+    </div>`;
+  try{ window.scrollTo(0,0); }catch(e){}
+}
+async function saveHarvestSession(send){
+  const S0=_harvSessEdit; if(!S0) return;
+  const date=document.getElementById('hse-date')?.value||tday();
+  const container=(document.getElementById('hse-con')?.value||'').trim();
+  const facility=(document.getElementById('hse-fac')?.value||'').trim()||S0.facility;
+  const rows=[...document.querySelectorAll('.hse-row')].map(r=>({ id:r.getAttribute('data-id')||'',
+    lotNumber:(r.querySelector('.hse-lot')?.value||'').trim(), variety:(r.querySelector('.hse-var')?.value||'').trim(),
+    grade:r.querySelector('.hse-grade')?.value||'A', weight:parseFloat(r.querySelector('.hse-wt')?.value)||0
+  })).filter(r=>r.lotNumber||r.variety||r.weight);
+  if(!rows.length){ alert('Add at least one lot, or cancel.'); return; }
+  if(!normalizeRowVarieties(rows)) return;
+  rows.forEach(r=>{ if(r.variety) addVariety(r.variety); });
+  const keptIds=new Set(); let firstId=null;
+  for(const r of rows){
+    const flds={date,container,facility,lotNumber:r.lotNumber,variety:r.variety,grade:r.grade,weight:r.weight};
+    if(r.id){ const h=DB.harvests.find(x=>x.id===r.id); if(h){ const used=(h.usedWeight||0)+(h.sampleWeight||0)+(h.preservedWeight||0); if(r.weight<used){ if(!confirm(`Lot ${r.lotNumber} already has ${used.toFixed(1)} lb used/sampled/preserved — more than the new ${r.weight} lb. Save anyway?`)) return; } Object.assign(h,flds); try{ await FS.update('harvests',r.id,flds); }catch(e){ console.warn('hse upd',e); } keptIds.add(r.id); firstId=firstId||r.id; } }
+    else { const hData={...flds,usedWeight:0,sampleWeight:0,preservedWeight:0,scanUrl:S0.scanUrl||'',notes:'added on session edit',createdAt:new Date().toISOString()}; const nid=await FS.add('harvests',hData); DB.harvests.push({id:nid,...hData}); keptIds.add(nid); firstId=firstId||nid; }
+  }
+  for(const id of S0.ids){ if(!keptIds.has(id)){ DB.harvests=DB.harvests.filter(x=>x.id!==id); try{ await FS.del('harvests',id); }catch(e){ console.warn('hse del',e); } } }
+  logAudit('harvest_edited',`Edited harvest session ${container} ${_mmddyy(date)} — ${rows.length} lot(s)`);
+  _harvSessEdit=null;
+  if(send && firstId){ resendHarvestSession(firstId, true); }
+  else { rHarvest(document.getElementById('main-views')); toast('hb-t','✓ Session updated'); }
 }
 
 function onSbStageChange(){
