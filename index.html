@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #88</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #89</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -537,11 +537,11 @@ let _tSort = {};
 function tSort(tk,col){ if(_tSort[tk]&&_tSort[tk].col===col){_tSort[tk].dir=_tSort[tk].dir==='asc'?'desc':'asc';}else{_tSort[tk]={col,dir:'asc'};} renderC(); }
 function thS(tk,col,lbl,xtra){ const s=_tSort[tk]; const on=s&&s.col===col; const ic=on?(s.dir==='asc'?'&#9650;':'&#9660;'):'&#8693;'; return `<th style="cursor:pointer;user-select:none;white-space:nowrap;${xtra||''}" onclick="tSort('${tk}','${col}')">${lbl}&thinsp;<span style="font-size:10px;opacity:${on?0.9:0.3};color:${on?'var(--gold)':'inherit'}">${ic}</span></th>`; }
 function sByKey(tk,arr,acc){ const s=_tSort[tk]; if(!s||!acc[s.col]) return arr; const fn=acc[s.col]; return [...arr].sort((a,b)=>{ const av=fn(a),bv=fn(b); const cmp=typeof av==='string'?(av||'').localeCompare(bv||'',undefined,{numeric:true,sensitivity:'base'}):((av??-1e9)-(bv??-1e9)); return s.dir==='asc'?cmp:-cmp; }); }
-function setYieldPeriod(p){ _yieldPeriod=p; if(p!=='custom') renderC(); }
+function setYieldPeriod(p){ _yieldPeriod=p; if(p!=='custom') (typeof _reDash==='function'?_reDash:renderC)(); }
 function applyYieldCustom(){
   _yieldCustomFrom=document.getElementById('ya-from')?.value||'';
   _yieldCustomTo=document.getElementById('ya-to')?.value||'';
-  if(_yieldCustomFrom&&_yieldCustomTo) renderC();
+  if(_yieldCustomFrom&&_yieldCustomTo) (typeof _reDash==='function'?_reDash:renderC)();
 }
 function yieldDateRange(){
   const t=tday();
@@ -2321,14 +2321,15 @@ function buildYieldAnalysis(){
   });
   const rows=Object.keys(bySpecies).sort().map(sp=>{
     const lots=bySpecies[sp].filter(l=>l.blocks>0); if(!lots.length) return '';
-    const good=lots.filter(l=>!l.suspect); const nSus=lots.length-good.length;
-    // species average ignores suspect (data-error) lots so one bad join can't skew it
+    const nSus=lots.filter(l=>l.suspect).length;
+    // average = only lots that actually produced (harv>0), excluding suspect. Placed-but-not-yet-harvested lots don't drag it down.
+    const good=lots.filter(l=>!l.suspect && l.harv>0); const nPending=lots.filter(l=>!l.suspect && l.harv<=0).length;
     const tB=good.reduce((s,l)=>s+l.blocks,0), tH=good.reduce((s,l)=>s+l.harv,0), avg=tB>0?tH/tB:0;
     const dispB=lots.reduce((s,l)=>s+l.blocks,0), dispH=lots.reduce((s,l)=>s+(l.totalHarv!=null?l.totalHarv:l.harv),0);
     const spExp=_yieldExpanded['sp:'+sp]; const spEsc=sp.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     let out=`<tr style="cursor:pointer;border-top:2px solid var(--border);background:rgba(0,0,0,.02);" onclick="toggleYield('sp:${spEsc}')">
-      <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${spExp?'▾':'▸'}</span> ${sp}${nSus?` <span class="bdg bp" style="font-size:9px;" title="${nSus} lot(s) with impossible lb/block excluded from this average — check data">⚠ ${nSus}</span>`:''}</td>
-      <td class="mn">${dispB}</td><td class="mn">${dispH.toFixed(1)}</td><td class="mn" style="font-weight:700;">${avg.toFixed(2)}</td><td></td><td></td><td></td></tr>`;
+      <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${spExp?'▾':'▸'}</span> ${sp}${nSus?` <span class="bdg bp" style="font-size:9px;" title="${nSus} lot(s) with impossible lb/block excluded from this average — check data">⚠ ${nSus}</span>`:''}${nPending?` <span style="font-size:10px;color:var(--text3);font-weight:400;" title="${nPending} placed lot(s) not yet harvested — not counted in the average">·&nbsp;${nPending} pending</span>`:''}</td>
+      <td class="mn">${dispB}</td><td class="mn">${dispH.toFixed(1)}</td><td class="mn" style="font-weight:700;">${avg>0?avg.toFixed(2):'—'}</td><td></td><td></td><td></td></tr>`;
     if(spExp) lots.sort((a,b)=>b.ypb-a.ypb).forEach(l=>{
       const col=yieldColor(l.ypb,l.bench); const meets=l.ypb>=l.bench.target;
       const lotExp=_yieldExpanded['lot:'+l.lot]; const lotEsc=l.lot.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
@@ -9072,9 +9073,10 @@ function rDashboard(el){
   Object.values(lots).forEach(li=>{ if(li.harvAll<=0.01 && li.onHand<=0.01 && li.blocksPlaced<=0) return; const v=li.variety||'—'; (byVar[v]=byVar[v]||[]).push(li); });
   const vList=Object.keys(byVar).map(v=>{
     const ls=byVar[v]; const sum=k=>ls.reduce((s,l)=>s+(l[k]||0),0);
-    const good=ls.filter(l=>!l.suspect); // yield basis excludes impossible/mislabeled lots
+    // yield basis = lots that actually produced (harv>0), excluding impossible/mislabeled — placed-but-unharvested don't drag it
+    const good=ls.filter(l=>!l.suspect && l.yHarv>0);
     const yB=good.reduce((s,l)=>s+(l.yBlocks||0),0), yH=good.reduce((s,l)=>s+(l.yHarv||0),0);
-    return {v, lots:ls, blocksPlaced:sum('blocksPlaced'), harvP:sum('harvP'), harvPrev:sum('harvPrev'), harvAll:sum('harvAll'), onHand:sum('onHand'), waste:sum('waste'), yBlocks:yB, yHarv:yH, nSus:ls.length-good.length};
+    return {v, lots:ls, blocksPlaced:sum('blocksPlaced'), harvP:sum('harvP'), harvPrev:sum('harvPrev'), harvAll:sum('harvAll'), onHand:sum('onHand'), waste:sum('waste'), yBlocks:yB, yHarv:yH, nSus:ls.filter(l=>l.suspect).length};
   }).sort((a,b)=>b.harvP-a.harvP || b.harvAll-a.harvAll || a.v.localeCompare(b.v));
   // ── period KPI tiles ──
   const harvP=vList.reduce((s,x)=>s+x.harvP,0), harvPrev=vList.reduce((s,x)=>s+x.harvPrev,0);
@@ -9339,13 +9341,9 @@ function buildYieldAverages(){
     if(!f.containerID) return;
     const c = f.containerID;
     if(!containerMeta[c]) containerMeta[c] = {blocks:0, isWS:false, facility:f.facility||'—', variety:f.variety||''};
-    containerMeta[c].blocks += (f.blockCount||0);
-    // WS detection: lot prefix OR vendor
-    const lot = (f.lotNumber||'').toUpperCase();
-    const vendor = (f.vendor||f.source||'').toUpperCase();
-    if(lot.startsWith('WS-') || vendor.includes('WILD SPORE') || vendor.includes(' WS ') || vendor === 'WS') {
-      containerMeta[c].isWS = true;
-    }
+    containerMeta[c].blocks += (parseInt(f.blockCount)||0);
+    // WS detection via the shared classifier (trusts the receiving source)
+    if(typeof lotBench==='function' && lotBench(f.lotNumber).label==='Wild Spore') containerMeta[c].isWS = true;
     if(f.variety && !containerMeta[c].variety) containerMeta[c].variety = f.variety;
   });
 
@@ -9377,15 +9375,16 @@ function buildYieldAverages(){
   const hmPerBlock     = hmBlocks>0     ? hmLbs/hmBlocks         : 0;
 
   // ── Color helpers ──
-  // WS benchmark: 1.0–1.5 lb/block; TM (house-made): 1.0–2.0 lb/block
+  // WS benchmark: 0.8 lb/block; TM (house-made): 1.0–1.25 lb/block
   function blockColor(val, isWS){
     if(val <= 0) return 'var(--text3)';
-    if(val >= 1.0) return 'var(--fern)';
-    if(val >= 0.7) return 'var(--amber)';
+    const t = isWS ? 0.8 : 1.0;
+    if(val >= t) return 'var(--fern)';
+    if(val >= t*0.8) return 'var(--amber)';
     return 'var(--rust)';
   }
   function blockBar(val, isWS){
-    const target = isWS ? 1.5 : 2.0;
+    const target = isWS ? 0.8 : 1.25;
     const pct = Math.min(Math.round(val/target*100), 100);
     const col = blockColor(val, isWS);
     return `<div style="display:flex;align-items:center;gap:6px;">
@@ -9397,8 +9396,8 @@ function buildYieldAverages(){
   }
   function benchBadge(isWS){
     return isWS
-      ? `<span style="font-size:11px;background:rgba(234,179,8,0.15);color:var(--amber);border:1px solid var(--amber);border-radius:3px;padding:1px 5px;font-family:'Syne Mono',monospace;">WS · 1.0–1.5</span>`
-      : `<span style="font-size:11px;background:rgba(96,153,96,0.12);color:var(--fern);border:1px solid var(--fern);border-radius:3px;padding:1px 5px;font-family:'Syne Mono',monospace;">TM · 1.0–2.0</span>`;
+      ? `<span style="font-size:11px;background:rgba(234,179,8,0.15);color:var(--amber);border:1px solid var(--amber);border-radius:3px;padding:1px 5px;font-family:'Syne Mono',monospace;">WS · 0.8</span>`
+      : `<span style="font-size:11px;background:rgba(96,153,96,0.12);color:var(--fern);border:1px solid var(--fern);border-radius:3px;padding:1px 5px;font-family:'Syne Mono',monospace;">TM · 1.0–1.25</span>`;
   }
   function masterBadge(val, isWS){
     const col = blockColor(val, isWS);
@@ -9474,10 +9473,8 @@ function buildYieldAverages(){
     if(!f.lotNumber) return;
     const lot = f.lotNumber;
     if(!byLot[lot]) byLot[lot] = {lbs:0, harvestCount:0, blocks:0, isWS:false, variety:f.variety||'', containers:new Set()};
-    byLot[lot].blocks += (f.blockCount||0);
-    const lotUp = lot.toUpperCase();
-    const vendor = (f.vendor||f.source||'').toUpperCase();
-    if(lotUp.startsWith('WS-') || vendor.includes('WILD SPORE') || vendor === 'WS') byLot[lot].isWS = true;
+    byLot[lot].blocks += (parseInt(f.blockCount)||0);
+    if(typeof lotBench==='function' && lotBench(lot).label==='Wild Spore') byLot[lot].isWS = true;
     byLot[lot].containers.add(f.containerID);
     if(f.variety && !byLot[lot].variety) byLot[lot].variety = f.variety;
   });
@@ -9559,30 +9556,30 @@ function buildYieldAverages(){
         <div class="sc g">
           <div class="sc-l">Overall lb / Block</div>
           ${masterBadge(masterPerBlock, false)}
-          <div class="sc-n">${masterBlocks} total blocks · target ≥ 1.0</div>
+          <div class="sc-n">${masterBlocks} total blocks · internal target ≥ 1.0</div>
         </div>
         <div class="sc" style="${wsBlocks===0?'opacity:.45':''}">
           <div class="sc-l">Wild Spore lb / Block</div>
           ${masterBadge(wsPerBlock, true)}
-          <div class="sc-n">${wsBlocks} WS blocks · bench 1.0–1.5</div>
+          <div class="sc-n">${wsBlocks} WS blocks · bench 0.8</div>
         </div>
         <div class="sc m" style="${hmBlocks===0?'opacity:.45':''}">
           <div class="sc-l">TM lb / Block</div>
           ${masterBadge(hmPerBlock, false)}
-          <div class="sc-n">${hmBlocks} TM blocks · bench 1.0–2.0</div>
+          <div class="sc-n">${hmBlocks} TM blocks · bench 1.0–1.25</div>
         </div>
       </div>
 
       <!-- Legend -->
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--fern);"></span> ≥ 1.0 lb/blk (on target)
+          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--fern);"></span> meets bench (on target)
         </div>
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--amber);"></span> 0.70–0.99 (watch)
+          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--amber);"></span> within 80% of bench (watch)
         </div>
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--rust);"></span> &lt; 0.70 (underperforming)
+          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--rust);"></span> below (underperforming)
         </div>
         <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
           ${benchBadge(true)} Wild Spore source
