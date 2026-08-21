@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #94</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #95</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -3069,7 +3069,7 @@ function renderPoManualLots(){
 }
 // create a reconstructed record so a used-but-removed lot is traceable; existing fruiting/receiving/block for the same lot link automatically by lot #
 async function backfillLotTrace(lot, variety, container){
-  const norm=x=>(x||'').trim().toLowerCase(); const L=norm(lot); if(!L) return null;
+  const norm=x=>_lotKey(x); const L=norm(lot); if(!L) return null;
   const hasHarvest=(DB.harvests||[]).some(h=>norm(h.lotNumber)===L);
   const hasFruit=(DB.fruitings||[]).some(f=>norm(f.lotNumber)===L);
   if(hasHarvest&&hasFruit) return null; // fully traceable already
@@ -4053,7 +4053,7 @@ function onRecSourceChange(){ const src=document.getElementById('rc-source')?.va
 let _recvQueue=[];
 function _readRecvRow(){
   return { variety:(document.getElementById('rc-variety')?.value||'').trim(),
-    lotNumber:(document.getElementById('rc-lot')?.value||'').trim(),
+    lotNumber:canonLot(document.getElementById('rc-lot')?.value||''),
     blockCount:parseInt(document.getElementById('rc-bc')?.value)||0,
     blockWeightLb:parseFloat(document.getElementById('rc-bw')?.value)||0 };
 }
@@ -4696,7 +4696,7 @@ function rFruiting(el){
 let _fruitingQueue = [];
 function _readFruitingRow(){
   const containerID=(document.getElementById('fr-cid')?.value||'').trim();
-  const lotNumber=(document.getElementById('fr-lot')?.value||'').trim();
+  const lotNumber=canonLot(document.getElementById('fr-lot')?.value||'');
   const variety=(document.getElementById('fr-variety')?.value||'').trim();
   const source=document.getElementById('fr-source')?.value||'supplier';
   const info=detectLot(lotNumber);
@@ -4989,7 +4989,12 @@ async function toggleContainer(code, active){
 // #5 — lot ↔ variety memory: find the variety previously recorded for a lot number,
 // checking harvests, then fruitings, then receivings (most recent first).
 // normalize a lot # for comparison — real lots are written inconsistently (spaces, case): "10223 A" == "10223A"
-function _lotKey(s){ return (s==null?'':String(s)).trim().toLowerCase().replace(/\s+/g,''); }
+// ONE canonical lot key used everywhere lots are matched (trace, yield, reconcile, dedup).
+// Lowercase + strip ALL non-alphanumeric so "10202", "10202/", "10202 +", "WS-2222-060426" and "ws 2222 060426" all match.
+function _lotKey(s){ return (s==null?'':String(s)).toLowerCase().replace(/[^a-z0-9]/g,''); }
+// Clean a lot number for DISPLAY/storage on entry: trim, drop a leading #, collapse inner spaces.
+// We deliberately KEEP +, /, -, . etc. — they carry meaning on some (older) lots. Matching still unifies them via _lotKey.
+function canonLot(s){ return (s==null?'':String(s)).trim().replace(/^#+\s*/,'').replace(/\s+/g,' ').trim(); }
 function lotToVariety(lot){
   const L=_lotKey(lot); if(!L) return '';
   const cvz=v=>(typeof canonicalVariety==='function'?canonicalVariety(v):v);
@@ -6783,7 +6788,7 @@ async function saveFruitSession(send){
   const source=document.getElementById('fse-source')?.value||'supplier';
   const vendor=(document.getElementById('fse-vendor')?.value||'').trim();
   const rows=[...document.querySelectorAll('.fse-row')].map(r=>({ id:r.getAttribute('data-id')||'',
-    lotNumber:(r.querySelector('.fse-lot')?.value||'').trim(), variety:(r.querySelector('.fse-var')?.value||'').trim(),
+    lotNumber:canonLot(r.querySelector('.fse-lot')?.value||''), variety:(r.querySelector('.fse-var')?.value||'').trim(),
     blockCount:parseInt(r.querySelector('.fse-bc')?.value)||0, blockWeightLb:parseFloat(r.querySelector('.fse-bw')?.value)||0
   })).filter(r=>r.lotNumber||r.variety||r.blockCount);
   if(!rows.length){ alert('Add at least one lot, or cancel.'); return; }
@@ -7271,7 +7276,7 @@ function _readHarvestRow(){
     date: document.getElementById('hl-dt')?.value||'',
     container: containerRaw==='__other__'?'Other':containerRaw,
     facility: document.getElementById('hl-fac')?.value||'',
-    lotNumber: (document.getElementById('hl-lot')?.value||'').trim(),
+    lotNumber: canonLot(document.getElementById('hl-lot')?.value||''),
     variety: document.getElementById('hl-v')?.value||'',
     grade: document.getElementById('hl-g')?.value||'',
     weight: parseFloat(document.getElementById('hl-w')?.value)||0,
@@ -7470,7 +7475,7 @@ async function saveHarvestSession(send){
   const container=(document.getElementById('hse-con')?.value||'').trim();
   const facility=(document.getElementById('hse-fac')?.value||'').trim()||S0.facility;
   const rows=[...document.querySelectorAll('.hse-row')].map(r=>({ id:r.getAttribute('data-id')||'',
-    lotNumber:(r.querySelector('.hse-lot')?.value||'').trim(), variety:(r.querySelector('.hse-var')?.value||'').trim(),
+    lotNumber:canonLot(r.querySelector('.hse-lot')?.value||''), variety:(r.querySelector('.hse-var')?.value||'').trim(),
     grade:r.querySelector('.hse-grade')?.value||'A', weight:parseFloat(r.querySelector('.hse-wt')?.value)||0
   })).filter(r=>r.lotNumber||r.variety||r.weight);
   if(!rows.length){ alert('Add at least one lot, or cancel.'); return; }
@@ -7778,7 +7783,7 @@ function updateRecVariance(inp){
 // ═════════════ COOLER COUNT: snap tote stickers / hand-enter → same-lot totes sum → SET on-hand (physical count) ═════════════
 let _coolerCount=[];
 async function applyLotCount(lotNumber, variety, counted, when){
-  const norm=x=>(x||'').trim().toLowerCase();
+  const norm=x=>_lotKey(x);
   const recs=(DB.harvests||[]).filter(h=>norm(h.lotNumber)===norm(lotNumber)).map(h=>({h,oh:packOnHand(h)})).filter(x=>x.oh>0.001).sort((a,b)=>b.oh-a.oh);
   const current=Math.round(recs.reduce((s,x)=>s+x.oh,0)*100)/100;
   let delta=Math.round((counted-current)*100)/100;
@@ -7849,7 +7854,7 @@ async function applyCoolerCount(){
   const byLot={}; _coolerCount.forEach(t=>{ const k=(t.lot||'').trim(); if(!k) return; (byLot[k]=byLot[k]||{variety:t.variety,sum:0}); byLot[k].sum+=parseFloat(t.weight)||0; if(t.variety&&!byLot[k].variety) byLot[k].variety=t.variety; });
   const lots=Object.keys(byLot); if(!lots.length){ alert('Every tote needs a lot #.'); return; }
   // the cooler count is ALWAYS the whole cooler → zero out every OTHER on-hand lot
-  const norm=x=>(x||'').trim().toLowerCase();
+  const norm=x=>_lotKey(x);
   const counted=new Set(lots.map(norm));
   const zeroMap={};
   (DB.harvests||[]).forEach(h=>{ const oh=packOnHand(h); if(oh<=0.05) return; const k=(h.lotNumber||'').trim(); if(!k||counted.has(norm(k))) return; (zeroMap[k]=zeroMap[k]||{variety:h.variety,oh:0}); zeroMap[k].oh+=oh; });
@@ -10503,7 +10508,7 @@ function _traceOnHand(h){ return Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.s
 //  Harvests are linked to the batch by lot + container (NOT by sharing the receiving
 //  date, since harvest happens days later). Orders link by lot number.
 function _traceData(q, date, container){
-  const norm=s=>(s||'').toString().trim().toLowerCase();
+  const norm=s=>_lotKey(s);
   const nq=norm(q), nc=norm(container);
   const eqLot=a=>norm(a)===nq;
   const eqCon=a=> !nc || norm(a)===nc;
