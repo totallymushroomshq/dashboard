@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #95</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #96</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4995,6 +4995,10 @@ function _lotKey(s){ return (s==null?'':String(s)).toLowerCase().replace(/[^a-z0
 // Clean a lot number for DISPLAY/storage on entry: trim, drop a leading #, collapse inner spaces.
 // We deliberately KEEP +, /, -, . etc. — they carry meaning on some (older) lots. Matching still unifies them via _lotKey.
 function canonLot(s){ return (s==null?'':String(s)).trim().replace(/^#+\s*/,'').replace(/\s+/g,' ').trim(); }
+// Master-cook number for internal numeric lots (leading 4–6 digits): 10207, 10207A, "10207 G3" all share family "10207".
+// Returns null for Wild Spore / vendor lots (their codes repeat, so they must match EXACTLY — never by family).
+function _lotStem(s){ const k=_lotKey(s); if(!k||/^(ws|us)/.test(k)) return null; const m=k.match(/^(\d{4,6})/); return m?m[1]:null; }
+function _sameLotFamily(a,b){ const ka=_lotKey(a),kb=_lotKey(b); if(ka&&ka===kb) return true; const sa=_lotStem(a),sb=_lotStem(b); return !!(sa&&sb&&sa===sb); }
 function lotToVariety(lot){
   const L=_lotKey(lot); if(!L) return '';
   const cvz=v=>(typeof canonicalVariety==='function'?canonicalVariety(v):v);
@@ -10510,7 +10514,8 @@ function _traceOnHand(h){ return Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.s
 function _traceData(q, date, container){
   const norm=s=>_lotKey(s);
   const nq=norm(q), nc=norm(container);
-  const eqLot=a=>norm(a)===nq;
+  // match the exact lot OR any sub-lot of the same master cook (10207 ↔ 10207A ↔ "10207 G3"); WS/vendor lots stay exact
+  const eqLot=a=>norm(a)===nq || _sameLotFamily(a,q);
   const eqCon=a=> !nc || norm(a)===nc;
   // Received blocks: anchored by lot, narrowed by receiving date + container if given
   const fruitByNum = DB.fruitings.filter(f=> eqLot(f.lotNumber) && (!date || f.date===date) && eqCon(f.containerID));
