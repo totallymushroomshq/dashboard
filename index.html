@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #96</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #97</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -567,6 +567,7 @@ const ALL_INTERNAL_TABS = [
   {id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},
   {id:'cleaning',l:'🧽 Clean · Flip · Waste'},
   {id:'trace',l:'🔍 Trace'},
+  {id:'trace-doctor',l:'🩺 Trace Doctor',c:'at'},
   {id:'lab',l:'🧫 Lab'},
   {id:'cordyceps',l:'🐛 Cordyceps'},
   {id:'analytics',l:'📊 Dashboard'},
@@ -575,8 +576,8 @@ const ALL_INTERNAL_TABS = [
   {id:'qb',l:'📒 QB',c:'at'}
 ];
 const DEFAULT_PERMS = {
-  admin: {today:true,week:true,'new-order':true,'email-parse':true,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
-  staff: {today:true,week:true,'new-order':true,'email-parse':false,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
+  admin: {today:true,week:true,'new-order':true,'email-parse':true,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,'trace-doctor':true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
+  staff: {today:true,week:true,'new-order':true,'email-parse':false,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,'trace-doctor':true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
   accountant: {today:true,week:true,'new-order':false,'email-parse':false,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:false,waste:true,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
 };
 const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',packing:'Pack Orders',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',cleaning:'🧽 Clean · Flip · Waste',lab:'Lab — Carthage',analytics:'📊 Dashboard',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
@@ -1986,7 +1987,7 @@ function buildNav(){
 
   const GROUPS=[
     {label:'Daily',       ids:['analytics','today','new-order','email-parse']},
-    {label:'Operations',  ids:['packing','receiving','harvest','fruiting','inventory','preservation','cleaning','trace']},
+    {label:'Operations',  ids:['packing','receiving','harvest','fruiting','inventory','preservation','cleaning','trace','trace-doctor']},
     {label:'Production',  ids:['lab','cordyceps']},
     {label:'Business',    ids:['orders-all','reports','qb'], cls:'drw-acct'},
     {label:'System',      ids:['admin','security'], cls:'drw-sys'},
@@ -2024,7 +2025,7 @@ function sw(id){
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTrace,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTrace,'trace-doctor':rTraceDoctor,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -10824,6 +10825,202 @@ function showTraceReport(q){
     </div>
     <div style="margin-top:14px;text-align:right;"><button class="btn b-g" onclick="closeModal()">Close</button></div>`;
   document.getElementById('edit-modal').classList.add('open');
+}
+
+// ═════════════ TRACE DOCTOR — find broken (origin-less) lots and heal them by back-entering the missing record ═════════════
+let _tdHeal=null;   // {lotKey, lot, variety, first, recs:[{col,id}], suspect, suggest}
+let _tdMode='recv'; // recv | cook | fix
+let _tdSlipUrl=''; let _tdInvUrl='';
+const _TD_CODES={'1776':'Chestnut','2222':'Snow Oyster','4004':'Blue Oyster','4204':'Black Pearl','6969':'Italian Oyster'};
+const _TD_VAR2CODE={'chestnut':'1776','snowoyster':'2222','blueoyster':'YOOY','goldoyster':'YOOY','blackpearl':'4204','italianoyster':'6969','shiitake':'$56$'};
+function _tdCanon(v){ return (typeof canonicalVariety==='function')?canonicalVariety(v):v; }
+function _tdUpstreamIndex(){
+  const keys=new Set(), stems=new Set();
+  const add=l=>{ if(!l) return; keys.add(_lotKey(l)); const s=_lotStem(l); if(s) stems.add(s); };
+  (DB.receivings||[]).forEach(r=>add(r.lotNumber));
+  (DB.labBatches||[]).forEach(b=>{ (typeof batchVarietyLines==='function'?batchVarietyLines(b):(b.varieties||[])).forEach(v=>add(v.lot||((b.lotCode||'')+(v.suffix?' '+v.suffix:'')))); });
+  (DB.spawnRuns||[]).forEach(s=>(Array.isArray(s.strains)?s.strains:[]).forEach(x=>add(x.lot)));
+  return {keys,stems};
+}
+function _tdWSsuspect(lot){
+  const k=_lotKey(lot); const reasons=[];
+  if(/^w5/.test(k)) reasons.push('“W5” = misread “WS”');
+  for(const c in _TD_CODES){ if(k.indexOf(c)>=0){ reasons.push('has WS code '+c+' ('+_TD_CODES[c]+')'); break; } }
+  if(/^0[1-9]\d{4}$/.test(k)) reasons.push('date-only — WS prefix dropped');
+  return reasons;
+}
+function _tdWSsuggest(lot,variety){
+  const k=_lotKey(lot); const dm=(String(lot).match(/\d{6}/g)||[]); const date=dm.length?dm[dm.length-1]:'';
+  const m=k.match(/(1776|2222|4004|4204|6969|y[o0]{2}y)/); let code=m?m[1].toUpperCase():'';
+  if(!code){ code=_TD_VAR2CODE[_lotKey((variety||'').split(',')[0])]||''; }
+  return code?('WS'+code+(date?' '+date:'')).trim():'';
+}
+function _tdBrokenLots(){
+  const {keys,stems}=_tdUpstreamIndex();
+  const linked=l=>{ const k=_lotKey(l); if(keys.has(k)) return true; const s=_lotStem(l); return !!(s&&stems.has(s)); };
+  const info={};
+  const add=(rec,col)=>{ const l=(rec.lotNumber||'').trim(); if(!l||linked(l)) return; const k=_lotKey(l);
+    const d=info[k]||(info[k]={lotKey:k,lot:l,variety:new Set(),first:'',nharv:0,nfruit:0,blocks:0,lb:0,recs:[]});
+    if(rec.variety) d.variety.add(_tdCanon(rec.variety));
+    const dt=(rec.date||'').slice(0,10); if(dt&&(!d.first||dt<d.first)) d.first=dt;
+    d.recs.push({col,id:rec.id});
+    if(col==='harvests'){ d.nharv++; d.lb+=(rec.weight||0); } else { d.nfruit++; d.blocks+=parseInt(rec.blockCount)||0; } };
+  (DB.harvests||[]).forEach(h=>add(h,'harvests'));
+  (DB.fruitings||[]).forEach(f=>add(f,'fruitings'));
+  return Object.values(info).map(d=>{ const variety=[...d.variety].join(', '); const susR=_tdWSsuspect(d.lot); const isWSname=/^(ws|us)/.test(d.lotKey);
+    return {...d,variety,suspect:susR.length>0,suspectWhy:susR.join('; '),ws:isWSname,suggest:(susR.length?_tdWSsuggest(d.lot,variety):'')}; })
+    .sort((a,b)=>(a.first||'').localeCompare(b.first||''));
+}
+function tdHeal(lotKey){ const b=_tdBrokenLots().find(x=>x.lotKey===lotKey); if(!b) return; _tdHeal=b; _tdSlipUrl=''; _tdInvUrl='';
+  _tdMode = (b.ws||b.suspect) ? 'recv' : 'cook'; renderC(); }
+function tdBack(){ _tdHeal=null; _tdSlipUrl=''; _tdInvUrl=''; renderC(); }
+function tdSetMode(m){ _tdMode=m; const el=document.getElementById('main-views'); rTraceDoctor(el); }
+async function tdUpload(which, input){ const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('td-'+which+'-status'); if(st){ st.textContent='⏳ uploading…'; st.style.color='var(--text3)'; }
+  try{ const url=await storePhoto(file, 'trace-'+which); if(which==='slip') _tdSlipUrl=url; else _tdInvUrl=url;
+    if(st){ st.innerHTML='✓ attached — <a href="'+url+'" target="_blank" rel="noopener">view</a>'; st.style.color='var(--fern)'; } }
+  catch(e){ if(st){ st.textContent='⚠ '+(e.message||e); st.style.color='var(--rust)'; } }
+  finally{ input.value=''; }
+}
+async function tdSaveReceiving(){
+  const H=_tdHeal; if(!H) return;
+  const val=id=>(document.getElementById(id)?.value||'').trim();
+  const lot=canonLot(val('td-lot')); const variety=val('td-variety'); const bc=parseInt(val('td-bc'))||0;
+  if(!lot){ alert('Lot # is required.'); return; }
+  if(!variety){ alert('Variety is required.'); return; }
+  const source=document.getElementById('td-source')?.value||'vendor';
+  const vendor=val('td-vendor')||(source==='internal'?'In-house Production':'');
+  const date=val('td-date')||H.first||tday();
+  const rData={ date, facility:'Hydes Ferry', source, vendor, soNum:val('td-so'), poNum:val('td-po'), invoiceNum:val('td-inv'),
+    receiptStatus:val('td-so')?'closed':'open', variety:_tdCanon(variety), lotNumber:lot, blockCount:bc, blockWeightLb:parseFloat(val('td-bw'))||0,
+    placedCount:0, receivedBy:S.name||S.role, cost:null, notes:'Back-entered via Trace Doctor'+(val('td-notes')?(' · '+val('td-notes')):''),
+    temperature:'', scanUrl:_tdSlipUrl||'', invoiceUrl:_tdInvUrl||'', tempLogUrl:'', status:'on-hand', createdAt:new Date().toISOString(), backfilled:true };
+  if(variety) addVariety(_tdCanon(variety)); if(source!=='internal'&&vendor) addSupplier(vendor);
+  try{ const id=await FS.add('receivings',rData); DB.receivings.push({id,...rData}); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  logAudit('trace_healed',`Back-entered receiving for lot ${lot} — ${vendor||source} (${bc} blocks)${rData.invoiceNum?' · Inv '+rData.invoiceNum:''}`);
+  // if the broken lot # differs from what was typed (misread), also rename the harvest/fruiting records so they link
+  if(_lotKey(lot)!==H.lotKey){ for(const r of H.recs){ const arr=DB[r.col]; const rec=arr&&arr.find(x=>x.id===r.id); if(rec){ rec.lotNumber=lot; try{ await FS.update(r.col,r.id,{lotNumber:lot}); }catch(e){} } } }
+  _tdHeal=null; _tdSlipUrl=''; _tdInvUrl=''; renderC();
+}
+async function tdSaveCook(){
+  const H=_tdHeal; if(!H) return;
+  const val=id=>(document.getElementById(id)?.value||'').trim();
+  const lotCode=canonLot(val('td-cooklot')); const date=val('td-cookdate')||H.first||tday();
+  if(!lotCode){ alert('Cook lot code is required.'); return; }
+  const rows=[...document.querySelectorAll('.tdc-row')].map(r=>({ suffix:(r.querySelector('.tdc-suffix')?.value||'').trim(),
+    variety:_tdCanon((r.querySelector('.tdc-var')?.value||'').trim()), blockCount:parseInt(r.querySelector('.tdc-bc')?.value)||0 })).filter(x=>x.variety||x.blockCount);
+  if(!rows.length){ alert('Add at least one sub-lot (variety + blocks).'); return; }
+  const varieties=rows.map(r=>{ const suffix=r.suffix; if(r.variety) addVariety(r.variety);
+    return {suffix, lot:lotCode+(suffix?' '+suffix:''), variety:r.variety, blockCount:r.blockCount, generation:'', spawnLot:'', spawnSources:[], rack:'', colDays:0, notes:''}; });
+  const totalBlocks=varieties.reduce((s,v)=>s+v.blockCount,0);
+  const batchNum=(typeof nextLabBatchNum==='function')?nextLabBatchNum():('LAB-'+date);
+  const data={ batchNum, productionDate:date, date, lotCode, substrateBatch:'', order:val('td-cookorder'), substrateOrigin:'', varieties,
+    strain:varieties.map(v=>v.variety).filter(Boolean).join(', '), blockCount:totalBlocks, blocksProduced:totalBlocks,
+    scanUrl:_tdSlipUrl||'', notes:'Back-entered via Trace Doctor', createdBy:S.name||S.role, timestamp:new Date().toISOString(), backfilled:true };
+  try{ const id=await FS.add('labBatches',data); DB.labBatches.push({id,...data}); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  logAudit('trace_healed',`Back-entered block cook ${lotCode} — ${totalBlocks} blocks · ${varieties.length} sub-lot(s)`);
+  _tdHeal=null; _tdSlipUrl=''; _tdInvUrl=''; renderC();
+}
+async function tdFixLot(){
+  const H=_tdHeal; if(!H) return;
+  const to=canonLot((document.getElementById('td-newlot')?.value||'').trim());
+  if(!to){ alert('Enter the corrected lot #.'); return; }
+  if(_lotKey(to)===H.lotKey && to===H.lot){ alert('That’s the same lot #.'); return; }
+  if(!confirm(`Rename lot “${H.lot}” → “${to}” on all ${H.recs.length} record(s)?`)) return;
+  for(const r of H.recs){ const arr=DB[r.col]; const rec=arr&&arr.find(x=>x.id===r.id); if(rec){ rec.lotNumber=to; try{ await FS.update(r.col,r.id,{lotNumber:to}); }catch(e){ console.warn(e); } } }
+  logAudit('trace_healed',`Fixed misread lot “${H.lot}” → “${to}” on ${H.recs.length} record(s)`);
+  _tdHeal=null; renderC();
+}
+function _tdcRow(r){ r=r||{}; return `<div class="tdc-row" style="display:flex;flex-wrap:wrap;gap:6px;align-items:flex-end;margin-bottom:6px;">
+    <div class="fgl" style="flex:0 1 90px;min-width:70px;"><label style="font-size:11px;">Suffix</label><input class="fi tdc-suffix" value="${attrEsc(r.suffix||'')}" placeholder="A" maxlength="3" style="text-transform:uppercase;"></div>
+    <div class="fgl" style="flex:2 1 150px;min-width:120px;"><label style="font-size:11px;">Variety</label><input class="fi tdc-var" list="td-var-dl" value="${attrEsc(r.variety||'')}" autocomplete="off"></div>
+    <div class="fgl" style="flex:1 1 90px;min-width:78px;"><label style="font-size:11px;">Blocks</label><input class="fi tdc-bc" type="number" min="0" value="${(r.blockCount!=null&&r.blockCount!=='')?r.blockCount:''}"></div>
+    <button type="button" class="btn b-r b-sm" onclick="this.closest('.tdc-row').remove()" style="flex:0 0 auto;">✕</button></div>`; }
+function tdcAddRow(){ const w=document.getElementById('td-cook-rows'); if(w) w.insertAdjacentHTML('beforeend',_tdcRow({})); }
+function rTraceDoctor(el){
+  const broken=_tdBrokenLots();
+  const susCount=broken.filter(b=>b.suspect&&!b.ws).length;
+  const wsCount=broken.filter(b=>b.ws).length;
+  const inCount=broken.filter(b=>!b.ws).length;
+  const totLb=broken.reduce((s,b)=>s+b.lb,0);
+  // ── HEAL PANEL ──
+  if(_tdHeal){
+    const H=_tdHeal;
+    const seg=(m,label)=>`<button class="btn ${_tdMode===m?'b-m':'b-g'} b-sm" onclick="tdSetMode('${m}')" style="margin:0 4px 4px 0;">${label}</button>`;
+    const vendors=[...new Set(['Wild Spore','TM Carthage','In-house Production',...(typeof allSuppliers==='function'?allSuppliers():[])])];
+    const upl=(which,label)=>`<label class="btn b-g b-sm" style="cursor:pointer;">📎 ${label}<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="tdUpload('${which}',this)"></label> <span id="td-${which}-status" style="font-size:11px;color:var(--text3);margin-left:4px;"></span>`;
+    let form='';
+    if(_tdMode==='recv'){
+      const isWS=H.ws||H.suspect; const prefillLot=(H.suspect&&H.suggest)?H.suggest:H.lot;
+      form=`<div class="fg2">
+        <div class="fgl"><label>Lot #</label><input class="fi" id="td-lot" value="${attrEsc(prefillLot)}">${H.suspect?`<div style="font-size:11px;color:var(--plum,#7a4a86);margin-top:3px;">⚠ looks like a misread WS lot (${attrEsc(H.suspectWhy)}) — corrected above; renames the ${H.recs.length} record(s) on save</div>`:''}</div>
+        <div class="fgl"><label>Source</label><select class="fs" id="td-source" onchange="const v=document.getElementById('td-vendor'); if(this.value==='vendor'&&!v.value)v.value='Wild Spore'; if(this.value==='internal'&&!v.value)v.value='TM Carthage';"><option value="vendor" ${isWS?'selected':''}>Vendor (Wild Spore)</option><option value="internal" ${!isWS?'selected':''}>Internal (Carthage / in-house)</option></select></div>
+        <div class="fgl"><label>Vendor / From</label><input class="fi" id="td-vendor" list="td-vend-dl" value="${attrEsc(isWS?'Wild Spore':'')}" autocomplete="off"><datalist id="td-vend-dl">${vendors.map(v=>`<option value="${attrEsc(v)}">`).join('')}</datalist></div>
+        <div class="fgl"><label>Received date</label><input class="fi" id="td-date" type="date" value="${attrEsc(H.first||tday())}"></div>
+        <div class="fgl"><label>Variety</label><input class="fi" id="td-variety" list="td-var-dl" value="${attrEsc(H.variety.split(',')[0]||'')}" autocomplete="off"></div>
+        <div class="fgl"><label>Block count</label><input class="fi" id="td-bc" type="number" min="0" value="${H.blocks||''}" placeholder="# blocks"></div>
+        <div class="fgl"><label>PO #</label><input class="fi" id="td-po" placeholder="our PO to vendor"></div>
+        <div class="fgl"><label>SO # <span style="color:var(--text3);font-size:11px;">Katherine's, if any</span></label><input class="fi" id="td-so" placeholder="optional"></div>
+        <div class="fgl"><label>Invoice # <span style="color:var(--text3);font-size:11px;">comma-separate if split</span></label><input class="fi" id="td-inv" placeholder="e.g. 1507, 1512"></div>
+        <div class="fgl"><label>Block wt (lb) <span style="color:var(--text3);font-size:11px;">optional</span></label><input class="fi" id="td-bw" type="number" min="0" step="0.1"></div>
+      </div>
+      <div class="fgl" style="margin-top:8px;"><label>Notes</label><input class="fi" id="td-notes" placeholder="anything off the slip"></div>
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">${upl('slip','Packing slip')} ${upl('inv','Invoice')}</div>
+      <div class="form-acts" style="margin-top:16px;"><button class="btn b-m b-lg" onclick="tdSaveReceiving()">Save receiving &amp; heal</button><button class="btn b-g" onclick="tdBack()">Cancel</button></div>`;
+    } else if(_tdMode==='cook'){
+      const base=(H.lot.match(/^(\d{4,6})/)||[])[1]||H.lot; const sfx=(H.lot.match(/^\d{4,6}\s*([a-zA-Z]{1,3})/)||[])[1]||'';
+      form=`<div class="fg2">
+        <div class="fgl"><label>Cook lot code <span style="color:var(--text3);font-size:11px;">master # (no suffix)</span></label><input class="fi" id="td-cooklot" value="${attrEsc(base)}"></div>
+        <div class="fgl"><label>Production date</label><input class="fi" id="td-cookdate" type="date" value="${attrEsc(H.first||tday())}"></div>
+        <div class="fgl"><label>Order # <span style="color:var(--text3);font-size:11px;">optional</span></label><input class="fi" id="td-cookorder" placeholder="optional"></div>
+      </div>
+      <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin:12px 0 6px;">SUB-LOTS — suffix · variety · blocks</div>
+      <div id="td-cook-rows">${_tdcRow({suffix:sfx,variety:H.variety.split(',')[0]||'',blockCount:H.blocks||''})}</div>
+      <button type="button" class="btn b-g b-sm" onclick="tdcAddRow()">+ sub-lot</button>
+      <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">${upl('slip','Cook sheet')}</div>
+      <div class="form-acts" style="margin-top:16px;"><button class="btn b-m b-lg" onclick="tdSaveCook()">Save cook &amp; heal</button><button class="btn b-g" onclick="tdBack()">Cancel</button></div>`;
+    } else {
+      form=`<div class="fg2">
+        <div class="fgl"><label>Current lot #</label><input class="fi" value="${attrEsc(H.lot)}" disabled style="opacity:.7;"></div>
+        <div class="fgl"><label>Corrected lot #</label><input class="fi" id="td-newlot" value="${attrEsc(H.suggest||H.lot)}"></div>
+      </div>
+      <div style="font-size:12px;color:var(--text3);margin-top:8px;">Renames the lot on <b>${H.recs.length}</b> record(s) (${H.nfruit} fruiting · ${H.nharv} harvest). Use this when the number was mistyped — e.g. <code>2222</code> → <code>WS2222</code>. If a receiving/cook still needs entering, switch to that tab instead.</div>
+      <div class="form-acts" style="margin-top:16px;"><button class="btn b-m b-lg" onclick="tdFixLot()">Rename lot on all records</button><button class="btn b-g" onclick="tdBack()">Cancel</button></div>`;
+    }
+    el.innerHTML=`<div class="ph"><div class="ph-t">🩺 Heal lot <span style="font-family:'Syne Mono',monospace;color:var(--gold);">${attrEsc(H.lot)}</span></div><div class="ph-s">${attrEsc(H.variety||'—')} · first seen ${H.first?fDate(H.first):'—'} · ${H.nfruit} fruiting / ${H.blocks} blk · ${H.nharv} harvest / ${H.lb.toFixed(0)} lb</div></div>
+      <div style="margin-bottom:12px;"><button class="btn b-g b-sm" onclick="tdBack()">← back to broken list</button></div>
+      <datalist id="td-var-dl">${VARIETIES.map(v=>`<option value="${attrEsc(v)}">`).join('')}</datalist>
+      <div class="card" style="max-width:920px;">
+        <div style="margin-bottom:12px;"><span style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);">HOW TO HEAL:</span> ${seg('recv','📥 Received delivery')} ${seg('cook','🧪 In-house cook')} ${seg('fix','✏️ Just fix the lot #')}</div>
+        ${form}
+      </div>`;
+    try{ window.scrollTo(0,0); }catch(e){}
+    return;
+  }
+  // ── BROKEN-LOTS LIST ──
+  const rowHTML=b=>`<tr${b.suspect&&!b.ws?' style="background:rgba(122,74,134,.06);"':''}>
+    <td style="font-family:'Syne Mono',monospace;font-weight:700;color:${b.ws?'var(--plum,#7a4a86)':'var(--gold)'};">${attrEsc(b.lot)}${b.suspect&&!b.ws?` <span class="bdg biv" style="font-size:9px;">⚠ likely WS → ${attrEsc(b.suggest)}</span>`:''}</td>
+    <td>${attrEsc(b.variety)||'<span style="color:var(--text3);">—</span>'}</td>
+    <td class="mn" style="font-size:11px;color:var(--text3);">${b.first?fDate(b.first):'—'}</td>
+    <td class="mn">${b.nfruit?b.blocks+' blk':'<span style="color:var(--text3);">—</span>'}</td>
+    <td class="mn">${b.nharv?b.lb.toFixed(0)+' lb':'<span style="color:var(--text3);">—</span>'}</td>
+    <td><button class="btn b-m b-sm" onclick="tdHeal('${b.lotKey}')">🩺 Heal</button></td></tr>`;
+  const wsRows=broken.filter(b=>b.ws).map(rowHTML).join('');
+  const inRows=broken.filter(b=>!b.ws).map(rowHTML).join('');
+  el.innerHTML=`
+    <div class="ph"><div class="ph-t">🩺 Trace Doctor</div><div class="ph-s">Lots that were fruited or harvested but have no origin record. Recover the packing slip or cook sheet, then heal each one — matching reconnects the chain automatically.</div></div>
+    <div class="stats">
+      <div class="sc"><div class="sc-l">Broken Lots</div><div class="sc-v">${broken.length}</div><div class="sc-n">no origin record</div></div>
+      <div class="sc"><div class="sc-l">Wild Spore</div><div class="sc-v" style="color:var(--plum,#7a4a86);">${wsCount}</div><div class="sc-n">need a receiving</div></div>
+      <div class="sc"><div class="sc-l">In-house</div><div class="sc-v" style="color:var(--gold);">${inCount}</div><div class="sc-n">${susCount} likely WS misread</div></div>
+      <div class="sc r"><div class="sc-l">Harvest at stake</div><div class="sc-v" style="font-size:26px;">${totLb.toFixed(0)}<span style="font-size:14px"> lb</span></div><div class="sc-n">can't trace to origin</div></div>
+    </div>
+    ${broken.length===0?`<div class="card" style="text-align:center;padding:40px;color:var(--fern);"><div style="font-size:40px;">✓</div><div style="font-weight:700;margin-top:8px;">Every lot traces to an origin. Nothing to heal.</div></div>`:`
+    ${wsRows?`<div class="sh" style="margin-top:8px;"><span>Wild Spore — need a receiving</span><span class="bdg biv">${wsCount}</span></div>
+    <div class="tw" style="margin-bottom:22px;overflow-x:auto;"><table><thead><tr><th>Lot #</th><th>Variety</th><th>First seen</th><th>Placed</th><th>Harvested</th><th>Heal</th></tr></thead><tbody>${wsRows}</tbody></table></div>`:''}
+    ${inRows?`<div class="sh"><span>In-house — need a block cook</span><span class="bdg bad">${inCount}</span> <span style="font-size:11px;color:var(--plum,#7a4a86);margin-left:6px;">purple rows are likely misread Wild Spore</span></div>
+    <div class="tw" style="overflow-x:auto;"><table><thead><tr><th>Lot #</th><th>Variety</th><th>First seen</th><th>Placed</th><th>Harvested</th><th>Heal</th></tr></thead><tbody>${inRows}</tbody></table></div>`:''}`}
+  `;
 }
 
 function rTrace(el){
