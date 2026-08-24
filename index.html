@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #98</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #99</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4048,6 +4048,22 @@ function updateFruitingPreview(){
 // ── RECEIVING (blocks into Hydes Ferry — internal production or vendors) ──
 function receivingOnHand(r){ return Math.max(0,(r.blockCount||0)-(r.placedCount||0)); }
 function onHandReceivings(){ return DB.receivings.filter(r=>receivingOnHand(r)>0).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')); }
+// HARD-DRAW a placement from on-hand receivings for this lot: match by the unified lot key, FIFO (oldest receipt first),
+// spreading across multiple receipts when a lot repeats (Wild Spore). Prefers an explicitly-linked receiving first.
+// Never blocks the placement — draws whatever's available; a shortfall just means the receiving count was low.
+async function drawDownReceivings(lotNumber, blockCount, preferId){
+  let remaining=parseInt(blockCount)||0; if(remaining<=0) return {drawn:0,ids:[],shortfall:0};
+  const k=_lotKey(lotNumber); if(!k) return {drawn:0,ids:[],shortfall:remaining};
+  let cands=(DB.receivings||[]).filter(r=>_lotKey(r.lotNumber)===k && receivingOnHand(r)>0)
+    .sort((a,b)=>(a.date||'').localeCompare(b.date||'')||(a.createdAt||'').localeCompare(b.createdAt||''));
+  if(preferId){ const p=cands.find(r=>r.id===preferId); if(p) cands=[p,...cands.filter(r=>r.id!==preferId)]; }
+  let drawn=0; const ids=[];
+  for(const rec of cands){ if(remaining<=0) break; const take=Math.min(receivingOnHand(rec),remaining); if(take<=0) continue;
+    rec.placedCount=(rec.placedCount||0)+take; remaining-=take; drawn+=take; ids.push(rec.id);
+    const upd={placedCount:rec.placedCount}; if(receivingOnHand(rec)<=0 && rec.status==='on-hand'){ rec.status='placed'; upd.status='placed'; }
+    try{ await FS.update('receivings',rec.id,upd); }catch(e){ console.warn('drawDownReceivings',e); } }
+  return {drawn,ids,shortfall:remaining};
+}
 function onRecSourceChange(){ const src=document.getElementById('rc-source')?.value; const vEl=document.getElementById('rc-vendor'); if(vEl && !vEl.value && src==='internal') vEl.value='In-house Production'; }
 
 // ── multi-lot receiving: stage several lots in one delivery, one email ──
@@ -4788,7 +4804,7 @@ function updateFruitingRow(i, field, value){
 function updateFruitingRowLot(i, value){
   const r=_fruitingQueue[i]; if(!r) return;
   r.lotNumber=(value||'').trim();
-  const match=onHandReceivings().find(x=>(x.lotNumber||'').trim().toLowerCase()===r.lotNumber.toLowerCase());
+  const match=onHandReceivings().find(x=>_lotKey(x.lotNumber)===_lotKey(r.lotNumber));
   const info=(typeof detectLot==='function')?detectLot(r.lotNumber):null;
   if(match){
     if(match.variety) r.variety=match.variety;
@@ -4808,7 +4824,7 @@ function renderFruitingQueue(){
   const c=document.getElementById('fr-queue');
   if(c) c.innerHTML = _fruitingQueue.length ? `<div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin:14px 0 8px;">＋ ${_fruitingQueue.length} MORE LOT(S) FROM THE SCAN — VERIFY EACH BELOW</div>`+
     _fruitingQueue.map((r,i)=>{
-      const m=onHandReceivings().find(x=>(x.lotNumber||'').trim().toLowerCase()===(r.lotNumber||'').trim().toLowerCase());
+      const m=onHandReceivings().find(x=>_lotKey(x.lotNumber)===_lotKey(r.lotNumber));
       const hint = m
         ? `<div style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--fern);margin-top:4px;letter-spacing:1px;">✓ ${m.variety} · ${receivingOnHand(m)} BLOCKS ON HAND · DRAWS DOWN ON PLACEMENT</div>`
         : `<div style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);margin-top:4px;letter-spacing:1px;">${r.lotNumber?'⚠ NOT IN INVENTORY — WILL PROMPT ON SUBMIT':'TYPE TO MATCH BLOCKS ON HAND'}</div>`;
@@ -4875,16 +4891,14 @@ async function _doFruitingCommit(rows, crew){
   const _frSession='frs-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); // one session id for this whole submit
   let n=0; const _frCreatedIds=[];
   for(const r of rows){
-    let rec=null;
-    if(r.receivingId){ rec=DB.receivings.find(x=>x.id===r.receivingId); if(rec && r.blockCount>receivingOnHand(rec)){ alert(`Skipped lot ${r.lotNumber}: only ${receivingOnHand(rec)} block(s) remain in its received batch.`); continue; } }
     if(r.variety) addVariety(r.variety);
     if(r.source==='supplier' && r.vendor) addSupplier(r.vendor); // remember the supplier
-    const fData={date:r.date,containerID:r.containerID,lotNumber:r.lotNumber,source:r.source,vendor:r.vendor,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,rateLbPerBlock:r.rateLbPerBlock,notes:r.notes,scanUrl:snapUrl,sessionId:_frSession,status:'fruiting',createdAt:new Date().toISOString()};
+    // HARD-DRAW from on-hand inventory for this lot (matches by unified key, spreads across repeated receipts)
+    const dd=await drawDownReceivings(r.lotNumber, r.blockCount, r.receivingId);
+    const fData={date:r.date,containerID:r.containerID,lotNumber:r.lotNumber,source:r.source,vendor:r.vendor,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,rateLbPerBlock:r.rateLbPerBlock,notes:r.notes,scanUrl:snapUrl,sessionId:_frSession,status:'fruiting',createdAt:new Date().toISOString(),receivingId:r.receivingId||(dd.ids[0]||'')};
     if(r.lotNotInInventory){ fData.lotNotInInventory=true; fData.lotExplanation=r.lotExplanation||''; }
-    if(r.receivingId) fData.receivingId=r.receivingId;
     const fId=await FS.add('fruitings',fData);
     DB.fruitings.push({id:fId,...fData}); _frCreatedIds.push(fId);
-    if(rec){ rec.placedCount=(rec.placedCount||0)+r.blockCount; const upd={placedCount:rec.placedCount}; if(receivingOnHand(rec)<=0){ rec.status='placed'; upd.status='placed'; } try{ await FS.update('receivings',rec.id,upd); }catch(e){ console.warn('receiving placedCount update:',e); } }
     // Unusable blocks → waste stream (same blockDisposals stream as harvest)
     if(r.unusable>0){
       const dData={date:r.date,stage:'pre-fruiting',container:r.containerID,cookLot:'',labBatchId:'',variety:r.variety,source:r.source,supplier:r.vendor,blockCount:r.unusable,reason:'unusable',notes:`Unusable at fruiting — lot ${r.lotNumber}${r.notes?(' · '+r.notes):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
@@ -5958,11 +5972,13 @@ async function commitFruitBatch(btn){
     try{ normalizeRowVarieties(rows); }catch(e){}
     const sess='frs-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
     for(const r of rows){ if(r.variety) addVariety(r.variety);
-      const rec=(DB.receivings||[]).find(x=>(x.lotNumber||'').trim().toLowerCase()===(r.lotNumber||'').trim().toLowerCase() && receivingOnHand(x)>0.001);
+      const rec=(DB.receivings||[]).find(x=>_lotKey(x.lotNumber)===_lotKey(r.lotNumber) && receivingOnHand(x)>0.001)
+        || (DB.receivings||[]).find(x=>_lotKey(x.lotNumber)===_lotKey(r.lotNumber));
       const fData={date:r.date,containerID:con,lotNumber:r.lotNumber,source:rec?rec.source:'',vendor:rec?rec.vendor:'',variety:r.variety,blockCount:r.blockCount,blockWeightLb:rec?rec.blockWeightLb:0,rateLbPerBlock:LBSPERBLOCK,notes:'batch scan',scanUrl:s.pageUrl||'',sessionId:sess,status:'fruiting',createdAt:new Date().toISOString()};
-      if(rec) fData.receivingId=rec.id;
       const fId=await FS.add('fruitings',fData); DB.fruitings.push({id:fId,...fData});
-      if(rec){ rec.placedCount=(rec.placedCount||0)+r.blockCount; const upd={placedCount:rec.placedCount}; if(receivingOnHand(rec)<=0){ rec.status='placed'; upd.status='placed'; } try{ await FS.update('receivings',rec.id,upd); }catch(e){} }
+      // HARD-DRAW from on-hand inventory for this lot (unified key, FIFO across repeated receipts)
+      const dd=await drawDownReceivings(r.lotNumber, r.blockCount, rec&&rec.id);
+      if(dd.ids.length){ fData.receivingId=dd.ids[0]; try{ await FS.update('fruitings',fId,{receivingId:dd.ids[0]}); }catch(e){} }
     }
     const crew=(Array.isArray(s.crew)?s.crew:[]).map(c=>({emp:(c.name||'').trim(),min:parseInt(c.minutes)||0})).filter(c=>c.emp&&c.min>0);
     for(const c of crew){ try{ await logManualTime(con,'Fruiting',c.min,iso,'Fruiting session (batch)',c.emp); }catch(e){ console.warn(e); } }
@@ -6848,7 +6864,7 @@ async function saveFruitSession(send){
   for(const r of rows){
     const flds={date,containerID:container,source,vendor,lotNumber:r.lotNumber,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,sessionId};
     if(r.id){ const f=DB.fruitings.find(x=>x.id===r.id); if(f){ Object.assign(f,flds); try{ await FS.update('fruitings',r.id,flds); }catch(e){ console.warn('fse upd',e); } keptIds.add(r.id); firstId=firstId||r.id; } }
-    else { const fData={...flds,rateLbPerBlock:LBSPERBLOCK,notes:'added on session edit',scanUrl:S0.scanUrl||'',status:'fruiting',createdAt:new Date().toISOString()}; const nid=await FS.add('fruitings',fData); DB.fruitings.push({id:nid,...fData}); keptIds.add(nid); firstId=firstId||nid; }
+    else { const fData={...flds,rateLbPerBlock:LBSPERBLOCK,notes:'added on session edit',scanUrl:S0.scanUrl||'',status:'fruiting',createdAt:new Date().toISOString()}; const nid=await FS.add('fruitings',fData); DB.fruitings.push({id:nid,...fData}); keptIds.add(nid); firstId=firstId||nid; try{ await drawDownReceivings(fData.lotNumber, fData.blockCount); }catch(e){} }
   }
   for(const id of S0.ids){ if(!keptIds.has(id)){ DB.fruitings=DB.fruitings.filter(x=>x.id!==id); try{ await FS.del('fruitings',id); }catch(e){ console.warn('fse del',e); } } }
   logAudit('fruiting_edited',`Edited fruiting session ${container} ${_mmddyy(date)} — ${rows.length} lot(s)`);
