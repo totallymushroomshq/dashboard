@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #97</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #98</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4167,6 +4167,49 @@ function buildOpenReceipts(){
       <thead><tr><th>Date Received</th><th>Open Status</th><th>Vendor / Source</th><th>Pieces</th><th>View / Edit Report</th></tr></thead>
       <tbody>${rows}</tbody></table></div>`;
 }
+// ── BLOCK RECONCILE — true up "in cooler, not placed" counts to a physical block count, per source × variety ──
+let _blkRecSource='ws';
+function _recvIsWS(r){ const k=_lotKey(r.lotNumber); return /^(ws|us)/.test(k) || /wild\s*spore/i.test(r.vendor||''); }
+function _recvCanon(v){ return (typeof canonicalVariety==='function')?canonicalVariety(v):(v||'—'); }
+function blockOnHandByVariety(source){ const isWS=source==='ws'; const out={};
+  (DB.receivings||[]).forEach(r=>{ if(_recvIsWS(r)!==isWS) return; const v=_recvCanon(r.variety); out[v]=(out[v]||0)+receivingOnHand(r); });
+  return out; }
+async function applyBlockReconcile(source, variety, counted){
+  const isWS=source==='ws'; const vk=v=>_lotKey(_recvCanon(v));
+  const recs=(DB.receivings||[]).filter(r=>_recvIsWS(r)===isWS && vk(r.variety)===vk(variety)).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
+  if(!recs.length) return {n:0};
+  let remaining=Math.max(0,parseInt(counted)||0); const now=new Date().toISOString(); let changed=0;
+  for(const r of recs){ const bc=parseInt(r.blockCount)||0; const onh=Math.min(bc,remaining); remaining-=onh; const placed=bc-onh;
+    if(placed!==(r.placedCount||0)){ r.placedCount=placed; r.reconciledAt=now; r.reconcileNote='Block count '+tday(); if(receivingOnHand(r)<=0&&r.status==='on-hand') {} changed++; try{ await FS.update('receivings',r.id,{placedCount:placed,reconciledAt:now,reconcileNote:r.reconcileNote}); }catch(e){ console.warn('blk rec',e); } } }
+  return {n:changed,leftover:remaining}; }
+async function reconcileAllBlocks(source){
+  const rows=[...document.querySelectorAll('.blkrec-row')].map(r=>({variety:r.getAttribute('data-var'),counted:r.querySelector('.blkrec-in')?.value})).filter(x=>x.counted!==''&&x.counted!=null);
+  if(!rows.length){ alert('Enter at least one physical count.'); return; }
+  const src=source||_blkRecSource;
+  if(!confirm(`Reconcile ${rows.length} variet${rows.length!==1?'ies':'y'} of ${src==='ws'?'Wild Spore':'in-house'} blocks to the counts entered? Sets "in cooler, not placed" to your physical numbers.`)) return;
+  let tot=0; for(const row of rows){ const res=await applyBlockReconcile(src,row.variety,row.counted); tot+=res.n; }
+  logAudit('block_reconcile',`Block count reconcile (${src==='ws'?'Wild Spore':'in-house'}) — ${rows.length} variet${rows.length!==1?'ies':'y'} trued up`);
+  toast('rc-t',`✓ Reconciled ${rows.length} variet${rows.length!==1?'ies':'y'}`); renderC();
+}
+function setBlkRecSource(s){ _blkRecSource=s; rReceiving(document.getElementById('main-views')); }
+function rBlockReconcileSection(){
+  if(!canEdit()) return '';
+  const src=_blkRecSource; const oh=blockOnHandByVariety(src);
+  const vs=Object.keys(oh).filter(v=>oh[v]>0||true).sort((a,b)=>(oh[b]||0)-(oh[a]||0)).filter(v=>v&&v!=='—');
+  const rows=vs.map(v=>`<tr class="blkrec-row" data-var="${attrEsc(v)}">
+    <td style="font-weight:500;">${attrEsc(v)}</td>
+    <td class="mn" style="color:var(--fern);font-weight:700;">${oh[v]||0}</td>
+    <td><input class="fi blkrec-in" type="number" min="0" placeholder="count" style="max-width:110px;" value=""></td>
+  </tr>`).join('')||`<tr><td colspan="3" class="empty">No ${src==='ws'?'Wild Spore':'in-house'} blocks on record.</td></tr>`;
+  const seg=(s,l)=>`<button class="btn ${src===s?'b-m':'b-g'} b-sm" onclick="setBlkRecSource('${s}')" style="margin:0 4px 4px 0;">${l}</button>`;
+  return `<div class="card" style="border-color:rgba(46,109,164,.3);background:rgba(46,109,164,.04);margin-bottom:24px;">
+    <div class="card-t">📦 Block Count — reconcile "in cooler, not placed"</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Physically count the blocks still in the cooler (not yet placed into fruiting), enter per variety, and the app trues up the received-vs-placed math. Placing blocks doesn't always tie back to the exact receiving, so this keeps the cooler honest.</div>
+    <div style="margin-bottom:10px;">${seg('ws','🟣 Wild Spore')} ${seg('internal','🟢 In-house / Carthage')}</div>
+    <div class="tw" style="max-width:520px;"><table><thead><tr><th>Variety</th><th>System on hand</th><th>Counted (physical)</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="form-acts" style="margin-top:12px;"><button class="btn b-m b-lg" onclick="reconcileAllBlocks('${src}')">Reconcile ${src==='ws'?'Wild Spore':'in-house'} to counts</button></div>
+  </div>`;
+}
 function rReceiving(el){
   _rcTempUrl=''; _rcInvoiceUrl=''; _recvQueue=[]; // fresh doc uploads + lot queue each render
   const onHand=onHandReceivings();
@@ -4192,6 +4235,7 @@ function rReceiving(el){
       <div class="sc g"><div class="sc-l">Blocks Awaiting Placement</div><div class="sc-v">${totalOnHand}</div><div class="sc-n">${onHand.length} batch${onHand.length===1?'':'es'} on hand</div></div>
       <div class="sc"><div class="sc-l">Receivings Logged</div><div class="sc-v">${history.length}</div><div class="sc-n">all-time intake records</div></div>
     </div>
+    ${rBlockReconcileSection()}
     ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
       <div class="card-t">📸 Snap / Upload Receiving Sheet</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the delivery/receiving sheet — AI fills the form below. You verify, then Log.</div>
