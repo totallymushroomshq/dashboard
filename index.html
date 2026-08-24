@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #99</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #100</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4064,6 +4064,25 @@ async function drawDownReceivings(lotNumber, blockCount, preferId){
     try{ await FS.update('receivings',rec.id,upd); }catch(e){ console.warn('drawDownReceivings',e); } }
   return {drawn,ids,shortfall:remaining};
 }
+// ── SPAWN on-hand: a grain-spawn run makes bags for its strain-lots; block production consumes them via spawnSources ──
+function _spawnRunBagsByLot(s){ // {lotKey: producedBags} for one spawn run
+  const out={};
+  if(Array.isArray(s.strains)&&s.strains.length){ s.strains.forEach(x=>{ const k=_lotKey(x.lot||x.suffix?( (s.lotCode||'')+(x.suffix||'') ):''); if(k) out[k]=(out[k]||0)+(parseInt(x.bags)||0); }); }
+  if(!Object.keys(out).length){ const k=_lotKey(s.spawnLot||s.lotCode); if(k) out[k]=(parseInt(s.bagCount)||0); }
+  return out;
+}
+// bags of spawn still on hand for a given spawn strain-lot key
+function spawnOnHandForKey(k){ let made=0,used=0;
+  (DB.spawnRuns||[]).forEach(s=>{ const by=_spawnRunBagsByLot(s); if(by[k]!=null){ made+=by[k]; used+=((s.usedByLot||{})[k]||0); } });
+  return Math.max(0, made-used);
+}
+// draw down spawn bags for a lot when a block cook consumes them (parallel to drawDownReceivings)
+async function drawDownSpawn(spawnLot, bags){
+  const need=parseInt(bags)||0; if(need<=0) return; const k=_lotKey(spawnLot); if(!k) return;
+  const run=(DB.spawnRuns||[]).find(s=>_spawnRunBagsByLot(s)[k]!=null); if(!run) return; // spawn not logged in system — skip
+  run.usedByLot=run.usedByLot||{}; run.usedByLot[k]=(run.usedByLot[k]||0)+need;
+  try{ await FS.update('spawnRuns',run.id,{usedByLot:run.usedByLot}); }catch(e){ console.warn('drawDownSpawn',e); }
+}
 function onRecSourceChange(){ const src=document.getElementById('rc-source')?.value; const vEl=document.getElementById('rc-vendor'); if(vEl && !vEl.value && src==='internal') vEl.value='In-house Production'; }
 
 // ── multi-lot receiving: stage several lots in one delivery, one email ──
@@ -5365,6 +5384,7 @@ async function commitBlockBatch(btn){
       autoclaveTemp:parseInt(s.autoclaveTemp)||0, cookTimeHours:parseFloat(s.cookTime)||0, cookTimeStart:'', cookTimeEnd:'', sterNotes:'',
       sterCrew:'', inocCrew:'', scanUrl:s.pageUrl||'', createdBy:S.name||S.role, timestamp:new Date().toISOString() };
     const id=await FS.add('labBatches',data); DB.labBatches.push({id,...data});
+    for(const v of (varieties||[])){ for(const ss of (v.spawnSources||[])){ try{ await drawDownSpawn(ss.lot, ss.bags); }catch(e){} } }
     logAudit('lab_production_log',`Batch block ${batchNum} — ${totalBlocks} blocks · ${varieties.length} strain(s): ${data.strain}`);
     const subject=notifySubject('block',{lotCode,date:iso});
     prepared.push({subject, data:{lotCode,date:iso,subLbs:data.substrateLbs,buckets:data.buckets,gallons:data.gallonsWater,blocksProduced:data.blocksProduced,crewText:'',rows:varieties.map(v=>({lot:v.lot,strain:v.variety,generation:v.generation,blockCount:v.blockCount,spawnLot:v.spawnLot,spawnSources:v.spawnSources||[]})),imageUrl:s.pageUrl||''}, pageB64:s.pageB64,pageBytes:s.pageBytes,pageUrl:s.pageUrl||''});
@@ -8009,6 +8029,45 @@ function buildReconcilePanel(){
     </div>
   </details>`;
 }
+// ── BLOCKS & SPAWN on hand, by facility (Carthage spawn+blocks · Hydes in-house+WS blocks not placed) ──
+function buildFacilityInventory(){
+  const cvv=(typeof canonicalVariety==='function')?canonicalVariety:(x=>x);
+  const isWSrec=r=>/^(ws|us)/.test(_lotKey(r.lotNumber))||/wild\s*spore/i.test(r.vendor||'');
+  const isInt=r=>{ if(isWSrec(r)) return false; return r.source==='internal'||/carthage|in[-\s]?house|hfp|^tm\b/i.test(r.vendor||'')||/^\d/.test(_lotKey(r.lotNumber)); };
+  // Carthage SPAWN on hand, by strain
+  const spawnBy={};
+  (DB.spawnRuns||[]).forEach(s=>{ const strains=Array.isArray(s.strains)?s.strains:[];
+    if(strains.length){ strains.forEach(x=>{ const k=_lotKey(x.lot); if(!k) return; const oh=Math.max(0,(parseInt(x.bags)||0)-((s.usedByLot||{})[k]||0)); if(oh>0) spawnBy[cvv(x.strain||s.strain||'—')]=(spawnBy[cvv(x.strain||s.strain||'—')]||0)+oh; }); }
+    else { const k=_lotKey(s.spawnLot||s.lotCode); if(!k) return; const oh=Math.max(0,(parseInt(s.bagCount)||0)-((s.usedByLot||{})[k]||0)); if(oh>0) spawnBy[cvv(s.strain||'—')]=(spawnBy[cvv(s.strain||'—')]||0)+oh; }
+  });
+  const spawnTot=Object.values(spawnBy).reduce((a,b)=>a+b,0);
+  // Carthage BLOCKS on hand (aggregate: produced − shipped − pre-fruiting waste)
+  const produced=(DB.labBatches||[]).reduce((s,b)=>s+(parseInt(b.blocksProduced)||parseInt(b.blockCount)||0),0);
+  const shipped=(DB.receivings||[]).filter(isInt).reduce((s,r)=>s+(parseInt(r.blockCount)||0),0);
+  const prewaste=(DB.blockDisposals||[]).filter(d=>d.stage==='pre-fruiting').reduce((s,d)=>s+(parseInt(d.blockCount)||0),0);
+  const cartBlocks=Math.max(0,produced-shipped-prewaste);
+  // Hydes NOT-PLACED blocks by source + variety (from on-hand receivings)
+  const inh={}, ws={};
+  (DB.receivings||[]).forEach(r=>{ const oh=receivingOnHand(r); if(oh<=0) return; const v=cvv(r.variety||'—'); if(isWSrec(r)) ws[v]=(ws[v]||0)+oh; else inh[v]=(inh[v]||0)+oh; });
+  const sum=o=>Object.values(o).reduce((a,b)=>a+b,0);
+  const vtbl=(o,unit)=>{ const rows=Object.entries(o).sort((a,b)=>b[1]-a[1]).filter(x=>x[1]>0); if(!rows.length) return '<div style="color:var(--text3);font-size:12px;padding:6px 0;">none on hand</div>';
+    return `<table style="width:100%;border-collapse:collapse;">${rows.map(([v,n])=>`<tr><td style="padding:4px 0;font-size:13px;">${v}</td><td style="padding:4px 0;text-align:right;font-family:'Syne Mono',monospace;font-weight:700;">${Math.round(n)} ${unit}</td></tr>`).join('')}</table>`; };
+  const card=(border,title,big,unit,body,note)=>`<div class="cc" style="flex:1;min-width:230px;border-top:3px solid ${border};">
+    <div class="cc-l">${title}</div>
+    <div style="font-family:'Cormorant Garamond',serif;font-size:40px;font-weight:700;line-height:1;color:${border};margin:2px 0 8px;">${big}<span style="font-size:15px;font-weight:400;"> ${unit}</span></div>
+    ${body}${note?`<div style="font-size:10.5px;color:var(--text3);margin-top:8px;font-style:italic;">${note}</div>`:''}</div>`;
+  return `<div class="sh" style="margin-top:4px;"><span>🧱 Blocks &amp; Spawn on Hand — by Facility</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">DRAWS DOWN AS YOU PLACE &amp; COOK</span></div>
+    <div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text3);margin:6px 0 4px;">CARTHAGE</div>
+    <div class="cr" style="gap:14px;margin-bottom:14px;">
+      ${card('var(--gold)','Spawn (bags)',Math.round(spawnTot),'bags',vtbl(spawnBy,'bg'),'On hand = produced − used in cooks. Only counts spawn logged with per-cook usage; older cooks that didn’t log spawn read high.')}
+      ${card('var(--moss)','Fruiting Blocks',cartBlocks,'blk','<div style="font-size:12px;color:var(--text2);">made & not yet shipped to Hydes</div>',`${produced} produced − ${shipped} shipped − ${prewaste} waste. Aggregate; per-variety not shown (production records incomplete).`)}
+    </div>
+    <div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text3);margin:6px 0 4px;">HYDES FERRY — in cooler, not yet placed</div>
+    <div class="cr" style="gap:14px;margin-bottom:20px;">
+      ${card('var(--fern)','In-house Blocks',Math.round(sum(inh)),'blk',vtbl(inh,'blk'),'Received from Carthage, awaiting placement into fruiting.')}
+      ${card('#7a4a86','Wild Spore Blocks',Math.round(sum(ws)),'blk',vtbl(ws,'blk'),'Received from Wild Spore, awaiting placement. Draws down now when you place a session.')}
+    </div>`;
+}
 function rInventory(el){
   const PRESERVE_METHODS=['Fresh Frozen','Freeze Dried','Dehydrated','Waste / Compost'];
 
@@ -8162,7 +8221,8 @@ function rInventory(el){
     ? '<tr><td colspan="2" class="empty">No packed orders this week yet</td></tr>'
     : Object.entries(wkUsage).map(([v,lbs])=>`<tr><td>${v}</td><td class="mn">${lbs.toFixed(1)} lb</td></tr>`).join('');
 
-  el.innerHTML=`    <div class="ph"><div class="ph-t">Inventory</div><div class="ph-s">Live fresh stock — updates when orders are packed or lots are moved to preservation</div></div>
+  el.innerHTML=`    <div class="ph"><div class="ph-t">Inventory</div><div class="ph-s">Blocks &amp; spawn by facility, plus live fresh stock — updates as you place, cook, pack, and preserve</div></div>
+    ${buildFacilityInventory()}
 
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;">
       ${['all',...INVENTORY_FACILITIES].map(f=>`<button data-fac="${f}" onclick="filterInventory(this.dataset.fac)" style="padding:6px 14px;border:1px solid ${_fac===f?'var(--gold)':'var(--border)'};background:${_fac===f?'rgba(184,130,10,.12)':'var(--white)'};color:${_fac===f?'var(--gold)':'var(--text3)'};border-radius:3px;cursor:pointer;font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:${_fac===f?'700':'400'};">${f==='all'?'All Facilities':f}</button>`).join('')}
@@ -12668,6 +12728,8 @@ async function logProductionBatch(){
   if(!DB._isDemoMode){
     const id = await FS.add('labBatches', data);
     data.id=id;
+    // HARD-DRAW spawn: this cook consumes the spawn bags listed per strain → reduce spawn on hand
+    for(const v of (data.varieties||[])){ for(const ss of (v.spawnSources||[])){ try{ await drawDownSpawn(ss.lot, ss.bags); }catch(e){} } }
   } else {
     data.id='demo-lb-'+Date.now().toString(36);
   }
