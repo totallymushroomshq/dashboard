@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #101</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #102</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -8093,6 +8093,13 @@ function buildFacilityInventory(){
   const shipped=(DB.receivings||[]).filter(isInt).reduce((s,r)=>s+(parseInt(r.blockCount)||0),0);
   const prewaste=(DB.blockDisposals||[]).filter(d=>d.stage==='pre-fruiting').reduce((s,d)=>s+(parseInt(d.blockCount)||0),0);
   const cartBlocks=Math.max(0,produced-shipped-prewaste);
+  // Carthage IN-HOUSE blocks by variety = made − shipped − pre-fruiting waste (WS never made here). Negatives (under-logged production) omitted.
+  const _blv=(typeof batchVarietyLines==='function')?batchVarietyLines:(b=>b.varieties||[]);
+  const cartByRaw={};
+  (DB.labBatches||[]).forEach(b=>_blv(b).forEach(v=>{ const n=cvv(v.variety||'—'); cartByRaw[n]=(cartByRaw[n]||0)+(parseInt(v.blockCount)||0); }));
+  (DB.receivings||[]).filter(isInt).forEach(r=>{ const n=cvv(r.variety||'—'); cartByRaw[n]=(cartByRaw[n]||0)-(parseInt(r.blockCount)||0); });
+  (DB.blockDisposals||[]).filter(d=>d.stage==='pre-fruiting').forEach(d=>{ const n=cvv(d.variety||'—'); cartByRaw[n]=(cartByRaw[n]||0)-(parseInt(d.blockCount)||0); });
+  const cartBy={}; Object.entries(cartByRaw).forEach(([k,v])=>{ if(v>0&&k!=='—') cartBy[k]=v; });
   // Hydes NOT-PLACED blocks by source + variety (from on-hand receivings)
   const inh={}, ws={};
   (DB.receivings||[]).forEach(r=>{ const oh=receivingOnHand(r); if(oh<=0) return; const v=cvv(r.variety||'—'); if(isWSrec(r)) ws[v]=(ws[v]||0)+oh; else inh[v]=(inh[v]||0)+oh; });
@@ -8107,7 +8114,7 @@ function buildFacilityInventory(){
     <div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text3);margin:6px 0 4px;">CARTHAGE</div>
     <div class="cr" style="gap:14px;margin-bottom:14px;">
       ${card('var(--gold)','Spawn (bags)',Math.round(spawnTot),'bags',vtbl(spawnBy,'bg'),'On hand = produced − used in cooks. Only counts spawn logged with per-cook usage; older cooks that didn’t log spawn read high.')}
-      ${card('var(--moss)','Fruiting Blocks',cartBlocks,'blk','<div style="font-size:12px;color:var(--text2);">made & not yet shipped to Hydes</div>',`${produced} produced − ${shipped} shipped − ${prewaste} waste. Aggregate; per-variety not shown (production records incomplete).`)}
+      ${card('var(--moss)','Fruiting Blocks · in-house',cartBlocks,'blk','<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">in-house, made &amp; not yet shipped to Hydes</div>'+vtbl(cartBy,'blk'),`${produced} produced − ${shipped} shipped − ${prewaste} waste = ${cartBlocks} total. Per-variety = made − shipped − waste; a few strains shipped more than logged-produced (under-logged cooks) and are omitted, so the list can exceed the total.`)}
     </div>
     <div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text3);margin:6px 0 4px;">HYDES FERRY — in cooler, not yet placed</div>
     <div class="cr" style="gap:14px;margin-bottom:20px;">
