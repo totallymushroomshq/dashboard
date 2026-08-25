@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #103</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #104</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5605,7 +5605,7 @@ function labBatchSendPanel(kind){
       ${!ready?`<div style="background:rgba(184,76,32,.09);border:1px solid rgba(184,76,32,.3);border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#b84c20;">${!master?'📴 Email sending is OFF (testing). Turn it on in Admin → Email.':'⚠ Notification template not set — add it in Admin → Email.'}</div>`:''}
       <div id="lb-done-banner" style="display:none;background:rgba(58,96,48,.1);border:1px solid var(--fern);border-radius:6px;padding:12px 15px;margin-bottom:14px;font-weight:600;color:var(--fern);"></div>
       <label style="font-size:10px;color:var(--text3);">Send to</label>
-      <div id="lbr-recips" style="display:flex;flex-direction:column;gap:5px;margin:5px 0 12px;">${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="lbr-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}<div style="display:flex;gap:6px;margin-top:4px;"><input class="fi" id="lbr-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();lbrAddRecip();}"><button class="btn b-g b-sm" onclick="lbrAddRecip()">+ Add</button></div></div>
+      <div id="lbr-recips" style="display:flex;flex-direction:column;gap:5px;margin:5px 0 12px;">${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="lbr-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}${optRecipRows('lbr-r',recips)}<div style="display:flex;gap:6px;margin-top:4px;"><input class="fi" id="lbr-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();lbrAddRecip();}"><button class="btn b-g b-sm" onclick="lbrAddRecip()">+ Add</button></div></div>
       ${reps.map(repCard).join('')}
       <div class="form-acts" style="margin-top:14px;">
         <button class="btn b-m b-lg" onclick="sendAllLabReports('${kind}',this)" ${ready?'':'disabled style="opacity:.5"'}>✉ Send all ${reps.length}</button>
@@ -5779,7 +5779,7 @@ function slipBatchSendPanel(){
       ${!ready?`<div style="background:rgba(184,76,32,.09);border:1px solid rgba(184,76,32,.3);border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#b84c20;">${!master?'📴 Email sending is OFF (testing). Turn it on in Admin → Email.':'⚠ Notification template not set — add it in Admin → Email.'}</div>`:''}
       <div id="slb-done-banner" style="display:none;background:rgba(58,96,48,.1);border:1px solid var(--fern);border-radius:6px;padding:12px 15px;margin-bottom:14px;font-weight:600;color:var(--fern);"></div>
       <label style="font-size:10px;color:var(--text3);">Send to</label>
-      <div id="slbr-recips" style="display:flex;flex-direction:column;gap:5px;margin:5px 0 12px;">${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="slbr-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}<div style="display:flex;gap:6px;margin-top:4px;"><input class="fi" id="slbr-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();slbrAddRecip();}"><button class="btn b-g b-sm" onclick="slbrAddRecip()">+ Add</button></div></div>
+      <div id="slbr-recips" style="display:flex;flex-direction:column;gap:5px;margin:5px 0 12px;">${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="slbr-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}${optRecipRows('slbr-r',recips)}<div style="display:flex;gap:6px;margin-top:4px;"><input class="fi" id="slbr-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();slbrAddRecip();}"><button class="btn b-g b-sm" onclick="slbrAddRecip()">+ Add</button></div></div>
       ${reps.map(repCard).join('')}
       <div class="form-acts" style="margin-top:14px;">
         <button class="btn b-m b-lg" onclick="sendAllSlipReports(this)" ${ready?'':'disabled style="opacity:.5"'}>✉ Send all ${reps.length}</button>
@@ -5904,7 +5904,7 @@ function harvestBatchSendPanel(){
       <div id="hb-done-banner" style="display:none;background:rgba(58,96,48,.1);border:1px solid var(--fern);border-radius:6px;padding:12px 15px;margin-bottom:14px;font-weight:600;color:var(--fern);"></div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Each date sends as its own report with its own labeled PDF attachment (filename = subject).</div>
       <label style="font-size:10px;color:var(--text3);">Send to</label>
-      <div id="hb-recips" style="display:flex;flex-direction:column;gap:5px;margin:5px 0 12px;">${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="hb-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}<div style="display:flex;gap:6px;margin-top:4px;"><input class="fi" id="hb-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();hbAddRecip();}"><button class="btn b-g b-sm" onclick="hbAddRecip()">+ Add</button></div></div>
+      <div id="hb-recips" style="display:flex;flex-direction:column;gap:5px;margin:5px 0 12px;">${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="hb-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}${optRecipRows('hb-r',recips)}<div style="display:flex;gap:6px;margin-top:4px;"><input class="fi" id="hb-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();hbAddRecip();}"><button class="btn b-g b-sm" onclick="hbAddRecip()">+ Add</button></div></div>
       ${repHtml}
       <div class="form-acts" style="margin-top:14px;">
         <button class="btn b-m b-lg" id="hb-sendall" onclick="sendAllBatchReports(this)" ${ready?'':'disabled style="opacity:.5"'}>✉ Send all ${reps.length}</button>
@@ -6109,7 +6109,7 @@ function fruitBatchSendPanel(){
       ${!ready?`<div style="background:rgba(184,76,32,.09);border:1px solid rgba(184,76,32,.3);border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#b84c20;">${!master?'📴 Email sending is OFF (testing). Turn it on in Admin → Email.':'⚠ Notification template not set — add it in Admin → Email.'}</div>`:''}
       <div id="fb-done-banner" style="display:none;background:rgba(58,96,48,.1);border:1px solid var(--fern);border-radius:6px;padding:12px 15px;margin-bottom:14px;font-weight:600;color:var(--fern);"></div>
       <label style="font-size:10px;color:var(--text3);">Send to</label>
-      <div id="fbr-recips" style="display:flex;flex-direction:column;gap:5px;margin:5px 0 12px;">${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="fbr-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}<div style="display:flex;gap:6px;margin-top:4px;"><input class="fi" id="fbr-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();fbrAddRecip();}"><button class="btn b-g b-sm" onclick="fbrAddRecip()">+ Add</button></div></div>
+      <div id="fbr-recips" style="display:flex;flex-direction:column;gap:5px;margin:5px 0 12px;">${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="fbr-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}${optRecipRows('fbr-r',recips)}<div style="display:flex;gap:6px;margin-top:4px;"><input class="fi" id="fbr-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();fbrAddRecip();}"><button class="btn b-g b-sm" onclick="fbrAddRecip()">+ Add</button></div></div>
       ${repHtml}
       <div class="form-acts" style="margin-top:14px;">
         <button class="btn b-m b-lg" id="fbr-sendall" onclick="sendAllFruitReports(this)" ${ready?'':'disabled style="opacity:.5"'}>✉ Send all ${reps.length}</button>
@@ -6301,7 +6301,7 @@ function recvBatchSendPanel(){
       ${!ready?`<div style="background:rgba(184,76,32,.09);border:1px solid rgba(184,76,32,.3);border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#b84c20;">${!master?'📴 Email sending is OFF (testing). Turn it on in Admin → Email.':'⚠ Notification template not set — add it in Admin → Email.'}</div>`:''}
       <div id="rb-done-banner" style="display:none;background:rgba(58,96,48,.1);border:1px solid var(--fern);border-radius:6px;padding:12px 15px;margin-bottom:14px;font-weight:600;color:var(--fern);"></div>
       <label style="font-size:10px;color:var(--text3);">Send to</label>
-      <div id="rbr-recips" style="display:flex;flex-direction:column;gap:5px;margin:5px 0 12px;">${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="rbr-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}<div style="display:flex;gap:6px;margin-top:4px;"><input class="fi" id="rbr-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();rbrAddRecip();}"><button class="btn b-g b-sm" onclick="rbrAddRecip()">+ Add</button></div></div>
+      <div id="rbr-recips" style="display:flex;flex-direction:column;gap:5px;margin:5px 0 12px;">${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="rbr-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}${optRecipRows('rbr-r',recips)}<div style="display:flex;gap:6px;margin-top:4px;"><input class="fi" id="rbr-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();rbrAddRecip();}"><button class="btn b-g b-sm" onclick="rbrAddRecip()">+ Add</button></div></div>
       ${repHtml}
       <div class="form-acts" style="margin-top:14px;">
         <button class="btn b-m b-lg" id="rbr-sendall" onclick="sendAllRecvReports(this)" ${ready?'':'disabled style="opacity:.5"'}>✉ Send all ${reps.length}</button>
@@ -6386,6 +6386,12 @@ const NOTIFY_TO = {
   relocation:['orders@totallymushrooms.com','Allen@totallymushrooms.com']
 };
 function notifyRecips(kind){ return (DB.notify.to&&DB.notify.to[kind]&&DB.notify.to[kind].length)?DB.notify.to[kind]:(NOTIFY_TO[kind]||[]); }
+// Optional recipients — offered on every report form but DEFAULT UNCHECKED (only sometimes needed).
+const OPTIONAL_RECIPS=['Rowan@totallymushrooms.com'];
+function optRecipRows(cls, baseRecips){
+  const have=new Set((baseRecips||[]).map(e=>String(e).toLowerCase()));
+  return OPTIONAL_RECIPS.filter(e=>!have.has(e.toLowerCase())).map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:12px;"><input type="checkbox" class="${cls}" value="${attrEsc(e)}"> ${e} <span style="font-size:10px;color:var(--text3);letter-spacing:1px;">OPTIONAL</span></label>`).join('');
+}
 // ── subject-line formatters ──
 // facility → location code (edit here to add facilities)
 const FACILITY_CODES={'hydes ferry pike':'OHF','hydes ferry':'OHF','opryland':'OPRY'};
@@ -6686,6 +6692,7 @@ function openEmailDispatch(kind, subject, opts){
     <div class="fgl" style="margin-top:12px;"><label>Send to <span style="color:var(--text3);font-size:11px;">uncheck to skip anyone</span></label>
       <div id="disp-recips" style="display:flex;flex-direction:column;gap:6px;margin-top:5px;">
         ${recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="checkbox" class="disp-r" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}
+        ${optRecipRows('disp-r',recips)}
       </div>
       <div style="display:flex;gap:6px;margin-top:8px;"><input class="fi" id="disp-add" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();dispAddRecip();}"><button class="btn b-g b-sm" onclick="dispAddRecip()">+ Add</button></div>
     </div>
