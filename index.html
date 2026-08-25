@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #102</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #103</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -6884,6 +6884,13 @@ function _fseRow(r){ r=r||{};
 }
 function fseAddLot(){ const w=document.getElementById('fse-lots'); if(w) w.insertAdjacentHTML('beforeend',_fseRow({})); }
 function onFseLot(inp){ const lot=(inp.value||'').trim(); if(!lot) return; const row=inp.closest('.fse-row'); const vEl=row&&row.querySelector('.fse-var'); if(!vEl||vEl.value.trim()) return; const v=(typeof lotToVariety==='function')?lotToVariety(lot):''; if(v){ vEl.value=v; if(typeof markAF==='function') markAF(vEl); } }
+async function fseUploadDoc(input){ const file=input.files&&input.files[0]; if(!file||!_fruitSessEdit) return;
+  const st=document.getElementById('fse-doc-status'); if(st){ st.textContent='⏳ uploading…'; st.style.color='var(--text3)'; }
+  try{ const url=await storePhoto(file,'fruiting'); _fruitSessEdit.newScanUrl=url;
+    if(st){ st.innerHTML='✓ new copy attached — <a href="'+url+'" target="_blank" rel="noopener">view</a> · saves to every lot in this session'; st.style.color='var(--fern)'; } }
+  catch(e){ if(st){ st.textContent='⚠ '+(e.message||e); st.style.color='var(--rust)'; } }
+  finally{ input.value=''; }
+}
 function openEditFruitSession(id){
   const f=DB.fruitings.find(x=>x.id===id); if(!f) return;
   const sibs=_fruitingSiblings(f).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
@@ -6904,6 +6911,11 @@ function openEditFruitSession(id){
       <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin:12px 0 6px;">LOTS PLACED — lot # · variety · blocks · block wt</div>
       <div id="fse-lots">${(sibs.length?sibs:[{}]).map(_fseRow).join('')}</div>
       <button type="button" class="btn b-g b-sm" onclick="fseAddLot()">+ Add lot</button>
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+        <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;">PHYSICAL COPY — fruiting log page</div>
+        <label class="btn b-g b-sm" style="cursor:pointer;">📎 Upload updated copy<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="fseUploadDoc(this)"></label>
+        <span id="fse-doc-status" style="font-size:11px;color:var(--text3);margin-left:6px;">${f.scanUrl?`current copy on file — <a href="${f.scanUrl}" target="_blank" rel="noopener">view</a>`:'none on file yet'}</span>
+      </div>
       <div class="form-acts" style="margin-top:16px;">
         <button class="btn b-m b-lg" onclick="saveFruitSession(true)">Save &amp; send UPDATED report</button>
         <button class="btn b-g b-lg" onclick="saveFruitSession(false)">Save only</button>
@@ -6927,11 +6939,12 @@ async function saveFruitSession(send){
   if(!normalizeRowVarieties(rows)) return;
   rows.forEach(r=>{ if(r.variety) addVariety(r.variety); });
   const sessionId=S0.sessionId||('frs-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7));
+  const newScan=S0.newScanUrl||''; // updated physical copy → applies to every lot in the session
   const keptIds=new Set(); let firstId=null;
   for(const r of rows){
-    const flds={date,containerID:container,source,vendor,lotNumber:r.lotNumber,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,sessionId};
+    const flds={date,containerID:container,source,vendor,lotNumber:r.lotNumber,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,sessionId,...(newScan?{scanUrl:newScan}:{})};
     if(r.id){ const f=DB.fruitings.find(x=>x.id===r.id); if(f){ Object.assign(f,flds); try{ await FS.update('fruitings',r.id,flds); }catch(e){ console.warn('fse upd',e); } keptIds.add(r.id); firstId=firstId||r.id; } }
-    else { const fData={...flds,rateLbPerBlock:LBSPERBLOCK,notes:'added on session edit',scanUrl:S0.scanUrl||'',status:'fruiting',createdAt:new Date().toISOString()}; const nid=await FS.add('fruitings',fData); DB.fruitings.push({id:nid,...fData}); keptIds.add(nid); firstId=firstId||nid; try{ await drawDownReceivings(fData.lotNumber, fData.blockCount); }catch(e){} }
+    else { const fData={...flds,rateLbPerBlock:LBSPERBLOCK,notes:'added on session edit',scanUrl:newScan||S0.scanUrl||'',status:'fruiting',createdAt:new Date().toISOString()}; const nid=await FS.add('fruitings',fData); DB.fruitings.push({id:nid,...fData}); keptIds.add(nid); firstId=firstId||nid; try{ await drawDownReceivings(fData.lotNumber, fData.blockCount); }catch(e){} }
   }
   for(const id of S0.ids){ if(!keptIds.has(id)){ DB.fruitings=DB.fruitings.filter(x=>x.id!==id); try{ await FS.del('fruitings',id); }catch(e){ console.warn('fse del',e); } } }
   logAudit('fruiting_edited',`Edited fruiting session ${container} ${_mmddyy(date)} — ${rows.length} lot(s)`);
@@ -7573,6 +7586,13 @@ function _hseRow(r){ r=r||{}; const grades=[['A','A'],['B','B'],['C','C']];
 }
 function hseAddLot(){ const w=document.getElementById('hse-lots'); if(w) w.insertAdjacentHTML('beforeend',_hseRow({})); }
 function onHseLot(inp){ const lot=(inp.value||'').trim(); if(!lot) return; const row=inp.closest('.hse-row'); const vEl=row&&row.querySelector('.hse-var'); if(!vEl||vEl.value.trim()) return; const v=(typeof lotToVariety==='function')?lotToVariety(lot):''; if(v){ vEl.value=v; if(typeof markAF==='function') markAF(vEl); } }
+async function hseUploadDoc(input){ const file=input.files&&input.files[0]; if(!file||!_harvSessEdit) return;
+  const st=document.getElementById('hse-doc-status'); if(st){ st.textContent='⏳ uploading…'; st.style.color='var(--text3)'; }
+  try{ const url=await storePhoto(file,'harvest'); _harvSessEdit.newScanUrl=url;
+    if(st){ st.innerHTML='✓ new copy attached — <a href="'+url+'" target="_blank" rel="noopener">view</a> · saves to every lot in this session'; st.style.color='var(--fern)'; } }
+  catch(e){ if(st){ st.textContent='⚠ '+(e.message||e); st.style.color='var(--rust)'; } }
+  finally{ input.value=''; }
+}
 function openEditHarvestSession(id){
   const h=DB.harvests.find(x=>x.id===id); if(!h) return;
   const sibs=_harvestSiblings(h).sort((a,b)=>(a.createdAt||'').localeCompare(b.createdAt||''));
@@ -7592,6 +7612,11 @@ function openEditHarvestSession(id){
       <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin:12px 0 6px;">HARVESTED — lot # · variety · grade · weight</div>
       <div id="hse-lots">${(sibs.length?sibs:[{}]).map(_hseRow).join('')}</div>
       <button type="button" class="btn b-g b-sm" onclick="hseAddLot()">+ Add lot</button>
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border);">
+        <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin-bottom:6px;">PHYSICAL COPY — harvest log page</div>
+        <label class="btn b-g b-sm" style="cursor:pointer;">📎 Upload updated copy<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="hseUploadDoc(this)"></label>
+        <span id="hse-doc-status" style="font-size:11px;color:var(--text3);margin-left:6px;">${h.scanUrl?`current copy on file — <a href="${h.scanUrl}" target="_blank" rel="noopener">view</a>`:'none on file yet'}</span>
+      </div>
       <div class="form-acts" style="margin-top:16px;">
         <button class="btn b-m b-lg" onclick="saveHarvestSession(true)">Save &amp; send UPDATED report</button>
         <button class="btn b-g b-lg" onclick="saveHarvestSession(false)">Save only</button>
@@ -7613,11 +7638,12 @@ async function saveHarvestSession(send){
   if(!rows.length){ alert('Add at least one lot, or cancel.'); return; }
   if(!normalizeRowVarieties(rows)) return;
   rows.forEach(r=>{ if(r.variety) addVariety(r.variety); });
+  const newScan=S0.newScanUrl||''; // updated physical copy → every lot in the session
   const keptIds=new Set(); let firstId=null;
   for(const r of rows){
-    const flds={date,container,facility,lotNumber:r.lotNumber,variety:r.variety,grade:r.grade,weight:r.weight};
+    const flds={date,container,facility,lotNumber:r.lotNumber,variety:r.variety,grade:r.grade,weight:r.weight,...(newScan?{scanUrl:newScan}:{})};
     if(r.id){ const h=DB.harvests.find(x=>x.id===r.id); if(h){ const used=(h.usedWeight||0)+(h.sampleWeight||0)+(h.preservedWeight||0); if(r.weight<used){ if(!confirm(`Lot ${r.lotNumber} already has ${used.toFixed(1)} lb used/sampled/preserved — more than the new ${r.weight} lb. Save anyway?`)) return; } Object.assign(h,flds); try{ await FS.update('harvests',r.id,flds); }catch(e){ console.warn('hse upd',e); } keptIds.add(r.id); firstId=firstId||r.id; } }
-    else { const hData={...flds,usedWeight:0,sampleWeight:0,preservedWeight:0,scanUrl:S0.scanUrl||'',notes:'added on session edit',createdAt:new Date().toISOString()}; const nid=await FS.add('harvests',hData); DB.harvests.push({id:nid,...hData}); keptIds.add(nid); firstId=firstId||nid; }
+    else { const hData={...flds,usedWeight:0,sampleWeight:0,preservedWeight:0,scanUrl:newScan||S0.scanUrl||'',notes:'added on session edit',createdAt:new Date().toISOString()}; const nid=await FS.add('harvests',hData); DB.harvests.push({id:nid,...hData}); keptIds.add(nid); firstId=firstId||nid; }
   }
   for(const id of S0.ids){ if(!keptIds.has(id)){ DB.harvests=DB.harvests.filter(x=>x.id!==id); try{ await FS.del('harvests',id); }catch(e){ console.warn('hse del',e); } } }
   logAudit('harvest_edited',`Edited harvest session ${container} ${_mmddyy(date)} — ${rows.length} lot(s)`);
