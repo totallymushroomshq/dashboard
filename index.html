@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #104</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #105</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -566,7 +566,7 @@ const ALL_INTERNAL_TABS = [
   {id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},
   {id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},
   {id:'cleaning',l:'🧽 Clean · Flip · Waste'},
-  {id:'trace',l:'🔍 Trace'},
+  {id:'trace',l:'🔍 Trace &amp; Search'},
   {id:'trace-doctor',l:'🩺 Trace Doctor',c:'at'},
   {id:'lab',l:'🧫 Lab'},
   {id:'cordyceps',l:'🐛 Cordyceps'},
@@ -4730,7 +4730,8 @@ function rFruiting(el){
 
     <!-- GROUPED BY FRUITING SESSION -->
     <div class="sh"><span>Active Fruiting Blocks — by Session</span>${active.length>0?`<span class="bdg bc">${active.length} active</span>`:''}</div>
-    <div style="margin-bottom:24px;">${(()=>{
+    ${active.length>0?`<input class="fi" id="fr-filter" placeholder="🔍 filter — lot #, variety, or container…" autocomplete="off" oninput="frFilter(this.value)" style="max-width:420px;margin-bottom:12px;">`:''}
+    <div id="fr-sessions" style="margin-bottom:24px;">${(()=>{
       if(!fruitRows.length) return '<div class="empty" style="padding:18px;">No active fruiting blocks — log one above.</div>';
       const groups=[], idx={};
       fruitRows.forEach(f=>{ const k=f.sessionId||((f.date||'')+'|'+(f.containerID||'')); if(idx[k]==null){ idx[k]=groups.length; groups.push({key:k,date:f.date,container:f.containerID,rows:[]}); } groups[idx[k]].rows.push(f); });
@@ -4987,6 +4988,13 @@ async function _doFruitingCommit(rows, crew){
   _lastSnap=null;
 }
 
+// live filter for the active fruiting sessions — matches lot #, variety, or container; hides non-matching rows/sessions
+function frFilter(q){ q=(q||'').toLowerCase().trim(); const wrap=document.getElementById('fr-sessions'); if(!wrap) return;
+  wrap.querySelectorAll('details').forEach(dt=>{ let anyVis=false;
+    dt.querySelectorAll('tbody tr').forEach(tr=>{ const hit=!q||tr.textContent.toLowerCase().includes(q); tr.style.display=hit?'':'none'; if(hit) anyVis=true; });
+    dt.style.display=anyVis?'':'none'; if(anyVis&&q) dt.open=true;
+  });
+}
 function clrFruiting(){
   ['fr-lot','fr-cid','fr-bc','fr-bw','fr-notes','fr-unusable'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
   const rEl=document.getElementById('fr-rate'); if(rEl) rEl.value=LBSPERBLOCK;
@@ -11232,6 +11240,41 @@ function rTraceDoctor(el){
   `;
 }
 
+// Broad search across every stage — partial match on lot #, variety, OR container → one summary row per lot with where-it-is + yield
+function _traceCandidates(q){
+  q=(q||'').trim().toLowerCase(); if(q.length<2) return [];
+  const cvv=(typeof canonicalVariety==='function')?canonicalVariety:(x=>x);
+  const idx={};
+  const get=lot=>{ const k=_lotKey(lot); if(!k) return null; return idx[k]||(idx[k]={lot,key:k,variety:new Set(),cons:new Set(),stages:new Set(),placed:0,harv:0,onHand:0,recvBlk:0,lastDate:''}); };
+  const stamp=(c,d)=>{ d=(d||'').slice(0,10); if(d&&d>c.lastDate) c.lastDate=d; };
+  (DB.spawnRuns||[]).forEach(s=>(Array.isArray(s.strains)?s.strains:[]).forEach(x=>{ const c=get(x.lot); if(c){ if(x.strain)c.variety.add(cvv(x.strain)); c.stages.add('spawn'); stamp(c,s.date); } }));
+  (DB.labBatches||[]).forEach(b=>{ (typeof batchVarietyLines==='function'?batchVarietyLines(b):(b.varieties||[])).forEach(v=>{ const c=get(v.lot||((b.lotCode||'')+(v.suffix?' '+v.suffix:''))); if(c){ if(v.variety)c.variety.add(cvv(v.variety)); c.stages.add('cooked'); stamp(c,b.productionDate||b.date); } }); });
+  (DB.receivings||[]).forEach(r=>{ const c=get(r.lotNumber); if(c){ if(r.variety)c.variety.add(cvv(r.variety)); c.stages.add('received'); c.recvBlk+=parseInt(r.blockCount)||0; stamp(c,r.date); } });
+  DB.fruitings.forEach(f=>{ const c=get(f.lotNumber); if(c){ if(f.variety)c.variety.add(cvv(f.variety)); if(f.containerID)c.cons.add(f.containerID); c.stages.add(f.status==='removed'?'kicked':'fruiting'); c.placed+=parseInt(f.blockCount)||0; stamp(c,f.date); } });
+  DB.harvests.forEach(h=>{ const c=get(h.lotNumber); if(c){ if(h.variety)c.variety.add(cvv(h.variety)); if(h.container)c.cons.add(h.container); c.stages.add('harvested'); c.harv+=(h.weight||0); c.onHand+=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); stamp(c,h.date); } });
+  const hit=c=> c.lot.toLowerCase().includes(q) || [...c.variety].some(v=>(v||'').toLowerCase().includes(q)) || [...c.cons].some(cc=>(cc||'').toLowerCase().includes(q));
+  const rank=['harvested','fruiting','kicked','received','cooked','spawn'];
+  const stageOf=c=>rank.find(s=>c.stages.has(s))||'—';
+  return Object.values(idx).filter(hit).map(c=>({lot:c.lot,variety:[...c.variety].join(', '),cons:[...c.cons].join(', '),stage:stageOf(c),placed:c.placed,harv:c.harv,onHand:c.onHand,recvBlk:c.recvBlk,lastDate:c.lastDate}))
+    .sort((a,b)=>(b.lastDate||'').localeCompare(a.lastDate||'')||b.harv-a.harv).slice(0,60);
+}
+function traceGo(lot){ _traceQ=lot; _traceDate=''; _traceContainer=''; const q=document.getElementById('tr-q'); if(q)q.value=lot; runTrace(); }
+function _traceMatchesHTML(q){
+  const cands=_traceCandidates(q); if(!cands.length) return '';
+  const sc={harvested:'var(--fern)',fruiting:'var(--gold)',kicked:'var(--rust)',received:'var(--blue)',cooked:'var(--moss)',spawn:'#7a4a86'};
+  const exact=cands.length===1 && _lotKey(cands[0].lot)===_lotKey(q);
+  const rows=cands.map(c=>`<tr style="cursor:pointer;" onclick="traceGo('${(c.lot||'').replace(/'/g,"\\'")}')">
+    <td class="mn" style="font-weight:700;color:var(--gold);">${c.lot}</td>
+    <td>${c.variety||'—'}</td>
+    <td class="mn" style="font-size:11px;">${c.cons||'—'}</td>
+    <td><span class="bdg" style="background:rgba(0,0,0,.05);color:${sc[c.stage]||'var(--text3)'};border:1px solid ${sc[c.stage]||'var(--border)'};font-size:10px;text-transform:uppercase;">${c.stage}</span></td>
+    <td class="mn">${c.placed||(c.recvBlk||'—')}</td>
+    <td class="mn" style="color:var(--fern);font-weight:700;">${c.harv>0?c.harv.toFixed(1):'—'}</td>
+    <td class="mn" style="color:var(--gold);">${c.onHand>0?c.onHand.toFixed(1):'—'}</td>
+  </tr>`).join('');
+  return `<div class="sh"><span>🔎 Matches</span><span class="bdg bc">${cands.length}</span>${exact?'':'<span style="font-size:11px;color:var(--text3);margin-left:6px;">tap a lot to open its full lineage</span>'}</div>
+    <div class="tw" style="margin-bottom:20px;overflow-x:auto;"><table><thead><tr><th>Lot #</th><th>Variety</th><th>Container(s)</th><th>Now</th><th>Blocks</th><th>Harv lb</th><th>On hand</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
 function rTrace(el){
   const q=_traceQ, date=_traceDate, container=_traceContainer;
   const thL='text-align:left;padding:7px 10px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--text3);border-bottom:1px solid var(--border);white-space:nowrap;';
@@ -11245,7 +11288,8 @@ function rTrace(el){
     const nothing = !blocks.length && !d.harvests.length && !d.orders.length && !d.preservation.length && !d.labBatches.length && !d.spawnRuns.length && !d.cultures.length && !d.receivings.length;
 
     if(nothing){
-      results=`<div class="card" style="padding:24px;text-align:center;color:var(--text3);">No records found for lot / block <strong style="color:var(--text2);${mn}">${q}</strong>${date?` on ${fDate(date)}`:''}${container?` in container ${container}`:''}. Check the number, or clear the date / container filters.</div>`;
+      // partial search (matches list shown above) → don't also show a "no exact record" card
+      results = _traceCandidates(q).length ? '' : `<div class="card" style="padding:24px;text-align:center;color:var(--text3);">No records found for <strong style="color:var(--text2);${mn}">${q}</strong>${date?` on ${fDate(date)}`:''}${container?` in container ${container}`:''}. Check the number, or clear the date / container filters.</div>`;
     } else {
       // Summary
       const lineageBtn=`<div style="margin-bottom:14px;"><button class="btn b-m b-lg" onclick="showTraceReport('${q.replace(/'/g,"\\'")}')">🧬 View Full Lineage Dashboard</button></div>`;
@@ -11351,14 +11395,16 @@ function rTrace(el){
   }
 
   el.innerHTML=`
-    <div class="ph"><div class="ph-t">🔍 Traceability</div><div class="ph-s">Organic audit · block → chamber → harvest → order → customer</div></div>
+    <div class="ph"><div class="ph-t">🔍 Trace &amp; Search</div><div class="ph-s">Search any lot #, variety, or container — see where it is now, what it yielded, and its full lineage. Partial matches welcome (great for half-remembered Wild Spore lots).</div></div>
+    <datalist id="tr-lotl">${[...new Set([...DB.fruitings.map(f=>f.lotNumber),...DB.harvests.map(h=>h.lotNumber),...(DB.receivings||[]).map(r=>r.lotNumber)].filter(Boolean))].sort().map(l=>`<option value="${(l||'').replace(/"/g,'&quot;')}">`).join('')}</datalist>
     <div class="card" style="padding:16px;margin-bottom:22px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
-      <div class="fgl" style="flex:1;min-width:180px;"><label>Lot / Block Number</label><input class="fi" id="tr-q" value="${q.replace(/"/g,'&quot;')}" placeholder="e.g. block or harvest lot #" autofocus></div>
+      <div class="fgl" style="flex:1;min-width:180px;"><label>Search — lot #, variety, or container</label><input class="fi" id="tr-q" list="tr-lotl" value="${q.replace(/"/g,'&quot;')}" placeholder="e.g. WS, shiitake, GH-04, 10223…" autocomplete="off" autofocus></div>
       <div class="fgl" style="min-width:150px;"><label>Date <span style="color:var(--text3);font-size:11px;">(Wild Spore)</span></label><input class="fi" type="date" id="tr-date" value="${date}"></div>
       <div class="fgl" style="min-width:140px;"><label>Container <span style="color:var(--text3);font-size:11px;">(optional)</span></label><input class="fi" id="tr-container" value="${container.replace(/"/g,'&quot;')}" placeholder="chamber #" list="tr-conl"><datalist id="tr-conl">${[...new Set(DB.fruitings.map(f=>f.containerID).concat(DB.harvests.map(h=>h.container)).filter(Boolean))].map(c=>`<option value="${c}">`).join('')}</datalist></div>
-      <button class="btn b-m b-lg" onclick="runTrace()">Trace →</button>
+      <button class="btn b-m b-lg" onclick="runTrace()">Search →</button>
       ${(q||date||container)?`<button class="btn b-g" onclick="clearTrace()">Clear</button>`:''}
     </div>
+    ${q?_traceMatchesHTML(q):'<div class="card" style="padding:22px;text-align:center;color:var(--text3);">Type a lot #, variety, or container above to search — then tap any match for its full lineage &amp; yield.</div>'}
     ${results}`;
 
   const qi=document.getElementById('tr-q');
