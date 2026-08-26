@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #105</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #106</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -642,16 +642,19 @@ const FS = {
 // ── LOAD ALL DATA FROM FIRESTORE ──
 async function loadDB(){
   try {
-    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,loginHistory,transfers,productMovements,auditLog,containerSessions,preservationBatches,labBatches,blockDisposals,receivings,cultures,spawnRuns,cordyceps,revisions,containerFlips,shipments] = await Promise.all([
+    // NOTE: auditLog, revisions, loginHistory are NOT loaded here — they're admin-only and huge (~3 MB combined).
+    // They're lazy-loaded by ensureAdminData() when the Admin / Security views open, which keeps login fast on mobile.
+    const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,transfers,productMovements,containerSessions,preservationBatches,labBatches,blockDisposals,receivings,cultures,spawnRuns,cordyceps,containerFlips,shipments] = await Promise.all([
       FS.getAll('orders'), FS.getAll('clients'), FS.getAll('harvests'),
       FS.getAll('samples'), FS.getAll('fruitings'), FS.getAll('preservation'),
       FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('packSessions'),
-      FS.getAll('users'), FS.getAll('loginHistory'), FS.getAll('transfers'), FS.getAll('productMovements'),
-      FS.getAll('auditLog'), FS.getAll('containerSessions'), FS.getAll('preservationBatches'),
+      FS.getAll('users'), FS.getAll('transfers'), FS.getAll('productMovements'),
+      FS.getAll('containerSessions'), FS.getAll('preservationBatches'),
       FS.getAll('labBatches'), FS.getAll('blockDisposals'), FS.getAll('receivings'),
-      FS.getAll('cultures'), FS.getAll('spawnRuns'), FS.getAll('cordyceps'), FS.getAll('revisions'), FS.getAll('containerFlips'), FS.getAll('shipments')
+      FS.getAll('cultures'), FS.getAll('spawnRuns'), FS.getAll('cordyceps'), FS.getAll('containerFlips'), FS.getAll('shipments')
     ]);
-    DB.receivings=receivings; DB.cultures=cultures; DB.spawnRuns=spawnRuns; DB.cordyceps=cordyceps; DB.revisions=revisions; DB.containerFlips=containerFlips||[]; DB.shipments=shipments||[];
+    DB.auditLog=[]; DB.revisions=[]; DB.loginHistory=[]; DB._adminLoaded={}; // lazy — see ensureAdminData()
+    DB.receivings=receivings; DB.cultures=cultures; DB.spawnRuns=spawnRuns; DB.cordyceps=cordyceps; DB.containerFlips=containerFlips||[]; DB.shipments=shipments||[];
     DB.orders=orders; DB.clients=clients; DB.harvests=harvests;
     DB.samples=samples; DB.fruitings=fruitings; DB.preservation=preservation;
     // ── ONE-TIME MIGRATION: drop o.chestnut (legacy ungraded field) since chestnut is now CH01/CH02 only.
@@ -669,7 +672,7 @@ async function loadDB(){
       }
     });
     DB.notifLog=notifLog; DB.signupRequests=signupRequests; DB.packSessions=packSessions;
-    DB.users=users; DB.loginHistory=loginHistory; DB.transfers=transfers; DB.productMovements=productMovements; DB.auditLog=auditLog; DB.containerSessions=containerSessions; DB.preservationBatches=preservationBatches;
+    DB.users=users; DB.transfers=transfers; DB.productMovements=productMovements; DB.containerSessions=containerSessions; DB.preservationBatches=preservationBatches;
     DB.labBatches=labBatches; DB.blockDisposals=blockDisposals;
     // Load EmailJS config from appConfig
     try{
@@ -13362,7 +13365,19 @@ async function delCustomSupplier(name){
   logAudit('suggestion_removed',`Removed vendor suggestion: ${name}`);
   renderC();
 }
+// Lazy-load the heavy admin-only collections (auditLog, revisions, loginHistory) — skipped at login for speed.
+let _adminLoading=false;
+async function ensureAdminData(){
+  if(DB._adminLoaded&&DB._adminLoaded.all) return true;
+  if(_adminLoading) return false;
+  _adminLoading=true;
+  try{ const [au,rev,lh]=await Promise.all([FS.getAll('auditLog'),FS.getAll('revisions'),FS.getAll('loginHistory')]);
+    DB.auditLog=au||[]; DB.revisions=rev||[]; DB.loginHistory=lh||[]; DB._adminLoaded={all:true};
+  }catch(e){ console.warn('ensureAdminData',e); }
+  _adminLoading=false; return true;
+}
 function rAdmin(el){
+  if(!(DB._adminLoaded&&DB._adminLoaded.all)) ensureAdminData().then(()=>{ if(cv==='admin') rAdmin(document.getElementById('main-views')); }); // recent logins fill in when ready
   const pend=DB.orders.filter(o=>o.status==='pending'&&!o.isStanding), cust=DB.orders.filter(o=>o.custom&&!o.isStanding), newSR=DB.signupRequests.filter(s=>s.status==='new');
   const staffUsers=DB.users.filter(u=>u.active!==false);
   const recentLogins=[...DB.loginHistory].sort((a,b)=>b.timestamp.localeCompare(a.timestamp)).slice(0,5);
@@ -14037,6 +14052,7 @@ let _revQ = '';
 function onRevSearch(v){ _revQ=v; clearTimeout(window._revST); window._revST=setTimeout(()=>{ const mv=document.getElementById('main-views'); if(mv) rSecurity(mv); },250); }
 
 function rSecurity(el){
+  if(!(DB._adminLoaded&&DB._adminLoaded.all)){ el.innerHTML='<div class="ph"><div class="ph-t">🔒 Security</div><div class="ph-s">audit trail · revision history · logins</div></div><div class="card" style="padding:36px;text-align:center;color:var(--text3);">⏳ Loading audit &amp; revision history…</div>'; ensureAdminData().then(()=>{ if(cv==='security') rSecurity(document.getElementById('main-views')); }); return; }
   // #13 — field-level revision history (every create/update/delete, attributed)
   const _rq=(_revQ||'').toLowerCase();
   const _revs=[...(DB.revisions||[])].sort((a,b)=>(b.ts||'').localeCompare(a.ts||''))
