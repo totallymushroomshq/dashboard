@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #106</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #107</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2920,7 +2920,7 @@ function buildPackOrderCard(){
       <div style="border:1px dashed var(--border);border-radius:6px;padding:10px 12px;margin-bottom:16px;background:rgba(184,130,10,.03);">
         <div style="font-size:11px;color:var(--text3);margin-bottom:8px;line-height:1.5;">🔎 <b>Lot not listed above?</b> If a lot you used was toasted or removed early, add it from the sheet — it'll be tied to this order and <b>back-filled into traceability</b>.</div>
         <div class="fg2" style="align-items:end;">
-          <div class="fgl"><label>Lot #</label><input class="fi" id="po-ml-lot" list="po-known-lots" autocomplete="off" placeholder="e.g. WS1776"></div>
+          <div class="fgl"><label>Lot #</label><input class="fi" id="po-ml-lot" list="po-known-lots" autocomplete="off" placeholder="e.g. WS1776" oninput="onPoManualLot()"></div>
           <div class="fgl"><label>Variety</label><input class="fi" id="po-ml-var" list="po-varieties-dl" autocomplete="off" placeholder="Variety"></div>
           <div class="fgl"><label>Container</label><input class="fi" id="po-ml-con" list="po-containers-dl" autocomplete="off" placeholder="GH-…"></div>
         </div>
@@ -5181,6 +5181,21 @@ function onHarvestLot(){
   if(v && vEl){ vEl.value=v; markAF(vEl); if(typeof onSimpleVarietyAdd==='function') onSimpleVarietyAdd(vEl);
     if(hint){ hint.textContent='✓ Variety remembered for lot '+lot+' → '+v; hint.style.display='block'; } }
   else { clearAF(vEl); if(hint) hint.style.display='none'; }
+}
+// Order/Pack manual-lot entry: typing a known lot # locks in the variety (+ container) from the chain, highlighted — same as harvest/fruiting/receiving
+function onPoManualLot(){
+  const lot=(document.getElementById('po-ml-lot')?.value||'').trim();
+  const vEl=document.getElementById('po-ml-var'); const cEl=document.getElementById('po-ml-con');
+  const v=lot?lotToVariety(lot):'';
+  if(v && vEl){ vEl.value=v; markAF(vEl); if(typeof onSimpleVarietyAdd==='function') onSimpleVarietyAdd(vEl); }
+  else clearAF(vEl);
+  // container from the most-recent record carrying this lot (harvest, then fruiting)
+  if(lot && cEl && !cEl.value){ const L=_lotKey(lot);
+    const cand=[...(DB.harvests||[]).filter(h=>_lotKey(h.lotNumber)===L&&h.container).map(h=>({d:h.date,c:h.container})),
+                ...(DB.fruitings||[]).filter(f=>_lotKey(f.lotNumber)===L&&f.containerID).map(f=>({d:f.date,c:f.containerID}))]
+      .sort((a,b)=>(b.d||'').localeCompare(a.d||''))[0];
+    if(cand){ cEl.value=cand.c; markAF(cEl); }
+  }
 }
 
 function onContainerSelect(code){
