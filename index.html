@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #107</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #108</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4406,7 +4406,7 @@ function openEditReceiving(id){
       <div class="fgl"><label>Variety</label><input class="fi" id="er-variety" list="er-variety-dl" value="${attrEsc(r.variety)}"><datalist id="er-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
     </div>
     <div class="fg2">
-      <div class="fgl"><label>Lot / Block #</label><input class="fi" id="er-lot" value="${attrEsc(r.lotNumber)}"></div>
+      <div class="fgl"><label>Lot / Block #</label><input class="fi" id="er-lot" value="${attrEsc(r.lotNumber)}" oninput="wireLotVarCon('er-lot','#er-variety')"></div>
       <div class="fgl"><label># of Blocks</label><input class="fi" type="number" min="${placed||1}" id="er-bc" value="${r.blockCount||0}"></div>
       <div class="fgl"><label>Block Weight (lb)</label><input class="fi" type="number" min="0" step="0.1" id="er-bw" value="${r.blockWeightLb||''}"></div>
       <div class="fgl"><label>Received By</label><input class="fi" id="er-by" value="${attrEsc(r.receivedBy)}"></div>
@@ -5060,11 +5060,11 @@ function openEditFruiting(id){
     ${linked}
     <div class="fg2">
       <div class="fgl"><label>Date In</label><input class="fi" type="date" id="ef-dt" value="${attrEsc(f.date)}"></div>
-      <div class="fgl"><label>Container <span style="color:var(--text3);font-size:11px;">type code or name</span></label><input class="fi" id="ef-cid" list="ef-cl" value="${attrEsc(f.containerID)}" autocomplete="off"><datalist id="ef-cl">${conOpts}</datalist></div>
+      <div class="fgl"><label>Container <span style="color:var(--text3);font-size:11px;">type code or name</span></label><input class="fi" id="ef-cid" list="ef-cl" value="${attrEsc(f.containerID)}" autocomplete="off" oninput="wireConLotVar('ef-cid','#ef-lot','#ef-v')"><datalist id="ef-cl">${conOpts}</datalist></div>
       <div class="fgl"><label>Status</label><select class="fs" id="ef-status"><option value="fruiting" ${f.status!=='harvested'?'selected':''}>Fruiting</option><option value="harvested" ${f.status==='harvested'?'selected':''}>Harvested</option></select></div>
     </div>
     <div class="fg2">
-      <div class="fgl"><label>Lot Number</label><input class="fi" id="ef-lot" value="${attrEsc(f.lotNumber)}"></div>
+      <div class="fgl"><label>Lot Number</label><input class="fi" id="ef-lot" value="${attrEsc(f.lotNumber)}" oninput="wireLotVarCon('ef-lot','#ef-v','#ef-cid')"></div>
       <div class="fgl"><label>Source</label><select class="fs" id="ef-source"><option value="supplier" ${f.source!=='internal'?'selected':''}>Outside Supplier</option><option value="internal" ${f.source==='internal'?'selected':''}>Internal Production</option></select></div>
       <div class="fgl"><label>Supplier / Producer <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="ef-vendor" list="ef-vendl" value="${attrEsc(f.vendor)}" autocomplete="off"><datalist id="ef-vendl">${allSuppliers().map(s=>`<option value="${s.replace(/"/g,'&quot;')}">`).join('')}<option value="In-house Production"></datalist></div>
       <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="ef-v" list="ef-v-dl" value="${attrEsc(f.variety)}" autocomplete="off"><datalist id="ef-v-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
@@ -5155,6 +5155,44 @@ function lotToVariety(lot){
   }
   return '';
 }
+// The container a lot currently lives in / was last handled in — fruiting placement is the source of truth, then harvest. Powers lot→container auto-fill everywhere.
+function lotToContainer(lot){
+  const L=_lotKey(lot); if(!L) return '';
+  const recs=[
+    ...(DB.fruitings||[]).filter(f=>_lotKey(f.lotNumber)===L&&f.containerID).map(f=>({d:f.date||'',c:f.containerID})),
+    ...(DB.harvests ||[]).filter(h=>_lotKey(h.lotNumber)===L&&h.container ).map(h=>({d:h.date||'',c:h.container}))
+  ].sort((a,b)=>(b.d).localeCompare(a.d));
+  return recs.length?recs[0].c:'';
+}
+// What lot (and its variety) is/was in a container — most-recent fruiting placement wins, then last harvest. Powers container→lot auto-fill.
+function containerToLot(container){
+  const C=(container||'').trim().toLowerCase(); if(!C) return null;
+  const eq=x=>(x||'').trim().toLowerCase()===C;
+  const recs=[
+    ...(DB.fruitings||[]).filter(f=>eq(f.containerID)&&f.lotNumber).map(f=>({d:f.date||'',lot:f.lotNumber,variety:f.variety})),
+    ...(DB.harvests ||[]).filter(h=>eq(h.container )&&h.lotNumber).map(h=>({d:h.date||'',lot:h.lotNumber,variety:h.variety}))
+  ].sort((a,b)=>(b.d).localeCompare(a.d));
+  if(!recs.length) return null;
+  const r=recs[0]; const cvz=v=>(typeof canonicalVariety==='function'?canonicalVariety(v):v);
+  return {lot:r.lot, variety:cvz(r.variety||lotToVariety(r.lot)||'')};
+}
+// Generic auto-lock for edit forms & session-editor rows: a lot fills its variety (+ container) — blanks only, so existing values are never clobbered. el can be the lot input or its id.
+function wireLotVarCon(elOrId, varSel, conSel){
+  const lotEl=(typeof elOrId==='string')?document.getElementById(elOrId):elOrId; if(!lotEl) return;
+  const scope=lotEl.closest('.fse-row,.hse-row')||document; const q=s=>s?(s.charAt(0)==='#'?document.getElementById(s.slice(1)):scope.querySelector(s)):null;
+  const lot=(lotEl.value||'').trim(); const vEl=q(varSel); const cEl=q(conSel);
+  if(vEl){ const v=lot?lotToVariety(lot):''; if(v && !vEl.value.trim()){ vEl.value=v; markAF(vEl); } }
+  if(cEl){ const c=lot?lotToContainer(lot):''; if(c && !cEl.value.trim()){ cEl.value=c; markAF(cEl); } }
+}
+// Generic reverse: a container fills the lot (+ variety) that lives in it — blanks only.
+function wireConLotVar(elOrId, lotSel, varSel){
+  const cEl=(typeof elOrId==='string')?document.getElementById(elOrId):elOrId; if(!cEl) return;
+  const scope=cEl.closest('.fse-row,.hse-row')||document; const q=s=>s?(s.charAt(0)==='#'?document.getElementById(s.slice(1)):scope.querySelector(s)):null;
+  const link=containerToLot((cEl.value||'').trim()); if(!link) return;
+  const lotEl=q(lotSel); const vEl=q(varSel);
+  if(lotEl && !lotEl.value.trim()){ lotEl.value=link.lot; markAF(lotEl); }
+  if(vEl && link.variety && !vEl.value.trim()){ vEl.value=link.variety; markAF(vEl); }
+}
 // highlight a field the app auto-filled (variety looked up from a lot, etc.) so it's obvious it wasn't typed; clears when the user edits it
 function markAF(el){ if(!el) return; el.classList.add('af'); el.title='Auto-filled by the app — edit to override';
   const p=el.parentElement;
@@ -5181,6 +5219,9 @@ function onHarvestLot(){
   if(v && vEl){ vEl.value=v; markAF(vEl); if(typeof onSimpleVarietyAdd==='function') onSimpleVarietyAdd(vEl);
     if(hint){ hint.textContent='✓ Variety remembered for lot '+lot+' → '+v; hint.style.display='block'; } }
   else { clearAF(vEl); if(hint) hint.style.display='none'; }
+  // Traceability lock (reverse): a known lot → the container it's fruiting in, highlighted (only when blank so a hand-picked container wins)
+  const cEl=document.getElementById('hl-c'); const cont=lot?lotToContainer(lot):'';
+  if(cont && cEl && !cEl.value.trim()){ cEl.value=cont; markAF(cEl); if(typeof onContainerSelect==='function') onContainerSelect(cont); }
 }
 // Order/Pack manual-lot entry: typing a known lot # locks in the variety (+ container) from the chain, highlighted — same as harvest/fruiting/receiving
 function onPoManualLot(){
@@ -5219,6 +5260,14 @@ function onContainerSelect(code){
   } else {
     if(facEl) facEl.value='';
     if(infoEl) infoEl.style.display='none';
+  }
+  // Traceability lock: harvesting FROM a container → pull the lot + variety that were fruited into it, highlighted (only when blank so manual entry always wins)
+  const lotEl=document.getElementById('hl-lot'); const vEl=document.getElementById('hl-v'); const hint=document.getElementById('hl-lot-hint');
+  const link=code?containerToLot(code):null;
+  if(link && lotEl && !lotEl.value.trim()){
+    lotEl.value=link.lot; markAF(lotEl);
+    if(vEl && !vEl.value.trim() && link.variety){ vEl.value=link.variety; markAF(vEl); if(typeof onSimpleVarietyAdd==='function') onSimpleVarietyAdd(vEl); }
+    if(hint){ hint.textContent='✓ '+code+' holds lot '+link.lot+(link.variety?' · '+link.variety:''); hint.style.color='var(--fern)'; hint.style.display='block'; }
   }
 }
 
@@ -7557,11 +7606,11 @@ function openEditHarvest(id){
   document.getElementById('em-body').innerHTML=`
     <div class="fg2">
       <div class="fgl"><label>Date</label><input class="fi" type="date" id="eh-dt" value="${attrEsc(h.date)}"></div>
-      <div class="fgl"><label>Container <span style="color:var(--text3);font-size:11px;">type code or farm name</span></label><input class="fi" id="eh-c" list="eh-cl" value="${attrEsc(h.container)}" autocomplete="off" placeholder="Type to search…"><datalist id="eh-cl">${conOpts}</datalist></div>
+      <div class="fgl"><label>Container <span style="color:var(--text3);font-size:11px;">type code or farm name</span></label><input class="fi" id="eh-c" list="eh-cl" value="${attrEsc(h.container)}" autocomplete="off" placeholder="Type to search…" oninput="wireConLotVar('eh-c','#eh-lot','#eh-v')"><datalist id="eh-cl">${conOpts}</datalist></div>
       <div class="fgl"><label>Facility</label><input class="fi" id="eh-fac" value="${attrEsc(h.facility)}"></div>
     </div>
     <div class="fg2">
-      <div class="fgl"><label>Lot Number</label><input class="fi" id="eh-lot" value="${attrEsc(h.lotNumber)}"></div>
+      <div class="fgl"><label>Lot Number</label><input class="fi" id="eh-lot" value="${attrEsc(h.lotNumber)}" oninput="wireLotVarCon('eh-lot','#eh-v','#eh-c')"></div>
       <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="eh-v" list="eh-v-dl" value="${attrEsc(h.variety)}" placeholder="Type or pick variety…" autocomplete="off"><datalist id="eh-v-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
       <div class="fgl"><label>Grade</label><select class="fs" id="eh-g"><option value="">—</option>${grades.map(g=>`<option value="${g[0]}" ${h.grade===g[0]?'selected':''}>${g[1]}</option>`).join('')}</select></div>
       <div class="fgl"><label>Harvested Weight (lb)</label><input class="fi" type="number" step="0.1" min="0" id="eh-w" value="${h.weight||0}"></div>
@@ -11450,7 +11499,7 @@ function blankPlVar(){ return {suffix:'',variety:'',generation:'',blockCount:'',
 // one spawn-lot row inside a variety card — multiple spawn lots + their bag counts combined into this strain's inoculation
 function plSpawnSrcRow(i,ss){ ss=ss||{};
   return `<div class="plv-srow-${i}" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:4px;">
-    <input class="fi plv-slot" list="lab-lotcode-l" value="${attrEsc(ss.lot||'')}" placeholder="spawn lot #" style="flex:1 1 130px;min-width:110px;" autocomplete="off">
+    <input class="fi plv-slot" list="lab-lotcode-l" value="${attrEsc(ss.lot||'')}" placeholder="spawn lot #" style="flex:1 1 130px;min-width:110px;" autocomplete="off" oninput="onPlSpawnLotType(${i},this)">
     <input class="fi plv-sbags" type="number" min="0" step="1" value="${(ss.bags!=null&&ss.bags!=='')?ss.bags:''}" placeholder="bags" style="max-width:78px;" oninput="_plSpawnTotal(${i})"><span style="font-size:11px;color:var(--text3);">bags</span>
     <button type="button" class="btn b-r b-sm" title="Remove spawn lot" onclick="this.closest('.plv-srow-${i}').remove();_plSpawnTotal(${i})">✕</button>
   </div>`;
@@ -11471,6 +11520,12 @@ function parseSpawnSrcText(txt){ txt=(txt||'').trim(); if(!txt) return [];
 }
 function fmtSpawnSrc(ss){ return (Array.isArray(ss)?ss:[]).filter(s=>s.lot||s.bags).map(s=>`${s.lot||''}${s.bags?' ×'+s.bags:''}`).join(', '); }
 function addPlSpawnSource(i){ const w=document.getElementById('plv-spawnsrc-'+i); if(w){ w.insertAdjacentHTML('beforeend',plSpawnSrcRow(i,{})); } }
+// Traceability lock: typing a known spawn lot into a block's combined-spawn list fills that sub-lot's Variety/Strain (blank only), highlighted — the block inherits its spawn's strain
+function onPlSpawnLotType(i,el){ _plSpawnTotal(i);
+  const lot=(el?.value||'').trim(); const vEl=document.getElementById('plv-variety-'+i); if(!vEl) return;
+  const strain=lot?lotToVariety(lot):'';
+  if(strain && !vEl.value.trim()){ vEl.value=strain; markAF(vEl); }
+}
 function _plSpawnTotal(i){ const w=document.getElementById('plv-spawnsrc-'+i); if(!w) return; let n=0,lots=0; [...w.querySelectorAll('.plv-srow-'+i)].forEach(r=>{ const b=parseInt(r.querySelector('.plv-sbags')?.value)||0; const l=(r.querySelector('.plv-slot')?.value||'').trim(); if(l||b){ lots++; n+=b; } }); const t=document.getElementById('plv-spawntot-'+i); if(t) t.textContent=n?`= ${lots} lot(s) · ${n} bags combined`:''; }
 function attrEsc(s){ return String(s==null?'':s).replace(/"/g,'&quot;'); }
 
