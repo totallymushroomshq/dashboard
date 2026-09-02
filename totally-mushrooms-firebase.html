@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #108</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #109</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5179,7 +5179,7 @@ function containerToLot(container){
 // Generic auto-lock for edit forms & session-editor rows: a lot fills its variety (+ container) — blanks only, so existing values are never clobbered. el can be the lot input or its id.
 function wireLotVarCon(elOrId, varSel, conSel){
   const lotEl=(typeof elOrId==='string')?document.getElementById(elOrId):elOrId; if(!lotEl) return;
-  const scope=lotEl.closest('.fse-row,.hse-row')||document; const q=s=>s?(s.charAt(0)==='#'?document.getElementById(s.slice(1)):scope.querySelector(s)):null;
+  const scope=lotEl.closest('.fse-row,.hse-row,.slb-lotrow')||document; const q=s=>s?(s.charAt(0)==='#'?document.getElementById(s.slice(1)):scope.querySelector(s)):null;
   const lot=(lotEl.value||'').trim(); const vEl=q(varSel); const cEl=q(conSel);
   if(vEl){ const v=lot?lotToVariety(lot):''; if(v && !vEl.value.trim()){ vEl.value=v; markAF(vEl); } }
   if(cEl){ const c=lot?lotToContainer(lot):''; if(c && !cEl.value.trim()){ cEl.value=c; markAF(cEl); } }
@@ -5187,7 +5187,7 @@ function wireLotVarCon(elOrId, varSel, conSel){
 // Generic reverse: a container fills the lot (+ variety) that lives in it — blanks only.
 function wireConLotVar(elOrId, lotSel, varSel){
   const cEl=(typeof elOrId==='string')?document.getElementById(elOrId):elOrId; if(!cEl) return;
-  const scope=cEl.closest('.fse-row,.hse-row')||document; const q=s=>s?(s.charAt(0)==='#'?document.getElementById(s.slice(1)):scope.querySelector(s)):null;
+  const scope=cEl.closest('.fse-row,.hse-row,.slb-lotrow')||document; const q=s=>s?(s.charAt(0)==='#'?document.getElementById(s.slice(1)):scope.querySelector(s)):null;
   const link=containerToLot((cEl.value||'').trim()); if(!link) return;
   const lotEl=q(lotSel); const vEl=q(varSel);
   if(lotEl && !lotEl.value.trim()){ lotEl.value=link.lot; markAF(lotEl); }
@@ -5723,9 +5723,9 @@ function slbItemRow(it){ it=it||{};
 }
 function slbLotRow(l){ l=l||{};
   return `<div class="slb-lotrow" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
-    <input class="fi slb-lot" list="slb-lot-dl" value="${attrEsc(l.lot||'')}" placeholder="Lot #" style="flex:1;min-width:100px;" autocomplete="off">
+    <input class="fi slb-lot" list="slb-lot-dl" value="${attrEsc(l.lot||'')}" placeholder="Lot #" style="flex:1;min-width:100px;" autocomplete="off" oninput="wireLotVarCon(this,'.slb-var','.slb-con')">
     <input class="fi slb-var" list="slb-var-dl" value="${attrEsc(l.variety||'')}" placeholder="Variety" style="flex:1;min-width:104px;" autocomplete="off">
-    <input class="fi slb-con" list="slb-con-dl" value="${attrEsc(l.container||'')}" placeholder="GH-…" style="max-width:96px;" autocomplete="off">
+    <input class="fi slb-con" list="slb-con-dl" value="${attrEsc(l.container||'')}" placeholder="GH-…" style="flex:1;min-width:120px;" autocomplete="off" oninput="wireConLotVar(this,'.slb-lot','.slb-var')">
     <button type="button" class="btn b-r b-sm" onclick="this.closest('.slb-lotrow').remove()">✕</button>
   </div>`;
 }
@@ -5783,6 +5783,8 @@ function reviewSlipBatch(){
       </div>
     </div>`;
   try{ window.scrollTo(0,0); }catch(e){}
+  // lock variety/container off each already-filled lot (parsed rows never fired oninput) so the golden auto-fill bars show on load
+  try{ document.querySelectorAll('#main-views .slb-lotrow .slb-lot').forEach(el=>{ if((el.value||'').trim()) wireLotVarCon(el,'.slb-var','.slb-con'); }); }catch(e){}
 }
 async function commitSlipBatch(btn){
   _slipBatch=_readSlipBatchFromDOM();
