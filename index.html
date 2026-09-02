@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #109</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #110</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -1043,7 +1043,12 @@ function staffInput(id, value){
     return `<input class="fi" id="${id}" value="${String((S&&S.name)||'').replace(/"/g,'&quot;')}" readonly style="background:var(--paper);color:var(--text3);cursor:not-allowed;" title="Only admins can log time for other staff">`;
   }
   const v=(value!=null&&value!=='')?value:((S&&S.name)||'');
-  return `<input class="fi" id="${id}" list="${id}-dl" value="${String(v).replace(/"/g,'&quot;')}" placeholder="Staff name…" autocomplete="off"><datalist id="${id}-dl">${staffNames().map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('')}</datalist>`;
+  // NOFILL: strip every signal Safari/Chrome use to offer Apple-Contacts autofill (placeholder must not say "name"; non-semantic field name; off tokens for every autofill engine) — suggestions come ONLY from the app's own datalist below
+  return `<input class="fi" id="${id}" list="${id}-dl" value="${String(v).replace(/"/g,'&quot;')}" placeholder="Type or pick staff…" ${NOFILL('tmstaff-'+id)}><datalist id="${id}-dl">${staffNames().map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('')}</datalist>`;
+}
+// Reusable attribute string that suppresses native contact/password autofill on our own-datalist pickers. Pass a unique non-semantic field name.
+function NOFILL(fieldName){
+  return `autocomplete="off" name="${fieldName}" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-form-type="other" aria-autocomplete="list"`;
 }
 
 function fmtDuration(ms){
@@ -5359,7 +5364,7 @@ function hbLotRow(r){ r=r||{};
 }
 function hbCrewRow(c){ c=c||{};
   return `<div class="hb-crewrow" style="display:flex;gap:6px;align-items:center;margin-bottom:5px;">
-    <input class="fi hb-cname" value="${attrEsc(c.name||'')}" placeholder="Name" list="lab-crew-list" style="flex:1;min-width:120px;">
+    <input class="fi hb-cname" value="${attrEsc(c.name||'')}" placeholder="Type or pick crew…" list="lab-crew-list" style="flex:1;min-width:120px;" ${NOFILL('tmcrewh')}>
     <input class="fi hb-cmin" type="number" min="0" value="${c.minutes!=null&&c.minutes!==''?c.minutes:''}" placeholder="min" style="max-width:76px;"><span style="font-size:11px;color:var(--text3);">min</span>
     <button type="button" class="btn b-r b-sm" title="Remove crew" onclick="this.closest('.hb-crewrow').remove()">✕</button>
   </div>`;
@@ -6024,7 +6029,7 @@ function fbLotRow(r){ r=r||{};
 }
 function fbCrewRow(c){ c=c||{};
   return `<div class="fb-crewrow" style="display:flex;gap:6px;align-items:center;margin-bottom:5px;">
-    <input class="fi fb-cname" value="${attrEsc(c.name||'')}" placeholder="Name" list="lab-crew-list" style="flex:1;min-width:120px;">
+    <input class="fi fb-cname" value="${attrEsc(c.name||'')}" placeholder="Type or pick crew…" list="lab-crew-list" style="flex:1;min-width:120px;" ${NOFILL('tmcrewf')}>
     <input class="fi fb-cmin" type="number" min="0" value="${(c.minutes!=null&&c.minutes!=='')?c.minutes:''}" placeholder="min" style="max-width:76px;"><span style="font-size:11px;color:var(--text3);">min</span>
     <button type="button" class="btn b-r b-sm" onclick="this.closest('.fb-crewrow').remove()">✕</button>
   </div>`;
@@ -12606,7 +12611,7 @@ function rLabSpawn(el){
       ${sec('Run Status')}
       <div class="fg2">
         <div class="fgl"><label>Status</label><select class="fs" id="sp-status">${SPAWN_RUN_STATUSES.filter(s=>s[0]!=='used').map(s=>`<option value="${s[0]}">${s[1]}</option>`).join('')}</select></div>
-        <div class="fgl"><label>Crew</label><input class="fi" id="sp-crew" value="${(S.name||'').replace(/"/g,'&quot;')}"></div>
+        <div class="fgl"><label>Crew</label><input class="fi" id="sp-crew" value="${(S.name||'').replace(/"/g,'&quot;')}" ${NOFILL('tmcrews')}></div>
       </div>
       <div class="form-acts" style="margin-top:14px;"><button class="btn b-m b-lg" onclick="logSpawn()">Log Grain Spawn</button><button class="btn b-g" onclick="clrSpawn()">Clear</button></div>
       <div class="toast" id="sp-t">✓ Grain spawn logged</div>
