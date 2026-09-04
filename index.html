@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #111</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #112</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4210,6 +4210,64 @@ function buildOpenReceipts(){
       <thead><tr><th>Date Received</th><th>Open Status</th><th>Vendor / Source</th><th>Pieces</th><th>View / Edit Report</th></tr></thead>
       <tbody>${rows}</tbody></table></div>`;
 }
+// ── ONE unified Receiving Records list — replaces the old Open Receipts + On Hand + History tables. Status chip + text/status filter. ──
+function _recvStatus(r){ if(!r.soNum && r.receiptStatus!=='closed') return 'open'; return receivingOnHand(r)>0 ? 'onhand' : 'placed'; }
+function buildReceivingRecords(){
+  const hist=[...DB.receivings].filter(r=>r.source!=='pack').sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
+  const srcBadge=(r)=> (r.source==='internal') ? '<span class="bdg bc" style="font-size:10px;">INTERNAL</span>' : '<span class="bdg bp" style="font-size:10px;">VENDOR</span>';
+  const chip=(st)=> st==='open'
+    ? '<span class="bdg" style="background:rgba(184,76,32,.12);color:#b84c20;border:1px solid rgba(184,76,32,.4);font-size:10px;white-space:nowrap;">● OPEN · NEEDS SO</span>'
+    : st==='onhand'
+      ? '<span class="bdg" style="background:rgba(58,96,48,.12);color:var(--fern);border:1px solid rgba(58,96,48,.35);font-size:10px;white-space:nowrap;">ON HAND</span>'
+      : '<span class="bdg" style="background:rgba(90,80,60,.1);color:var(--text3);border:1px solid var(--border);font-size:10px;white-space:nowrap;">PLACED</span>';
+  const rows=hist.map(r=>{ const st=_recvStatus(r); const rem=receivingOnHand(r);
+    const search=[fDate(r.date),r.vendor,r.variety,r.lotNumber,r.poNum,r.receivedBy,r.soNum,st==='open'?'open needs so':st].filter(Boolean).join(' ').toLowerCase();
+    const rep=r.notifiedAt
+      ? `<span class="bdg" style="background:rgba(58,96,48,.13);color:var(--fern);border:1px solid rgba(58,96,48,.3);font-size:10px;white-space:nowrap;" title="Report emailed ${fDate((r.notifiedAt||'').slice(0,10))}">✓ SENT</span>`
+      : `<span class="bdg" style="background:rgba(184,76,32,.1);color:#b84c20;border:1px solid rgba(184,76,32,.3);font-size:10px;white-space:nowrap;" title="No report emailed yet — use ✉ to send">✗ NOT SENT</span>`;
+    return `<tr data-rcrow data-status="${st}" data-search="${attrEsc(search)}">
+      <td class="mn">${fDate(r.date)}</td>
+      <td>${srcBadge(r)} ${r.vendor||'—'}</td>
+      <td style="font-weight:500;">${r.variety||'—'}</td>
+      <td class="mn" style="color:var(--gold);font-weight:600;">${r.lotNumber||'—'}</td>
+      <td>${chip(st)}${r.soNum?` <span class="mn" style="font-size:10px;color:var(--text3);">SO ${r.soNum}</span>`:''}</td>
+      <td class="mn">${r.blockCount||0}</td>
+      <td class="mn">${r.placedCount||0}</td>
+      <td class="mn" style="color:${rem>0?'var(--fern)':'var(--text3)'};font-weight:700;">${rem}</td>
+      <td class="mn" style="font-size:10px;color:var(--text3);">${r.poNum||''}${r.cost?` · $${r.cost}`:''}</td>
+      <td style="font-size:11px;color:var(--text3);">${r.receivedBy||''}</td>
+      <td>${rep}</td>
+      ${canEdit()?`<td style="white-space:nowrap;">${st==='open'?`<button class="btn b-sm" style="background:rgba(184,130,10,.12);color:var(--gold);border:1px solid rgba(184,130,10,.4);font-weight:700;" title="Add the SO# from Katherine — closes the open receipt &amp; re-sends UPDATED" onclick="addReceivingSO('${r.id}')">✏ SO#</button> `:''}<button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit the whole receiving session — add/remove lots, docs, SO" onclick="openEditReceivingSession('${r.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendReceiving('${r.id}')">✉</button> ${r.signedSlipUrl?`<a class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);text-decoration:none;" href="${r.signedSlipUrl}" target="_blank" rel="noopener">signed</a> `:''}<button class="btn b-sm" style="background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.25);" title="${r.signedSlipUrl?'Replace signed packing slip':'Upload signed packing slip'}" onclick="uploadReceivingSignedSlip('${r.id}')">🖊${r.signedSlipUrl?'':' +'}</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
+    </tr>`; }).join('');
+  const cols=canEdit()?12:11;
+  const openN=hist.filter(r=>_recvStatus(r)==='open').length;
+  return `<div class="sh" style="margin-top:8px;"><span>Receiving Records</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">${hist.length} record(s)${openN?` · <span style="color:#b84c20;">${openN} open</span>`:''}</span></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+      <input class="fi" id="rc-list-filter" placeholder="🔍 filter — lot, vendor, variety, SO#…" autocomplete="off" oninput="rcFilter()" style="max-width:320px;">
+      <select class="fs" id="rc-list-status" onchange="rcFilter()" style="max-width:180px;">
+        <option value="all">All statuses</option>
+        <option value="open">🚩 Open · needs SO</option>
+        <option value="onhand">On hand · awaiting placement</option>
+        <option value="placed">Placed</option>
+      </select>
+      <span id="rc-list-count" style="font-size:11px;color:var(--text3);font-family:'Syne Mono',monospace;"></span>
+    </div>
+    <div class="tw"><table id="rc-records">
+      <thead><tr><th>Date</th><th>Source</th><th>Variety</th><th>Lot #</th><th>Status</th><th>Rcvd</th><th>Placed</th><th>Remaining</th><th>PO / Cost</th><th>By</th><th>Report</th>${canEdit()?'<th>Actions</th>':''}</tr></thead>
+      <tbody>${rows||`<tr><td colspan="${cols}" class="empty">No receivings logged yet.</td></tr>`}</tbody>
+    </table></div>`;
+}
+function rcFilter(){
+  const q=(document.getElementById('rc-list-filter')?.value||'').trim().toLowerCase();
+  const st=document.getElementById('rc-list-status')?.value||'all';
+  let shown=0;
+  document.querySelectorAll('#rc-records tbody tr[data-rcrow]').forEach(tr=>{
+    const okS = st==='all' || tr.getAttribute('data-status')===st;
+    const okQ = !q || (tr.getAttribute('data-search')||'').includes(q);
+    const show = okS && okQ; tr.style.display=show?'':'none'; if(show) shown++;
+  });
+  const c=document.getElementById('rc-list-count'); if(c) c.textContent=shown+' shown';
+}
 // ── BLOCK RECONCILE — true up "in cooler, not placed" counts to a physical block count, per source × variety ──
 let _blkRecSource='ws';
 function _recvIsWS(r){ const k=_lotKey(r.lotNumber); return /^(ws|us)/.test(k) || /wild\s*spore/i.test(r.vendor||''); }
@@ -4303,29 +4361,14 @@ function rSpawnReconcileSection(){
 function rReceiving(el){
   _rcTempUrl=''; _rcInvoiceUrl=''; _recvQueue=[]; // fresh doc uploads + lot queue each render
   const onHand=onHandReceivings();
-  const history=[...DB.receivings].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
   const totalOnHand=onHand.reduce((s,r)=>s+receivingOnHand(r),0);
-  const srcBadge=(r)=> (r.source==='internal') ? '<span class="bdg bc" style="font-size:10px;">INTERNAL</span>' : '<span class="bdg bp" style="font-size:10px;">VENDOR</span>';
-  const onHandRows = onHand.length? onHand.map(r=>`<tr>
-    <td class="mn">${fDate(r.date)}</td><td>${srcBadge(r)} ${r.vendor||'—'}</td><td style="font-weight:500;">${r.variety}</td>
-    <td class="mn" style="color:var(--gold);font-weight:700;">${r.lotNumber}</td><td class="mn">${r.blockCount}</td>
-    <td class="mn">${r.placedCount||0}</td><td class="mn" style="color:var(--fern);font-weight:700;">${receivingOnHand(r)}</td>
-  </tr>`).join('') : `<tr><td colspan="7" class="empty">No blocks awaiting placement — log a receiving below.</td></tr>`;
-  const histRows = history.length? history.map(r=>`<tr>
-    <td class="mn">${fDate(r.date)}</td><td>${srcBadge(r)} ${r.vendor||'—'}</td><td style="font-weight:500;">${r.variety}</td>
-    <td class="mn" style="color:var(--gold);">${r.lotNumber}</td><td class="mn">${r.blockCount}</td><td class="mn">${r.placedCount||0}</td>
-    <td class="mn">${receivingOnHand(r)}</td><td class="mn" style="font-size:10px;color:var(--text3);">${r.poNum||''}${r.cost?` · $${r.cost}`:''}</td>
-    <td style="font-size:11px;color:var(--text3);">${r.receivedBy||''}</td>
-    <td>${r.notifiedAt?`<span class="bdg" style="background:rgba(58,96,48,.13);color:var(--fern);border:1px solid rgba(58,96,48,.3);font-size:10px;white-space:nowrap;" title="Report emailed ${fDate((r.notifiedAt||'').slice(0,10))}">✓ SENT</span>`:`<span class="bdg" style="background:rgba(184,76,32,.1);color:#b84c20;border:1px solid rgba(184,76,32,.3);font-size:10px;white-space:nowrap;" title="No report emailed yet — use ✉ to send">✗ NOT SENT</span>`}</td>
-    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit the whole receiving session — all lots, temp photo, invoice &amp; signed copy" onclick="openEditReceivingSession('${r.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendReceiving('${r.id}')">✉</button> ${r.signedSlipUrl?`<a class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);text-decoration:none;" href="${r.signedSlipUrl}" target="_blank" rel="noopener">view signed</a> `:''}<button class="btn b-sm" style="background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.25);" title="${r.signedSlipUrl?'Replace signed packing slip + re-send UPDATED report':'Upload signed packing slip + re-send UPDATED report'}" onclick="uploadReceivingSignedSlip('${r.id}')">🖊${r.signedSlipUrl?'':' +'}</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
-  </tr>`).join('') : `<tr><td colspan="${canEdit()?11:10}" class="empty">No receivings logged yet.</td></tr>`;
+  const totalRecs=(DB.receivings||[]).filter(r=>r.source!=='pack').length;
   el.innerHTML=`
     <div class="ph"><div class="ph-t">📥 Receiving</div><div class="ph-s">Blocks into Hydes Ferry · internal production or vendors → placed into fruiting</div></div>
     <div class="stats" style="margin-bottom:24px;">
       <div class="sc g"><div class="sc-l">Blocks Awaiting Placement</div><div class="sc-v">${totalOnHand}</div><div class="sc-n">${onHand.length} batch${onHand.length===1?'':'es'} on hand</div></div>
-      <div class="sc"><div class="sc-l">Receivings Logged</div><div class="sc-v">${history.length}</div><div class="sc-n">all-time intake records</div></div>
+      <div class="sc"><div class="sc-l">Receivings Logged</div><div class="sc-v">${totalRecs}</div><div class="sc-n">all-time intake records</div></div>
     </div>
-    ${rBlockReconcileSection()}
     ${canEdit()?`<div class="card" style="border-color:rgba(58,96,48,.35);background:rgba(58,96,48,.04);">
       <div class="card-t">📸 Snap / Upload Receiving Sheet</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the delivery/receiving sheet — AI fills the form below. You verify, then Log.</div>
@@ -4384,17 +4427,9 @@ function rReceiving(el){
       <div class="toast" id="rc-t">✓ Blocks received</div>
     </div>`:''}
     ${buildIncomingShipments()}
-    ${buildOpenReceipts()}
-    <div class="sh" style="margin-top:24px;"><span>On Hand · Awaiting Placement</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:${totalOnHand>0?'var(--fern)':'var(--text3)'};">${totalOnHand} BLOCKS</span></div>
-    <div class="tw" style="margin-bottom:24px;"><table>
-      <thead><tr><th>Received</th><th>Source</th><th>Variety</th><th>Lot #</th><th>Received</th><th>Placed</th><th>Remaining</th></tr></thead>
-      <tbody>${onHandRows}</tbody>
-    </table></div>
-    <div class="sh"><span>Receiving History</span></div>
-    <div class="tw"><table>
-      <thead><tr><th>Date</th><th>Source</th><th>Variety</th><th>Lot #</th><th>Received</th><th>Placed</th><th>Remaining</th><th>PO / Cost</th><th>By</th><th>Report</th>${canEdit()?'<th>Actions</th>':''}</tr></thead>
-      <tbody>${histRows}</tbody>
-    </table></div>`;
+    ${buildReceivingRecords()}
+    ${rBlockReconcileSection()}`;
+  if(document.getElementById('rc-records')) rcFilter();
 }
 
 // ── EDIT / DELETE a receiving log (fix mistakes) ──
