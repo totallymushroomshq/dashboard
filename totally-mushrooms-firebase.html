@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #116</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #117</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -7880,6 +7880,8 @@ async function logSpentBlocks(){
 // ── INVENTORY ──
 const LOW_STOCK_LBS = 6;
 let _invFacility = 'all'; // current inventory filter: 'all' or a facility name
+let _invSub = 'fresh';    // Inventory sub-view: 'fresh' (harvested mushrooms) | 'blocks' (blocks & substrate)
+function setInvSub(s){ _invSub=s; rInventory(document.getElementById('main-views')); try{ window.scrollTo(0,0); }catch(e){} }
 
 function filterInventory(fac){
   _invFacility=fac;
@@ -8475,9 +8477,17 @@ function rInventory(el){
     ? '<tr><td colspan="2" class="empty">No packed orders this week yet</td></tr>'
     : Object.entries(wkUsage).map(([v,lbs])=>`<tr><td>${v}</td><td class="mn">${lbs.toFixed(1)} lb</td></tr>`).join('');
 
-  el.innerHTML=`    <div class="ph"><div class="ph-t">Inventory</div><div class="ph-s">Blocks &amp; spawn by facility, plus live fresh stock — updates as you place, cook, pack, and preserve</div></div>
-    ${buildFacilityInventory()}
-
+  el.innerHTML=`    <div class="ph"><div class="ph-t">Inventory</div><div class="ph-s">Fresh harvested stock and block / substrate inventory — updates as you place, cook, pack, and preserve</div></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
+      <button class="btn ${_invSub==='fresh'?'b-m':'b-g'} b-lg" onclick="setInvSub('fresh')">🍄 Fresh Mushrooms</button>
+      <button class="btn ${_invSub==='blocks'?'b-m':'b-g'} b-lg" onclick="setInvSub('blocks')">📦 Blocks &amp; Substrate</button>
+    </div>
+    ${_invSub==='blocks'?`
+      ${buildFacilityInventory()}
+      <div class="sh" style="margin-top:8px;"><span>🔢 Count &amp; True-Up</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">SET PHYSICAL COUNTS · YOUR SEPTEMBER BASELINE</span></div>
+      <div class="cr" style="gap:0;flex-wrap:wrap;">${rBlockReconcileSection()}${rSpawnReconcileSection()}</div>
+    `:''}
+    ${_invSub==='fresh'?`
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;">
       ${['all',...INVENTORY_FACILITIES].map(f=>`<button data-fac="${f}" onclick="filterInventory(this.dataset.fac)" style="padding:6px 14px;border:1px solid ${_fac===f?'var(--gold)':'var(--border)'};background:${_fac===f?'rgba(184,130,10,.12)':'var(--white)'};color:${_fac===f?'var(--gold)':'var(--text3)'};border-radius:3px;cursor:pointer;font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:${_fac===f?'700':'400'};">${f==='all'?'All Facilities':f}</button>`).join('')}
     </div>
@@ -8513,9 +8523,6 @@ function rInventory(el){
         : varRows
       }</tbody>
     </table></div>
-
-    <div class="sh" style="margin-top:26px;"><span>🔢 Count &amp; True-Up</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">SET PHYSICAL COUNTS · YOUR SEPTEMBER BASELINE</span></div>
-    <div class="cr" style="gap:0;flex-wrap:wrap;">${rBlockReconcileSection()}${rSpawnReconcileSection()}</div>
 
     <div class="sh" style="margin-top:26px;"><span>🔁 Reconcile &amp; Cooler Count</span><span style="font-size:10px;color:var(--text3);">weekly physical count · fixes drift</span></div>
     ${buildReconcilePanel()}
@@ -8570,6 +8577,7 @@ function rInventory(el){
   
       </div>
     </details>
+    `:''}
   `;
 }
 
