@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #113</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #114</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2791,7 +2791,7 @@ function buildPackSessionsAdmin(){
       <td style="white-space:nowrap;">
         <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditPackSession('${s.id}')">✎ Edit</button>
         ${s.status==='closed'?`<button class="btn b-g b-sm" onclick="reopenPackSession('${s.id}')">Reopen</button>`:''}
-        ${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delPackSession('${s.id}')">✕</button>`:''}
+        ${S.role==='admin'?`<button class="btn b-r b-sm" title="Delete this packed order" onclick="delPackSession('${s.id}')">✕</button>`:''}
       </td>
     </tr>`;
   }).join('');
@@ -3129,7 +3129,7 @@ function buildPackedOrdersList(){
   const rowFor=o=>`<tr>
     <td class="mn">${fDate(isoOf(o))}</td>
     <td>${o.client||'—'}${o.soNum?` <span style="font-size:11px;color:var(--text3);font-family:'Syne Mono',monospace;">SO ${o.soNum}</span>`:''}</td>
-    <td style="white-space:nowrap;">${canEdit()?`${slipCell(o)} ${o.tmSlipUrl?`<a class="btn b-sm" style="background:var(--paper);color:var(--text3);border:1px solid var(--border);text-decoration:none;" href="${o.tmSlipUrl}" target="_blank" rel="noopener" title="TM copy — lot data">📎 TM</a> `:''}<button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="View / edit order" onclick="openEditOrder('${o.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.08);color:var(--fern);border:1px solid rgba(58,96,48,.2);" title="Re-send report email" onclick="resendSlip('${o.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delOrd('${o.id}')">✕</button>`:''}`:'—'}</td>
+    <td style="white-space:nowrap;">${canEdit()?`${slipCell(o)} ${o.tmSlipUrl?`<a class="btn b-sm" style="background:var(--paper);color:var(--text3);border:1px solid var(--border);text-decoration:none;" href="${o.tmSlipUrl}" target="_blank" rel="noopener" title="TM copy — lot data">📎 TM</a> `:''}<button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="View / edit order" onclick="openEditOrder('${o.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.08);color:var(--fern);border:1px solid rgba(58,96,48,.2);" title="Re-send report email" onclick="resendSlip('${o.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" title="Delete this order" onclick="delOrd('${o.id}')">✕</button>`:''}`:'—'}</td>
     <td class="mn">${orderCases(o)}</td>
     <td class="mn">${orderLbs(o).toFixed(1)}</td>
     <td class="mn" style="font-weight:700;color:var(--fern);">${money(eRev(o))}</td>
@@ -3531,7 +3531,7 @@ function rNewOrd(el){
         </div>
         <div class="fgl">
           <label id="no-client-lbl">Client</label>
-          <input class="fi" id="no-c" placeholder="Client or venue name" list="no-cl" oninput="onOrderClientChange()">
+          <input class="fi" id="no-c" placeholder="Client or venue name" list="no-cl" oninput="onOrderClientChange()" ${NOFILL('tmclient')}>
           <datalist id="no-cl">${allNames.map(n=>`<option value="${n}">`).join('')}</datalist>
         </div>
         <div class="fgl" id="no-day-row">
@@ -4237,7 +4237,7 @@ function buildReceivingRecords(){
       <td class="mn" style="font-size:10px;color:var(--text3);">${r.poNum||''}${r.cost?` · $${r.cost}`:''}</td>
       <td style="font-size:11px;color:var(--text3);">${r.receivedBy||''}</td>
       <td>${rep}</td>
-      ${canEdit()?`<td style="white-space:nowrap;">${st==='open'?`<button class="btn b-sm" style="background:rgba(184,130,10,.12);color:var(--gold);border:1px solid rgba(184,130,10,.4);font-weight:700;" title="Add the SO# from Katherine — closes the open receipt &amp; re-sends UPDATED" onclick="addReceivingSO('${r.id}')">✏ SO#</button> `:''}<button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit the whole receiving session — add/remove lots, docs, SO" onclick="openEditReceivingSession('${r.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendReceiving('${r.id}')">✉</button> ${r.signedSlipUrl?`<a class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);text-decoration:none;" href="${r.signedSlipUrl}" target="_blank" rel="noopener">signed</a> `:''}<button class="btn b-sm" style="background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.25);" title="${r.signedSlipUrl?'Replace signed packing slip':'Upload signed packing slip'}" onclick="uploadReceivingSignedSlip('${r.id}')">🖊${r.signedSlipUrl?'':' +'}</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
+      ${canEdit()?`<td style="white-space:nowrap;">${st==='open'?`<button class="btn b-sm" style="background:rgba(184,130,10,.12);color:var(--gold);border:1px solid rgba(184,130,10,.4);font-weight:700;" title="Add the SO# from Katherine — closes the open receipt &amp; re-sends UPDATED" onclick="addReceivingSO('${r.id}')">✏ SO#</button> `:''}<button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit the whole receiving session — add/remove lots, docs, SO" onclick="openEditReceivingSession('${r.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendReceiving('${r.id}')">✉</button> ${r.signedSlipUrl?`<a class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);text-decoration:none;" href="${r.signedSlipUrl}" target="_blank" rel="noopener">signed</a> `:''}<button class="btn b-sm" style="background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.25);" title="${r.signedSlipUrl?'Replace signed packing slip':'Upload signed packing slip'}" onclick="uploadReceivingSignedSlip('${r.id}')">🖊${r.signedSlipUrl?'':' +'}</button>${S.role==='admin'?` <button class="btn b-r b-sm" title="Delete this receiving lot" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
     </tr>`; }).join('');
   const cols=canEdit()?12:11;
   const openN=hist.filter(r=>_recvStatus(r)==='open').length;
@@ -4396,7 +4396,7 @@ function rReceiving(el){
         <div class="fgl"><label>Lot / Block #</label><input class="fi" id="rc-lot" placeholder="e.g. 10184 or WSY00Y" oninput="onRecvLot()"></div>
         <div class="fgl"><label># of Blocks</label><input class="fi" type="number" min="1" id="rc-bc" placeholder="# blocks received"></div>
         <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="rc-bw" placeholder="e.g. 5.5"></div>
-        <div class="fgl"><label>Received By</label><input class="fi" id="rc-by" value="${(S.name||'').replace(/"/g,'&quot;')}"></div>
+        <div class="fgl"><label>Received By</label><input class="fi" id="rc-by" value="${(S.name||'').replace(/"/g,'&quot;')}" ${NOFILL('tmrcby')}></div>
       </div>
       <div id="rc-queue" style="margin-bottom:8px;"></div>
       <button class="btn b-g" onclick="addRecvRow()" style="margin-bottom:14px;">+ Add another lot</button>
@@ -7428,7 +7428,7 @@ function rHarvest(el){
             <td class="mn">${h.weight?h.weight+' lb':'—'}</td>
             <td class="mn" style="font-weight:700;color:${col}">${onHand.toFixed(1)} lb</td>
             <td style="font-size:11px;color:var(--text3)">${h.notes||'—'}</td>
-            ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.16);color:var(--gold);border:1px solid var(--border-gold);" title="Edit the whole harvest session (this date + container) — add/remove lots, send UPDATED report" onclick="openEditHarvestSession('${h.id}')">✎ session</button> <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit just this lot" onclick="openEditHarvest('${h.id}')">✎ lot</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send this session's report" onclick="resendHarvestSession('${h.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delHarvest('${h.id}')">✕</button>`:''}</td>`:''}
+            ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.16);color:var(--gold);border:1px solid var(--border-gold);" title="Edit the whole harvest session (this date + container) — add/remove lots, send UPDATED report" onclick="openEditHarvestSession('${h.id}')">✎ session</button> <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit just this lot" onclick="openEditHarvest('${h.id}')">✎ lot</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send this session's report" onclick="resendHarvestSession('${h.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" title="Delete this harvest lot" onclick="delHarvest('${h.id}')">✕</button>`:''}</td>`:''}
           </tr>`}).join('')
       }</tbody>
     </table></div>
@@ -7910,7 +7910,7 @@ function openVarietyTransfer(variety){
         '<input class="fi" type="date" id="vt-date" value="'+tday()+'">'+
       '</div>'+
       '<div class="fgl"><label>Driver / Method</label>'+
-        '<input class="fi" id="vt-driver" placeholder="Driver name or van/self">'+
+        '<input class="fi" id="vt-driver" placeholder="Driver or van/self" '+NOFILL('tmdrv1')+'>'+
       '</div>'+
       '<div class="fgl" style="grid-column:span 2;"><label>Notes</label>'+
         '<input class="fi" id="vt-notes" placeholder="Temp, purpose (freeze dry batch, etc.)...">'+
@@ -8461,8 +8461,6 @@ function rInventory(el){
 
   el.innerHTML=`    <div class="ph"><div class="ph-t">Inventory</div><div class="ph-s">Blocks &amp; spawn by facility, plus live fresh stock — updates as you place, cook, pack, and preserve</div></div>
     ${buildFacilityInventory()}
-    <div class="sh" style="margin-top:4px;"><span>🔢 Count &amp; True-Up</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">SET PHYSICAL COUNTS · YOUR SEPTEMBER BASELINE</span></div>
-    <div class="cr" style="gap:0;flex-wrap:wrap;">${rBlockReconcileSection()}${rSpawnReconcileSection()}</div>
 
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:20px;">
       ${['all',...INVENTORY_FACILITIES].map(f=>`<button data-fac="${f}" onclick="filterInventory(this.dataset.fac)" style="padding:6px 14px;border:1px solid ${_fac===f?'var(--gold)':'var(--border)'};background:${_fac===f?'rgba(184,130,10,.12)':'var(--white)'};color:${_fac===f?'var(--gold)':'var(--text3)'};border-radius:3px;cursor:pointer;font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1.5px;text-transform:uppercase;font-weight:${_fac===f?'700':'400'};">${f==='all'?'All Facilities':f}</button>`).join('')}
@@ -8495,11 +8493,13 @@ function rInventory(el){
         <th>Variety</th><th>Harvested</th><th>Sold</th><th>Sampled</th><th>Preserved</th><th>Fresh On Hand</th><th></th>
       </tr></thead>
       <tbody>${Object.keys(byVariety).length===0
-        ? '<tr><td colspan="6" class="empty">No harvests logged yet</td></tr>'
+        ? '<tr><td colspan="7" class="empty">No harvests logged yet</td></tr>'
         : varRows
       }</tbody>
     </table></div>
 
+    <div class="sh" style="margin-top:26px;"><span>🔢 Count &amp; True-Up</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">SET PHYSICAL COUNTS · YOUR SEPTEMBER BASELINE</span></div>
+    <div class="cr" style="gap:0;flex-wrap:wrap;">${rBlockReconcileSection()}${rSpawnReconcileSection()}</div>
 
     <div class="sh" style="margin-top:26px;"><span>🔁 Reconcile &amp; Cooler Count</span><span style="font-size:10px;color:var(--text3);">weekly physical count · fixes drift</span></div>
     ${buildReconcilePanel()}
@@ -8630,7 +8630,7 @@ function openTransferModal(harvestId){
         </select>
       </div>
       <div class="fgl" id="mv-toclient-name-wrap" style="display:none;"><label>Recipient Name</label>
-        <input class="fi" id="mv-toclient-name" placeholder="Name or company">
+        <input class="fi" id="mv-toclient-name" placeholder="Recipient or company" ${NOFILL('tmmvto')}>
       </div>
     </div>
 
@@ -8643,7 +8643,7 @@ function openTransferModal(harvestId){
         <input class="fi" type="time" id="mv-time" value="${timeStr}">
       </div>
       <div class="fgl"><label>Driver</label>
-        <input class="fi" id="mv-driver" placeholder="Driver name">
+        <input class="fi" id="mv-driver" placeholder="Driver" ${NOFILL('tmdrv2')}>
       </div>
       <div class="fgl"><label>Vehicle</label>
         <input class="fi" id="mv-vehicle" placeholder="e.g. White Ram 1500">
@@ -9361,7 +9361,7 @@ function openDispatchModal(batchId){
       </div>
       <div class="fgl">
         <label>Driver</label>
-        <input class="fi" id="dsp-driver" placeholder="Driver name">
+        <input class="fi" id="dsp-driver" placeholder="Driver" ${NOFILL('tmdrv3')}>
       </div>
       <div class="fgl">
         <label>Vehicle</label>
@@ -10446,7 +10446,7 @@ function rNewSample(el){
     <div class="ph"><div class="ph-t">Log Sample</div><div class="ph-s">Track free samples going out — entered same as an order, tracked separately</div></div>
     <div class="card"><div class="card-t">Sample Details</div>
     <div class="fg2">
-      <div class="fgl"><label>Recipient / Venue</label><input class="fi" id="ns-rec" placeholder="Restaurant, distro, or business name" list="ns-recl"><datalist id="ns-recl">${knownNames.map(n=>`<option value="${n}">`).join('')}</datalist></div>
+      <div class="fgl"><label>Recipient / Venue</label><input class="fi" id="ns-rec" placeholder="Restaurant, distro, or business" list="ns-recl" ${NOFILL('tmnsrec')}><datalist id="ns-recl">${knownNames.map(n=>`<option value="${n}">`).join('')}</datalist></div>
       <div class="fgl"><label>Recipient Type</label><select class="fs" id="ns-type"><option value="">Select type...</option><option>Restaurant</option><option>Distributor</option><option>Retail</option><option>Event</option><option>Other</option></select></div>
       <div class="fgl"><label>Contact Person</label><input class="fi" id="ns-contact" placeholder="Chef, buyer, manager..."></div>
       <div class="fgl"><label>Sample Date</label><input class="fi" type="date" id="ns-date" value="${tday()}"></div>
@@ -12323,7 +12323,7 @@ function rLabCultures(el){
       </div>
       <div class="fg2">
         <div class="fgl" id="cl-parent-wrap" style="display:none;"><label>Parent Culture <span style="color:var(--text3);font-size:11px;">genealogy</span></label><select class="fs" id="cl-parent" onchange="onCultureParent()"><option value="">— select parent —</option>${parentOpts}</select></div>
-        <div class="fgl" id="cl-vendor-wrap" style="display:none;"><label>Vendor</label><input class="fi" id="cl-vendor" placeholder="Vendor name"></div>
+        <div class="fgl" id="cl-vendor-wrap" style="display:none;"><label>Vendor</label><input class="fi" id="cl-vendor" placeholder="Vendor" ${NOFILL('tmclvend')}></div>
         <div class="fgl"><label>Generation</label><input class="fi" type="number" min="1" id="cl-gen" value="1"></div>
         <div class="fgl"><label>Status</label><select class="fs" id="cl-status">${CULTURE_STATUSES.map(s=>`<option value="${s[0]}">${s[1]}</option>`).join('')}</select></div>
       </div>
@@ -13761,7 +13761,7 @@ function openAddClient(){
     </div>
     <div style="margin-top:18px;margin-bottom:6px;" class="sh">Order Contact</div>
     <div class="fg2">
-      <div class="fgl"><label>Name</label><input class="fi" id="ac-c" placeholder="Chef / Manager name"></div>
+      <div class="fgl"><label>Name</label><input class="fi" id="ac-c" placeholder="Chef / Manager" ${NOFILL('tmacc')}></div>
       <div class="fgl"><label>Email</label><input class="fi" type="email" id="ac-e" placeholder="orders@venue.com"></div>
       <div class="fgl"><label>Phone</label><input class="fi" type="tel" id="ac-ph" placeholder="+1 615 000 0000"></div>
     </div>
@@ -13774,7 +13774,7 @@ function openAddClient(){
     </div>
     <div style="margin-top:18px;margin-bottom:6px;" class="sh">Accounting Contact <span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">if different</span></div>
     <div class="fg2">
-      <div class="fgl"><label>Name</label><input class="fi" id="ac-an" placeholder="Bookkeeper / Owner name"></div>
+      <div class="fgl"><label>Name</label><input class="fi" id="ac-an" placeholder="Bookkeeper / Owner" ${NOFILL('tmacan')}></div>
       <div class="fgl"><label>Email</label><input class="fi" type="email" id="ac-ae" placeholder="billing@venue.com"></div>
       <div class="fgl"><label>Phone</label><input class="fi" type="tel" id="ac-aph" placeholder="+1 615 000 0000"></div>
     </div>
