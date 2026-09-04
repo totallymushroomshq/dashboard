@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #117</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #118</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2297,7 +2297,12 @@ function applyStoredYieldExcludes(d){ if(!d) return; _yldExcluded=new Set((d.exc
 function _yieldDeadAuto(k,ypb,harv){ return !!k && !_yldKept.has(k) && !_yldExcluded.has(k) && harv>0 && ypb>0 && ypb<DEAD_YPB; }
 function _yieldDead(k,ypb,harv){ if(!k) return false; if(_yldKept.has(k)) return false; if(_yldExcluded.has(k)) return true; return (harv>0 && ypb>0 && ypb<DEAD_YPB); }
 async function _persistYieldExcludes(){ try{ if(!DB._isDemoMode) await fdb.collection('appConfig').doc('yield-excludes').set({excluded:[..._yldExcluded],kept:[..._yldKept]}); }catch(e){ console.warn('yield-excludes persist',e); } }
-function toggleYieldDead(k,wasDead){ k=String(k); if(wasDead){ _yldExcluded.delete(k); _yldKept.add(k); } else { _yldKept.delete(k); _yldExcluded.add(k); } _persistYieldExcludes(); if(typeof _reDash==='function') _reDash(); else renderC(); }
+function toggleYieldDead(k,wasDead){ k=String(k); if(wasDead){ _yldExcluded.delete(k); _yldKept.add(k); } else { _yldKept.delete(k); _yldExcluded.add(k); } _persistYieldExcludes();
+  // patch ONLY the yield tables in place so the page doesn't re-render or jump the scroll
+  const yw=document.getElementById('dash-yield-wrap'); const aw=document.getElementById('dash-avg-wrap');
+  if(yw){ yw.innerHTML=buildYieldAnalysis(); if(aw && typeof buildYieldAverages==='function') aw.innerHTML=buildYieldAverages(); }
+  else if(typeof _reDash==='function'){ _reDash(); } else renderC();
+}
 function buildYieldAnalysis(){
   const _cv=(typeof canonicalVariety==='function')?canonicalVariety:(x=>x);
   const _lk=(typeof _lotKey==='function')?_lotKey:(s=>(s||'').trim().toLowerCase());
@@ -9810,7 +9815,7 @@ function rDashboard(el){
 
     <!-- 2 · TRUSTWORTHY lot-level performance vs target (the deep view) -->
     <details ${_dashOpen.yield?'open':''} ontoggle="_dashOpen.yield=this.open" style="margin-top:6px;"><summary style="cursor:pointer;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text2);padding:8px 0;">🎯 SUPPLIER &amp; INTERNAL YIELD PERFORMANCE (drill by species → lot → container)</summary>
-      <div style="margin-top:10px;">${buildYieldAnalysis()}</div>
+      <div id="dash-yield-wrap" style="margin-top:10px;">${buildYieldAnalysis()}</div>
     </details>
 
     <!-- 3 · Investigate a single lot end-to-end -->
@@ -9824,7 +9829,7 @@ function rDashboard(el){
 
     <!-- 4 · Secondary container-level cross-check (kept last, collapsed) -->
     <details ${_dashOpen.avg?'open':''} ontoggle="_dashOpen.avg=this.open" style="margin-top:18px;"><summary style="cursor:pointer;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text3);padding:8px 0;">📐 CONTAINER-LEVEL CROSS-CHECK <span style="text-transform:none;letter-spacing:0;font-size:11px;">— secondary; period harvest ÷ container blocks. Trust the lot-level views above.</span></summary>
-      <div style="margin-top:10px;">${(typeof buildYieldAverages==='function')?buildYieldAverages():''}</div>
+      <div id="dash-avg-wrap" style="margin-top:10px;">${(typeof buildYieldAverages==='function')?buildYieldAverages():''}</div>
     </details>
   `;
   if(_dashNoScroll){ _dashNoScroll=false; } else { try{ window.scrollTo(0,0); }catch(e){} }
