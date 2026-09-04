@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #114</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #115</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -710,6 +710,11 @@ async function loadDB(){
       const aDoc=await fdb.collection('appConfig').doc('variety-aliases').get();
       if(aDoc.exists) applyStoredVarietyAliases(aDoc.data().map||{});
     }catch(e){ /* no custom merges yet */ }
+    // Load dead/excluded-lot list (yield average) from appConfig
+    try{
+      const yDoc=await fdb.collection('appConfig').doc('yield-excludes').get();
+      if(yDoc.exists && typeof applyStoredYieldExcludes==='function') applyStoredYieldExcludes(yDoc.data());
+    }catch(e){ /* none yet */ }
     // Load custom suppliers (added on the fly) from appConfig
     try{
       const sDoc=await fdb.collection('appConfig').doc('suppliers').get();
@@ -2284,6 +2289,15 @@ function yieldColor(ypb,bench){
   if(bench.goal){ if(ypb>=bench.goal) return 'var(--fern)'; if(ypb>=t) return 'var(--moss)'; if(ypb>=t*0.85) return 'var(--amber)'; return 'var(--rust)'; }
   if(ypb>=t) return 'var(--fern)'; if(ypb>=t*0.85) return 'var(--amber)'; return 'var(--rust)';
 }
+// ── DEAD / EXCLUDED LOTS — keep failed or junk lots out of the yield AVERAGE (still shown in the drill-down, greyed). Auto-suggests anything under the floor; you can exclude/restore any lot by hand. Persisted to appConfig/yield-excludes. ──
+const DEAD_YPB=0.15; // lb/block floor — a lot that produced but under this is treated as dead/failed
+let _yldExcluded=new Set();  // manually forced OUT of the average
+let _yldKept=new Set();      // manually forced IN (overrides the auto floor)
+function applyStoredYieldExcludes(d){ if(!d) return; _yldExcluded=new Set((d.excluded||[]).filter(Boolean)); _yldKept=new Set((d.kept||[]).filter(Boolean)); }
+function _yieldDeadAuto(k,ypb,harv){ return !!k && !_yldKept.has(k) && !_yldExcluded.has(k) && harv>0 && ypb>0 && ypb<DEAD_YPB; }
+function _yieldDead(k,ypb,harv){ if(!k) return false; if(_yldKept.has(k)) return false; if(_yldExcluded.has(k)) return true; return (harv>0 && ypb>0 && ypb<DEAD_YPB); }
+async function _persistYieldExcludes(){ try{ if(!DB._isDemoMode) await fdb.collection('appConfig').doc('yield-excludes').set({excluded:[..._yldExcluded],kept:[..._yldKept]}); }catch(e){ console.warn('yield-excludes persist',e); } }
+function toggleYieldDead(k,wasDead){ k=String(k); if(wasDead){ _yldExcluded.delete(k); _yldKept.add(k); } else { _yldKept.delete(k); _yldExcluded.add(k); } _persistYieldExcludes(); if(typeof _reDash==='function') _reDash(); else renderC(); }
 function buildYieldAnalysis(){
   const _cv=(typeof canonicalVariety==='function')?canonicalVariety:(x=>x);
   const _lk=(typeof _lotKey==='function')?_lotKey:(s=>(s||'').trim().toLowerCase());
@@ -2326,18 +2340,20 @@ function buildYieldAnalysis(){
     const harv=totalHarv;
     const ypb=blocks>0?harv/blocks:0;
     const suspect = blocks>0 && ypb>3; // impossible lb/block → data error (bad placement count or mislabeled harvest)
-    (bySpecies[D.variety]=bySpecies[D.variety]||[]).push({lot,variety:D.variety,bench,blocks,harv,totalHarv,orphanHarv,ypb,cons,est,suspect});
+    const lk2=_lk(lot); const dead=!suspect && _yieldDead(lk2,ypb,harv); const deadAuto=!suspect && _yieldDeadAuto(lk2,ypb,harv);
+    (bySpecies[D.variety]=bySpecies[D.variety]||[]).push({lot,lotKey:lk2,variety:D.variety,bench,blocks,harv,totalHarv,orphanHarv,ypb,cons,est,suspect,dead,deadAuto});
   });
   const rows=Object.keys(bySpecies).sort().map(sp=>{
     const lots=bySpecies[sp].filter(l=>l.blocks>0); if(!lots.length) return '';
     const nSus=lots.filter(l=>l.suspect).length;
-    // average = only lots that actually produced (harv>0), excluding suspect. Placed-but-not-yet-harvested lots don't drag it down.
-    const good=lots.filter(l=>!l.suspect && l.harv>0); const nPending=lots.filter(l=>!l.suspect && l.harv<=0).length;
+    // average = only lots that actually produced (harv>0), excluding suspect AND dead/failed lots. Placed-but-not-yet-harvested lots don't drag it down either.
+    const good=lots.filter(l=>!l.suspect && !l.dead && l.harv>0); const nPending=lots.filter(l=>!l.suspect && !l.dead && l.harv<=0).length;
+    const nDead=lots.filter(l=>l.dead).length;
     const tB=good.reduce((s,l)=>s+l.blocks,0), tH=good.reduce((s,l)=>s+l.harv,0), avg=tB>0?tH/tB:0;
     const dispB=lots.reduce((s,l)=>s+l.blocks,0), dispH=lots.reduce((s,l)=>s+(l.totalHarv!=null?l.totalHarv:l.harv),0);
     const spExp=_yieldExpanded['sp:'+sp]; const spEsc=sp.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
     let out=`<tr style="cursor:pointer;border-top:2px solid var(--border);background:rgba(0,0,0,.02);" onclick="toggleYield('sp:${spEsc}')">
-      <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${spExp?'▾':'▸'}</span> ${sp}${nSus?` <span class="bdg bp" style="font-size:9px;" title="${nSus} lot(s) with impossible lb/block excluded from this average — check data">⚠ ${nSus}</span>`:''}${nPending?` <span style="font-size:10px;color:var(--text3);font-weight:400;" title="${nPending} placed lot(s) not yet harvested — not counted in the average">·&nbsp;${nPending} pending</span>`:''}</td>
+      <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${spExp?'▾':'▸'}</span> ${sp}${nSus?` <span class="bdg bp" style="font-size:9px;" title="${nSus} lot(s) with impossible lb/block excluded from this average — check data">⚠ ${nSus}</span>`:''}${nDead?` <span class="bdg" style="background:rgba(184,76,32,.12);color:var(--rust);border:1px solid rgba(184,76,32,.35);font-size:9px;" title="${nDead} dead/failed lot(s) excluded from this average — expand to restore any">☠ ${nDead} dead</span>`:''}${nPending?` <span style="font-size:10px;color:var(--text3);font-weight:400;" title="${nPending} placed lot(s) not yet harvested — not counted in the average">·&nbsp;${nPending} pending</span>`:''}</td>
       <td class="mn">${dispB}</td><td class="mn">${dispH.toFixed(1)}</td><td class="mn" style="font-weight:700;">${avg>0?avg.toFixed(2):'—'}</td><td></td><td></td><td></td></tr>`;
     if(spExp) lots.sort((a,b)=>b.ypb-a.ypb).forEach(l=>{
       const col=yieldColor(l.ypb,l.bench); const meets=l.ypb>=l.bench.target;
@@ -2347,8 +2363,8 @@ function buildYieldAnalysis(){
       const fl=l.cons.reduce((s,c)=>s+(c.flushes||0),0);
       const susTitle=l.suspect?`Check data — ${(l.orphanHarv>0.5*(l.totalHarv||l.harv))?(l.orphanHarv.toFixed(1)+' lb harvested in container(s) this lot was never placed in (mislabeled / cross-container)'):'more harvested than the placed blocks can yield'}. Excluded from the species average.`:'';
       const th=(l.totalHarv!=null?l.totalHarv:l.harv);
-      out+=`<tr style="cursor:pointer;${l.suspect?'background:rgba(184,76,32,.06);':''}" onclick="toggleYield('lot:${lotEsc}')"${l.suspect?` title="${susTitle}"`:''}>
-        <td style="padding-left:20px;font-family:'Syne Mono',monospace;font-size:12px;"><span style="color:var(--text3);">${lotExp?'▾':'▸'}</span> ${l.lot} <span class="bdg ${l.bench.label==='Wild Spore'?'bp':'bc'}" style="font-size:10px;">${l.bench.label}</span>${l.est?' <span class="bdg bcu" style="font-size:9px;" title="Blocks estimated from the receiving count — no fruiting placement was logged for this lot">EST</span>':''}${l.suspect?' <span class="bdg bp" style="font-size:9px;">⚠ CHECK DATA</span>':''}</td>
+      out+=`<tr style="cursor:pointer;${l.dead?'opacity:.55;background:rgba(184,76,32,.05);':l.suspect?'background:rgba(184,76,32,.06);':''}" onclick="toggleYield('lot:${lotEsc}')"${l.suspect?` title="${susTitle}"`:''}>
+        <td style="padding-left:20px;font-family:'Syne Mono',monospace;font-size:12px;"><span style="color:var(--text3);">${lotExp?'▾':'▸'}</span> ${l.lot} <span class="bdg ${l.bench.label==='Wild Spore'?'bp':'bc'}" style="font-size:10px;">${l.bench.label}</span>${l.est?' <span class="bdg bcu" style="font-size:9px;" title="Blocks estimated from the receiving count — no fruiting placement was logged for this lot">EST</span>':''}${l.suspect?' <span class="bdg bp" style="font-size:9px;">⚠ CHECK DATA</span>':''}${l.dead?` <span class="bdg" style="background:rgba(184,76,32,.14);color:var(--rust);font-size:9px;" title="${l.deadAuto?('Auto-flagged — under '+DEAD_YPB+' lb/block, excluded from the average'):'Manually excluded from the average'}">☠ DEAD${l.deadAuto?' · auto':''}</span>`:''} <button class="btn b-sm" title="${l.dead?'Restore this lot to the average':'Exclude this lot as dead/failed'}" onclick="event.stopPropagation();toggleYieldDead('${l.lotKey||''}',${l.dead?1:0})" style="padding:0 6px;font-size:9px;margin-left:6px;${l.dead?'background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.3);':'background:rgba(184,76,32,.08);color:var(--rust);border:1px solid rgba(184,76,32,.25);'}">${l.dead?'↺ restore':'☠ exclude'}</button></td>
         <td class="mn">${l.blocks}${l.est?'*':''}</td><td class="mn">${th.toFixed(1)}</td>
         <td class="mn" style="font-weight:700;color:${l.suspect?'var(--rust)':col};">${l.suspect?'—':l.ypb.toFixed(2)} ${l.suspect?'⚠':(meets?'✓':'✗')}</td>
         <td class="mn" style="font-size:10px;color:var(--text3);">vs ${bT}</td>
@@ -9981,6 +9997,7 @@ function buildYieldAverages(){
     // WS detection via the shared classifier (trusts the receiving source)
     if(typeof lotBench==='function' && lotBench(f.lotNumber).label==='Wild Spore') containerMeta[c].isWS = true;
     if(f.variety && !containerMeta[c].variety) containerMeta[c].variety = f.variety;
+    if(!containerMeta[c].lotKey && f.lotNumber && typeof _lotKey==='function') containerMeta[c].lotKey=_lotKey(f.lotNumber);
   });
 
   // ── Per-container period totals ──
@@ -9997,13 +10014,16 @@ function buildYieldAverages(){
   });
 
   // ── Master stats ──
-  let masterLbs=0, masterBlocks=0, wsLbs=0, wsBlocks=0, hmLbs=0, hmBlocks=0;
-  Object.values(containerTotals).forEach(d => {
-    masterLbs += d.lbs;
+  let masterLbs=0, masterBlocks=0, wsLbs=0, wsBlocks=0, hmLbs=0, hmBlocks=0, deadContainers=0;
+  Object.entries(containerTotals).forEach(([c,d]) => {
     if(d.blocks > 0) {
-      masterBlocks += d.blocks;
+      const cyp=d.blocks>0?d.lbs/d.blocks:0; const lk=(containerMeta[c]||{}).lotKey||'';
+      if(_yieldDead(lk, cyp, d.lbs)){ deadContainers++; return; } // dead/excluded — keep it out of the per-block average, same as the species view
+      masterLbs += d.lbs; masterBlocks += d.blocks;
       if(d.isWS){ wsLbs+=d.lbs; wsBlocks+=d.blocks; }
       else { hmLbs+=d.lbs; hmBlocks+=d.blocks; }
+    } else {
+      masterLbs += d.lbs;
     }
   });
   const masterPerBlock = masterBlocks>0 ? masterLbs/masterBlocks : 0;
