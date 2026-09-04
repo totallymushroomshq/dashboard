@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #118</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #119</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2297,11 +2297,15 @@ function applyStoredYieldExcludes(d){ if(!d) return; _yldExcluded=new Set((d.exc
 function _yieldDeadAuto(k,ypb,harv){ return !!k && !_yldKept.has(k) && !_yldExcluded.has(k) && harv>0 && ypb>0 && ypb<DEAD_YPB; }
 function _yieldDead(k,ypb,harv){ if(!k) return false; if(_yldKept.has(k)) return false; if(_yldExcluded.has(k)) return true; return (harv>0 && ypb>0 && ypb<DEAD_YPB); }
 async function _persistYieldExcludes(){ try{ if(!DB._isDemoMode) await fdb.collection('appConfig').doc('yield-excludes').set({excluded:[..._yldExcluded],kept:[..._yldKept]}); }catch(e){ console.warn('yield-excludes persist',e); } }
-function toggleYieldDead(k,wasDead){ k=String(k); if(wasDead){ _yldExcluded.delete(k); _yldKept.add(k); } else { _yldKept.delete(k); _yldExcluded.add(k); } _persistYieldExcludes();
+function toggleYieldDead(ev,k,wasDead){ try{ if(ev&&ev.stopPropagation) ev.stopPropagation(); }catch(e){}
+  k=String(k); if(wasDead){ _yldExcluded.delete(k); _yldKept.add(k); } else { _yldKept.delete(k); _yldExcluded.add(k); } _persistYieldExcludes();
+  const y=window.scrollY||window.pageYOffset||0;
   // patch ONLY the yield tables in place so the page doesn't re-render or jump the scroll
   const yw=document.getElementById('dash-yield-wrap'); const aw=document.getElementById('dash-avg-wrap');
   if(yw){ yw.innerHTML=buildYieldAnalysis(); if(aw && typeof buildYieldAverages==='function') aw.innerHTML=buildYieldAverages(); }
   else if(typeof _reDash==='function'){ _reDash(); } else renderC();
+  // hold the scroll exactly where it was, across layout settling
+  requestAnimationFrame(()=>{ window.scrollTo(0,y); requestAnimationFrame(()=>window.scrollTo(0,y)); });
 }
 function buildYieldAnalysis(){
   const _cv=(typeof canonicalVariety==='function')?canonicalVariety:(x=>x);
@@ -2369,7 +2373,7 @@ function buildYieldAnalysis(){
       const susTitle=l.suspect?`Check data — ${(l.orphanHarv>0.5*(l.totalHarv||l.harv))?(l.orphanHarv.toFixed(1)+' lb harvested in container(s) this lot was never placed in (mislabeled / cross-container)'):'more harvested than the placed blocks can yield'}. Excluded from the species average.`:'';
       const th=(l.totalHarv!=null?l.totalHarv:l.harv);
       out+=`<tr style="cursor:pointer;${l.dead?'opacity:.55;background:rgba(184,76,32,.05);':l.suspect?'background:rgba(184,76,32,.06);':''}" onclick="toggleYield('lot:${lotEsc}')"${l.suspect?` title="${susTitle}"`:''}>
-        <td style="padding-left:20px;font-family:'Syne Mono',monospace;font-size:12px;"><span style="color:var(--text3);">${lotExp?'▾':'▸'}</span> ${l.lot} <span class="bdg ${l.bench.label==='Wild Spore'?'bp':'bc'}" style="font-size:10px;">${l.bench.label}</span>${l.est?' <span class="bdg bcu" style="font-size:9px;" title="Blocks estimated from the receiving count — no fruiting placement was logged for this lot">EST</span>':''}${l.suspect?' <span class="bdg bp" style="font-size:9px;">⚠ CHECK DATA</span>':''}${l.dead?` <span class="bdg" style="background:rgba(184,76,32,.14);color:var(--rust);font-size:9px;" title="${l.deadAuto?('Auto-flagged — under '+DEAD_YPB+' lb/block, excluded from the average'):'Manually excluded from the average'}">☠ DEAD${l.deadAuto?' · auto':''}</span>`:''} <button class="btn b-sm" title="${l.dead?'Restore this lot to the average':'Exclude this lot as dead/failed'}" onclick="event.stopPropagation();toggleYieldDead('${l.lotKey||''}',${l.dead?1:0})" style="padding:0 6px;font-size:9px;margin-left:6px;${l.dead?'background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.3);':'background:rgba(184,76,32,.08);color:var(--rust);border:1px solid rgba(184,76,32,.25);'}">${l.dead?'↺ restore':'☠ exclude'}</button></td>
+        <td style="padding-left:20px;font-family:'Syne Mono',monospace;font-size:12px;"><span style="color:var(--text3);">${lotExp?'▾':'▸'}</span> ${l.lot} <span class="bdg ${l.bench.label==='Wild Spore'?'bp':'bc'}" style="font-size:10px;">${l.bench.label}</span>${l.est?' <span class="bdg bcu" style="font-size:9px;" title="Blocks estimated from the receiving count — no fruiting placement was logged for this lot">EST</span>':''}${l.suspect?' <span class="bdg bp" style="font-size:9px;">⚠ CHECK DATA</span>':''}${l.dead?` <span class="bdg" style="background:rgba(184,76,32,.14);color:var(--rust);font-size:9px;" title="${l.deadAuto?('Auto-flagged — under '+DEAD_YPB+' lb/block, excluded from the average'):'Manually excluded from the average'}">☠ DEAD${l.deadAuto?' · auto':''}</span>`:''} <button type="button" class="btn b-sm" title="${l.dead?'Restore this lot to the average':'Exclude this lot as dead/failed'}" onclick="toggleYieldDead(event,'${l.lotKey||''}',${l.dead?1:0})" style="padding:0 6px;font-size:9px;margin-left:6px;${l.dead?'background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.3);':'background:rgba(184,76,32,.08);color:var(--rust);border:1px solid rgba(184,76,32,.25);'}">${l.dead?'↺ restore':'☠ exclude'}</button></td>
         <td class="mn">${l.blocks}${l.est?'*':''}</td><td class="mn">${th.toFixed(1)}</td>
         <td class="mn" style="font-weight:700;color:${l.suspect?'var(--rust)':col};">${l.suspect?'—':l.ypb.toFixed(2)} ${l.suspect?'⚠':(meets?'✓':'✗')}</td>
         <td class="mn" style="font-size:10px;color:var(--text3);">vs ${bT}</td>
@@ -9646,7 +9650,7 @@ function lotBreakdownHTML(lot){
 let _dashPeriod='week'; let _dashVarExp={}; let _dashCustomFrom=''; let _dashCustomTo='';
 let _dashOpen={yield:false,avg:false}; let _dashNoScroll=false;
 // re-render the dashboard in place WITHOUT jumping to the top or collapsing open sections (used by all in-dashboard toggles)
-function _reDash(){ const y=window.scrollY; _dashNoScroll=true; const el=document.getElementById('main-views'); if(el&&typeof rDashboard==='function'){ rDashboard(el); window.scrollTo(0,y); } else { _dashNoScroll=false; renderC(); } }
+function _reDash(){ const y=window.scrollY; _dashNoScroll=true; const el=document.getElementById('main-views'); if(el&&typeof rDashboard==='function'){ rDashboard(el); window.scrollTo(0,y); requestAnimationFrame(()=>window.scrollTo(0,y)); } else { _dashNoScroll=false; renderC(); } }
 function setDashPeriod(p){ _dashPeriod=p; _dashVarExp={}; renderC(); }
 function setDashCustom(){ const f=document.getElementById('dash-cust-from')?.value||''; const t=document.getElementById('dash-cust-to')?.value||''; if(!f||!t){ alert('Pick both a start and end date.'); return; } if(f>t){ alert('Start date must be on or before the end date.'); return; } _dashCustomFrom=f; _dashCustomTo=t; _dashPeriod='custom'; _dashVarExp={}; renderC(); }
 function toggleDashVar(v){ _dashVarExp[v]=!_dashVarExp[v]; _reDash(); }
