@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #123</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #124</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -9758,6 +9758,8 @@ function rDashboard(el){
     li.lypb = li.yBlocks>0 ? li.harvAll/li.yBlocks : 0;
     li.orphan = li.harvAll - li.harvMatched; // harvest in unplaced containers — diagnostic for suspect lots
     li.suspect = li.yBlocks>0 && li.lypb>3;
+    // same dead/excluded test the yield detail table uses, so the KPI average matches it (auto-floor under DEAD_YPB + manual excludes)
+    li.dead = (typeof _yieldDead==='function') ? _yieldDead(_lotKey(li.lot), li.lypb, li.harvAll) : false;
   });
   (DB.blockDisposals||[]).forEach(d=>{ if(!d.cookLot) return; const li=lots[_lotKey(d.cookLot)]; if(li&&_inRange(d.date,r)) li.waste+=parseInt(d.blockCount)||0; });
   // ── group by variety ──
@@ -9766,9 +9768,9 @@ function rDashboard(el){
   const vList=Object.keys(byVar).map(v=>{
     const ls=byVar[v]; const sum=k=>ls.reduce((s,l)=>s+(l[k]||0),0);
     // yield basis = lots that actually produced (harv>0), excluding impossible/mislabeled — placed-but-unharvested don't drag it
-    const good=ls.filter(l=>!l.suspect && l.yHarv>0);
+    const good=ls.filter(l=>!l.suspect && !l.dead && l.yHarv>0);
     const yB=good.reduce((s,l)=>s+(l.yBlocks||0),0), yH=good.reduce((s,l)=>s+(l.yHarv||0),0);
-    return {v, lots:ls, blocksPlaced:sum('blocksPlaced'), harvP:sum('harvP'), harvPrev:sum('harvPrev'), harvAll:sum('harvAll'), onHand:sum('onHand'), waste:sum('waste'), yBlocks:yB, yHarv:yH, nSus:ls.filter(l=>l.suspect).length};
+    return {v, lots:ls, blocksPlaced:sum('blocksPlaced'), harvP:sum('harvP'), harvPrev:sum('harvPrev'), harvAll:sum('harvAll'), onHand:sum('onHand'), waste:sum('waste'), yBlocks:yB, yHarv:yH, nSus:ls.filter(l=>l.suspect).length, nDead:ls.filter(l=>l.dead).length};
   }).sort((a,b)=>b.harvP-a.harvP || b.harvAll-a.harvAll || a.v.localeCompare(b.v));
   // ── period KPI tiles ──
   const harvP=vList.reduce((s,x)=>s+x.harvP,0), harvPrev=vList.reduce((s,x)=>s+x.harvPrev,0);
@@ -9777,6 +9779,7 @@ function rDashboard(el){
   const blocksReceived=(DB.receivings||[]).reduce((s,x)=>s+(_inRange(x.date,r)?(parseInt(x.blockCount)||0):0),0);
   const blocksPlacedP=DB.fruitings.reduce((s,f)=>s+(_inRange(f.date,r)?(parseInt(f.blockCount)||0):0),0);
   const avgYpb=(()=>{ const tb=vList.reduce((s,x)=>s+x.yBlocks,0), th=vList.reduce((s,x)=>s+x.yHarv,0); return tb>0?th/tb:0; })();
+  const nDeadTot=vList.reduce((s,x)=>s+(x.nDead||0),0);
   // forecast next 7 days
   const yld=(typeof varietyYield==='function')?varietyYield():{}; let fc=0; const t0=new Date(); t0.setHours(0,0,0,0); const t7=new Date(t0); t7.setDate(t0.getDate()+7);
   DB.fruitings.filter(f=>f.status==='fruiting').forEach(f=>{ const td=(typeof VARIETY_TURNAROUND!=='undefined'&&VARIETY_TURNAROUND[cvv(f.variety)])||{min:7,max:14}; const st=new Date((''+f.date).slice(0,10)+'T12:00:00'); const hm=new Date(st); hm.setDate(hm.getDate()+td.min); if(hm>=t0&&hm<=t7){ const rate=yld[cvv(f.variety)]?yld[cvv(f.variety)].rate:(f.rateLbPerBlock||LBSPERBLOCK); fc+=(f.blockCount||0)*rate; } });
@@ -9796,7 +9799,7 @@ function rDashboard(el){
     ${tile('','Blocks Received',blocksReceived, 'in '+perLbl)}
     ${tile('g','Blocks → Fruiting',blocksPlacedP, 'placed '+perLbl)}
     ${tile(wasteTot>0?'r':'','Waste',wasteTot+' blk', 'disposed '+perLbl)}
-    ${tile('','Avg Yield / Block',avgYpb.toFixed(2)+' lb', 'lifetime · valid lots')}
+    ${tile('','Avg Yield / Block',avgYpb.toFixed(2)+' lb', 'lifetime · valid lots'+(nDeadTot?' · '+nDeadTot+' dead out':''))}
     ${tile('m','Forecast · 7d',fc.toFixed(0)+' lb', 'projected harvest')}
   </div>`;
   // ── main table: by variety → lot ──
