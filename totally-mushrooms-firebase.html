@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #120</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #121</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5290,7 +5290,7 @@ function wireLotVarCon(elOrId, varSel, conSel){
   const lotEl=(typeof elOrId==='string')?document.getElementById(elOrId):elOrId; if(!lotEl) return;
   const scope=lotEl.closest('.fse-row,.hse-row,.slb-lotrow,.ers-card')||document; const q=s=>s?(s.charAt(0)==='#'?document.getElementById(s.slice(1)):scope.querySelector(s)):null;
   const lot=(lotEl.value||'').trim(); const vEl=q(varSel); const cEl=q(conSel);
-  if(vEl){ const v=lot?lotToVariety(lot):''; if(v && !vEl.value.trim()){ vEl.value=v; markAF(vEl); } }
+  if(vEl){ const v=lot?bestLotVariety(lot):''; if(v && !vEl.value.trim()){ vEl.value=v; markAF(vEl); } }
   if(cEl){ const c=lot?lotToContainer(lot):''; if(c && !cEl.value.trim()){ cEl.value=c; markAF(cEl); } }
 }
 // Generic reverse: a container fills the lot (+ variety) that lives in it — blanks only.
@@ -5310,15 +5310,24 @@ function markAF(el){ if(!el) return; el.classList.add('af'); el.title='Auto-fill
   el.addEventListener('input',clear); el.addEventListener('change',clear);
 }
 function clearAF(el){ if(!el) return; el.classList.remove('af'); const p=el.parentElement; if(p){ const t=p.querySelector(':scope > .af-tag'); if(t) t.remove(); p.classList.remove('af-wrap'); } }
-// Receiving: reading a known lot # auto-fills the variety (+ vendor), highlighted
+// Best variety guess for a lot: decode Wild Spore species from the lot code FIRST (works on a brand-new receipt), then fall back to prior records. Mirrors what Fruiting does.
+function bestLotVariety(lot){
+  if(!lot) return '';
+  const cvz=v=>(typeof canonicalVariety==='function'?canonicalVariety(v):v);
+  try{ const info=(typeof detectLot==='function')?detectLot(lot):null; if(info && info.variety) return cvz(info.variety); }catch(e){}
+  const v=(typeof lotToVariety==='function')?lotToVariety(lot):''; return v?cvz(v):'';
+}
+// Receiving: reading a lot # auto-fills the variety (+ vendor), highlighted — WS lots decode from the code even on first receipt
 function onRecvLot(){
   const lot=(document.getElementById('rc-lot')?.value||'').trim();
   const vEl=document.getElementById('rc-variety'); const venEl=document.getElementById('rc-vendor');
-  const v=lot?lotToVariety(lot):'';
+  const info=lot&&typeof detectLot==='function'?detectLot(lot):null;
+  const v=lot?bestLotVariety(lot):'';
   if(v && vEl){ vEl.value=v; markAF(vEl); if(typeof onSimpleVarietyAdd==='function') onSimpleVarietyAdd(vEl); }
   else clearAF(vEl);
-  // vendor/source from a prior receiving of the same lot
-  if(lot){ const r=[...(DB.receivings||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).find(x=>(x.lotNumber||'').trim().toLowerCase()===lot.toLowerCase());
+  // vendor: Wild Spore decoded from the code, else a prior receiving of the same lot
+  if(info && info.vendor==='Wild Spore' && venEl && !venEl.value){ venEl.value='Wild Spore'; markAF(venEl); }
+  else if(lot){ const r=[...(DB.receivings||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).find(x=>(x.lotNumber||'').trim().toLowerCase()===lot.toLowerCase());
     if(r && venEl && r.vendor && !venEl.value){ venEl.value=r.vendor; markAF(venEl); } }
 }
 function onHarvestLot(){
@@ -5336,7 +5345,7 @@ function onHarvestLot(){
 function onPoManualLot(){
   const lot=(document.getElementById('po-ml-lot')?.value||'').trim();
   const vEl=document.getElementById('po-ml-var'); const cEl=document.getElementById('po-ml-con');
-  const v=lot?lotToVariety(lot):'';
+  const v=lot?bestLotVariety(lot):'';
   if(v && vEl){ vEl.value=v; markAF(vEl); if(typeof onSimpleVarietyAdd==='function') onSimpleVarietyAdd(vEl); }
   else clearAF(vEl);
   // container from the most-recent record carrying this lot (harvest, then fruiting)
