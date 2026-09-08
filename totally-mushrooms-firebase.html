@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #125</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #126</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -9742,7 +9742,7 @@ function rDashboard(el){
   // ── build lot index: blocks placed (lifetime), harvest (period/prev/lifetime), on-hand (current), waste (period) ──
   const lots={};
   const getLot=num=>{ const k=_lotKey(num); return lots[k]||(lots[k]={lot:num,variety:'',blocksPlaced:0,harvP:0,harvPrev:0,harvAll:0,harvMatched:0,onHand:0,waste:0,placedCons:{},recvBlocks:0,estBlocks:0,suspect:false}); };
-  DB.fruitings.forEach(f=>{ if(!f.lotNumber) return; const li=getLot(f.lotNumber); if(!li.variety&&f.variety) li.variety=cvv(f.variety); const b=parseInt(f.blockCount)||0; li.blocksPlaced+=b; if(b>0){ const con=f.containerID||'—'; li.placedCons[con]=(li.placedCons[con]||0)+b; } });
+  DB.fruitings.forEach(f=>{ if(!f.lotNumber) return; const li=getLot(f.lotNumber); if(!li.variety&&f.variety) li.variety=cvv(f.variety); const b=parseInt(f.blockCount)||0; li.blocksPlaced+=b; if(b>0){ const con=f.containerID||'—'; li.placedCons[con]=(li.placedCons[con]||0)+b; } if((f.status||'fruiting')==='fruiting') li.active=true; });
   (DB.receivings||[]).forEach(x=>{ if(!x.lotNumber) return; const li=getLot(x.lotNumber); if(!li.variety&&x.variety) li.variety=cvv(x.variety); li.recvBlocks+=parseInt(x.blockCount)||0; });
   DB.harvests.forEach(h=>{ if(!h.lotNumber) return; const li=getLot(h.lotNumber); if(h.variety) li.variety=cvv(h.variety); const w=h.weight||0;
     li.harvAll+=w; if(_inRange(h.date,r)) li.harvP+=w; if(pr&&_inRange(h.date,pr)) li.harvPrev+=w;
@@ -9778,9 +9778,13 @@ function rDashboard(el){
   const blocksProduced=(DB.labBatches||[]).reduce((s,b)=>s+(_inRange(b.productionDate||b.date,r)?(parseInt(b.blocksProduced)||parseInt(b.blockCount)||0):0),0);
   const blocksReceived=(DB.receivings||[]).reduce((s,x)=>s+(_inRange(x.date,r)?(parseInt(x.blockCount)||0):0),0);
   const blocksPlacedP=DB.fruitings.reduce((s,f)=>s+(_inRange(f.date,r)?(parseInt(f.blockCount)||0):0),0);
-  // Avg yield for the SELECTED PERIOD: harvest recorded in-window (valid, non-dead lots) ÷ the placed blocks of the lots that produced it. 'All time' → lifetime.
-  const _pyLots=Object.values(lots).filter(li=>!li.suspect && !li.dead && li.yBlocks>0 && li.harvP>0);
-  const avgYpb=(()=>{ const tb=_pyLots.reduce((s,li)=>s+li.yBlocks,0), th=_pyLots.reduce((s,li)=>s+li.harvP,0); return tb>0?th/tb:0; })();
+  // Avg yield: lots we HARVESTED in the window (valid, non-dead), at each lot's FULL harvest ÷ its blocks — so partial mid-flush lots don't understate it.
+  // Prefer FINISHED lots (all placements marked Harvested); if none are marked done yet, fall back to every producing lot so the tile isn't blank.
+  const _pyAll=Object.values(lots).filter(li=>!li.suspect && !li.dead && li.yBlocks>0 && li.harvP>0);
+  const _pyDone=_pyAll.filter(li=>!li.active);
+  const _pyUse=_pyDone.length?_pyDone:_pyAll;
+  const _pyFinished=_pyDone.length>0;
+  const avgYpb=(()=>{ const tb=_pyUse.reduce((s,li)=>s+li.yBlocks,0), th=_pyUse.reduce((s,li)=>s+li.harvAll,0); return tb>0?th/tb:0; })();
   const nDeadTot=vList.reduce((s,x)=>s+(x.nDead||0),0);
   // forecast next 7 days
   const yld=(typeof varietyYield==='function')?varietyYield():{}; let fc=0; const t0=new Date(); t0.setHours(0,0,0,0); const t7=new Date(t0); t7.setDate(t0.getDate()+7);
@@ -9801,7 +9805,7 @@ function rDashboard(el){
     ${tile('','Blocks Received',blocksReceived, 'in '+perLbl)}
     ${tile('g','Blocks → Fruiting',blocksPlacedP, 'placed '+perLbl)}
     ${tile(wasteTot>0?'r':'','Waste',wasteTot+' blk', 'disposed '+perLbl)}
-    ${tile('','Avg Yield / Block',avgYpb.toFixed(2)+' lb', 'harv '+perLbl+(nDeadTot?' · '+nDeadTot+' dead out':''))}
+    ${tile('','Avg Yield / Block',avgYpb.toFixed(2)+' lb', (_pyFinished?'finished lots · ':'incl. in-progress · ')+perLbl+(nDeadTot?' · '+nDeadTot+' dead out':''))}
     ${tile('m','Forecast · 7d',fc.toFixed(0)+' lb', 'projected harvest')}
   </div>`;
   // ── main table: by variety → lot ──
