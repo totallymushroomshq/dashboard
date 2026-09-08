@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #121</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #122</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5311,10 +5311,18 @@ function markAF(el){ if(!el) return; el.classList.add('af'); el.title='Auto-fill
 }
 function clearAF(el){ if(!el) return; el.classList.remove('af'); const p=el.parentElement; if(p){ const t=p.querySelector(':scope > .af-tag'); if(t) t.remove(); p.classList.remove('af-wrap'); } }
 // Best variety guess for a lot: decode Wild Spore species from the lot code FIRST (works on a brand-new receipt), then fall back to prior records. Mirrors what Fruiting does.
+// Decode the Wild Spore species from anywhere in a WS lot code (standard: WS + MMDDYY + species code), e.g. WS042623YOOY, WS-042623-1776
+function _wsSpeciesFromLot(lot){ const u=(lot||'').toUpperCase().replace(/[\s-]/g,'');
+  if(!/^(WS|W5)/.test(u)) return '';
+  const map={'1776':'Chestnut','2222':'Snow Oyster','4004':'Blue Oyster','4204':'Black Pearl','6969':'Italian Oyster','YOOY':'Blue Oyster','Y00Y':'Blue Oyster','$56$':'Shiitake'};
+  for(const code in map){ if(u.indexOf(code)>=0) return map[code]; }
+  return '';
+}
 function bestLotVariety(lot){
   if(!lot) return '';
   const cvz=v=>(typeof canonicalVariety==='function'?canonicalVariety(v):v);
   try{ const info=(typeof detectLot==='function')?detectLot(lot):null; if(info && info.variety) return cvz(info.variety); }catch(e){}
+  const ws=_wsSpeciesFromLot(lot); if(ws) return cvz(ws);
   const v=(typeof lotToVariety==='function')?lotToVariety(lot):''; return v?cvz(v):'';
 }
 // Receiving: reading a lot # auto-fills the variety (+ vendor), highlighted — WS lots decode from the code even on first receipt
