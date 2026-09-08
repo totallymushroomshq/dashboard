@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #127</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #128</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -405,6 +405,8 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
         </button></div></div>
         <button class="gbtn gbtn-m" onclick="login()">Enter</button>
         <div class="gate-err" id="lerr">Incorrect password. Try again.</div>
+        <div class="gate-ok" id="lok" style="display:none;"></div>
+        <div style="text-align:center;margin-top:12px;"><a href="#" onclick="forgotPassword();return false;" style="font-size:12px;color:var(--sage);text-decoration:underline;text-underline-offset:2px;font-family:'Syne Mono',monospace;">Forgot password?</a></div>
         <div class="gate-hint">Staff &amp; Admin · Internal access only</div>
       </div>
 
@@ -1742,6 +1744,23 @@ function checkResetParam(){
   }catch(e){}
 }
 
+// ── SELF-SERVE PASSWORD RESET (Firebase Auth internal staff) — user gets an email, sets a new password, no admin needed ──
+async function forgotPassword(){
+  let email=(document.getElementById('login-email')?.value||'').trim();
+  if(!email){ email=(prompt('Enter your account email — we\'ll send a password-reset link:')||'').trim(); }
+  if(!email){ return; }
+  const errEl=document.getElementById('lerr'); const okEl=document.getElementById('lok');
+  try{
+    await auth.sendPasswordResetEmail(email);
+    if(errEl) errEl.style.display='none';
+    if(okEl){ okEl.innerHTML='✓ Reset link sent to <b>'+email.replace(/</g,'&lt;')+'</b>.<br>Check your inbox (and spam), open the link, set a new password, then come back and sign in.'; okEl.style.display='block'; }
+    else alert('✓ Reset link sent to '+email+'. Check your inbox.');
+  }catch(e){
+    const m=(e&&e.code==='auth/user-not-found')?'no staff account uses that email — check the address or ask Allen':
+            (e&&e.code==='auth/invalid-email')?'that doesn\'t look like a valid email':(e&&e.message)||'try again';
+    showLoginErr('Could not send reset: '+m);
+  }
+}
 function showLoginErr(msg){
   const err=document.getElementById('lerr');
   if(!err) return;
