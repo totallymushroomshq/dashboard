@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #119</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #120</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4172,16 +4172,16 @@ async function logReceiving(){
   const soNum=document.getElementById('rc-so')?.value.trim()||'';
   const receiptStatus=soNum?'closed':'open';
   const snapUrl=(_lastSnap&&_lastSnap.kind==='receiving')?_lastSnap.url:'';
-  const tempLogUrl=_rcTempUrl, invoiceUrl=_rcInvoiceUrl;
+  const tempLogUrl=_rcTempUrl, tempLogUrl2=_rcTempUrl2, truckPhotoUrl=_rcTruckUrl, invoiceUrl=_rcInvoiceUrl;
   const createdIds=[];
   for(const r of rows){
     const rowNotes=(r.wsNote?[notes,r.wsNote].filter(Boolean).join(' · '):notes);
-    const rData={date,facility:'Hydes Ferry',source,vendor,soNum,receiptStatus,variety:r.variety,lotNumber:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes:rowNotes,temperature,scanUrl:snapUrl,tempLogUrl,invoiceUrl,status:'on-hand',createdAt:new Date().toISOString(),...(r.wsMeta?{wsLabel:r.wsMeta,organic:!!r.wsMeta.organic}:{})};
+    const rData={date,facility:'Hydes Ferry',source,vendor,soNum,receiptStatus,variety:r.variety,lotNumber:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,placedCount:0,receivedBy,poNum,cost,notes:rowNotes,temperature,scanUrl:snapUrl,tempLogUrl,tempLogUrl2,truckPhotoUrl,invoiceUrl,status:'on-hand',createdAt:new Date().toISOString(),...(r.wsMeta?{wsLabel:r.wsMeta,organic:!!r.wsMeta.organic}:{})};
     const rId=await FS.add('receivings',rData); DB.receivings.push({id:rId,...rData}); createdIds.push(rId);
   }
   const totalBlocks=rows.reduce((s,r)=>s+r.blockCount,0);
   logAudit('blocks_received',`Received ${rows.length} lot(s) / ${totalBlocks} blocks from ${vendor||source} @ Hydes Ferry${soNum?' (SO '+soNum+')':' — NO SO (open receipt)'}`);
-  toast('rc-t',`✓ ${rows.length} lot(s) · ${totalBlocks} blocks received${soNum?'':' — OPEN (needs SO#)'}`); clrReceiving(); _rcTempUrl=''; _rcInvoiceUrl=''; _recvQueue=[]; renderC();
+  toast('rc-t',`✓ ${rows.length} lot(s) · ${totalBlocks} blocks received${soNum?'':' — OPEN (needs SO#)'}`); clrReceiving(); _rcTempUrl=''; _rcTempUrl2=''; _rcTruckUrl=''; _rcInvoiceUrl=''; _recvQueue=[]; renderC();
   const snapImg=(_lastSnap&&_lastSnap.kind==='receiving'&&_lastSnap.b64)?_lastSnap:null; _lastSnap=null;
   // Subject: normal receiving report if we have an SO; otherwise an SO-# REQUEST to Katherine (blocks still logged)
   const subj = soNum
@@ -4191,7 +4191,7 @@ async function logReceiving(){
   openEmailDispatch('receiving', subj, {label:(soNum?'Receiving ':'SO REQUEST — ')+(vendor||source),
     edit:{kind:'receiving',col:'receivings',ids:createdIds,date},
     mark:{col:'receivings',ids:createdIds},
-    data:{date,vendor,source,soNum,poNum,temperature,tempLogUrl,invoiceUrl,imageUrl:snapUrl,rows:rows.map(r=>({variety:r.variety,lot:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb}))}, image:snapImg});
+    data:{date,vendor,source,soNum,poNum,temperature,tempLogUrl,tempLogUrl2,truckPhotoUrl,invoiceUrl,imageUrl:snapUrl,rows:rows.map(r=>({variety:r.variety,lot:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb}))}, image:snapImg});
 }
 function clrReceiving(){ ['rc-lot','rc-bc','rc-bw','rc-po','rc-cost','rc-notes','rc-temp','rc-so'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';}); const v=document.getElementById('rc-variety'); if(v) v.value=''; _recvQueue=[]; _wsFormMeta=null; renderRecvQueue(); }
 
@@ -4384,7 +4384,7 @@ function rSpawnReconcileSection(){
   </div>`;
 }
 function rReceiving(el){
-  _rcTempUrl=''; _rcInvoiceUrl=''; _recvQueue=[]; // fresh doc uploads + lot queue each render
+  _rcTempUrl=''; _rcTempUrl2=''; _rcTruckUrl=''; _rcInvoiceUrl=''; _recvQueue=[]; // fresh doc uploads + lot queue each render
   const onHand=onHandReceivings();
   const totalOnHand=onHand.reduce((s,r)=>s+receivingOnHand(r),0);
   const totalRecs=(DB.receivings||[]).filter(r=>r.source!=='pack').length;
@@ -4438,6 +4438,14 @@ function rReceiving(el){
         <div>
           <label class="btn b-g" style="cursor:pointer;display:inline-block;">🌡 Temperature Log photo<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="rcUploadDoc(this,'temp')"></label>
           <div id="rc-temp-status" style="display:none;margin-top:6px;font-size:11px;color:var(--text3);"></div>
+        </div>
+        <div>
+          <label class="btn b-g" style="cursor:pointer;display:inline-block;">🌡 Temperature Log photo 2<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="rcUploadDoc(this,'temp2')"></label>
+          <div id="rc-temp2-status" style="display:none;margin-top:6px;font-size:11px;color:var(--text3);"></div>
+        </div>
+        <div>
+          <label class="btn b-g" style="cursor:pointer;display:inline-block;">🚚 Truck Cleanliness photo<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="rcUploadDoc(this,'truck')"></label>
+          <div id="rc-truck-status" style="display:none;margin-top:6px;font-size:11px;color:var(--text3);"></div>
         </div>
         <div>
           <label class="btn b-g" style="cursor:pointer;display:inline-block;">🧾 Invoice / Packing Slip<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="rcUploadDoc(this,'invoice')"></label>
@@ -4562,6 +4570,8 @@ function openEditReceivingSession(id){
     <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin:12px 0 8px;">ATTACHMENTS — apply to the whole delivery</div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;">
       ${docBtn('🌡 Temperature Log','temp',r0.tempLogUrl)}
+      ${docBtn('🌡 Temperature Log 2','temp2',r0.tempLogUrl2)}
+      ${docBtn('🚚 Truck Cleanliness','truck',r0.truckPhotoUrl)}
       ${docBtn('🧾 Invoice / Packing Slip','invoice',r0.invoiceUrl)}
       ${docBtn('🖊 Signed Packing Slip','signed',r0.signedSlipUrl)}
     </div>
@@ -4578,7 +4588,7 @@ async function _editRecvUploadDoc(id, which, input){
   const file=input.files&&input.files[0]; if(!file) return;
   const r0=DB.receivings.find(x=>x.id===id); if(!r0){ input.value=''; return; }
   const st=document.getElementById('ers-'+which+'-status'); if(st){ st.innerHTML='⏳ uploading…'; st.style.color='var(--text3)'; }
-  const field=which==='temp'?'tempLogUrl':(which==='invoice'?'invoiceUrl':'signedSlipUrl');
+  const field={temp:'tempLogUrl',temp2:'tempLogUrl2',truck:'truckPhotoUrl',invoice:'invoiceUrl',signed:'signedSlipUrl'}[which]||'tempLogUrl';
   try{
     const url=await storePhoto(file,'receiving-'+which);
     for(const s of _recvSiblings(r0)){ s[field]=url; await FS.update('receivings',s.id,{[field]:url}); }
@@ -4621,7 +4631,7 @@ async function saveReceivingSession(id){
       try{ await FS.update('receivings',p.rid,base); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
     } else {
       const rData={...base, facility:r0.facility||'Hydes Ferry', placedCount:0,
-        scanUrl:r0.scanUrl||'', tempLogUrl:r0.tempLogUrl||'', invoiceUrl:r0.invoiceUrl||'', signedSlipUrl:r0.signedSlipUrl||'',
+        scanUrl:r0.scanUrl||'', tempLogUrl:r0.tempLogUrl||'', tempLogUrl2:r0.tempLogUrl2||'', truckPhotoUrl:r0.truckPhotoUrl||'', invoiceUrl:r0.invoiceUrl||'', signedSlipUrl:r0.signedSlipUrl||'',
         createdAt:new Date().toISOString() };
       try{ const nid=await FS.add('receivings',rData); DB.receivings.push({id:nid,...rData}); }
       catch(e){ alert('Add lot failed: '+(e.message||e)); return; }
@@ -6651,6 +6661,8 @@ function notifyReport(kind, subject, data){
     if(data.temperature) L.push('Temp:    '+data.temperature);
     if(data.poNum) L.push('PO #:    '+data.poNum);
     if(data.tempLogUrl){ L.push(''); L.push('🌡 Temperature log: '+data.tempLogUrl); }
+    if(data.tempLogUrl2){ L.push(''); L.push('🌡 Temperature log 2: '+data.tempLogUrl2); }
+    if(data.truckPhotoUrl){ L.push(''); L.push('🚚 Truck cleanliness: '+data.truckPhotoUrl); }
     if(data.invoiceUrl){ L.push(''); L.push('🧾 Invoice / packing slip: '+data.invoiceUrl); }
     if(data.signedSlipUrl){ L.push(''); L.push('🖊 Signed packing slip: '+data.signedSlipUrl); }
   } else if(kind==='spawn'){
@@ -6830,13 +6842,14 @@ async function storePhoto(file, tag){
   if(!resp.ok||!j.imageUrl) throw new Error(j.error||('Upload failed ('+resp.status+')'));
   return j.imageUrl;
 }
-let _rcTempUrl='', _rcInvoiceUrl=''; // receiving: temperature-log + invoice photo links, held until Log
+let _rcTempUrl='', _rcTempUrl2='', _rcTruckUrl='', _rcInvoiceUrl=''; // receiving: temp-log ×2 + truck-cleanliness + invoice photo links, held until Log
 async function rcUploadDoc(input, which){
   const file=input.files&&input.files[0]; if(!file) return;
   const st=document.getElementById('rc-'+which+'-status'); if(st){ st.style.display='block'; st.innerHTML='⏳ Uploading…'; }
   try{ const url=await storePhoto(file,'receiving-'+which);
-    if(which==='temp') _rcTempUrl=url; else _rcInvoiceUrl=url;
-    if(st) st.innerHTML=`✓ ${which==='temp'?'Temp log':'Invoice'} attached — <a href="${url}" target="_blank" style="color:var(--blue);">view</a>`;
+    if(which==='temp') _rcTempUrl=url; else if(which==='temp2') _rcTempUrl2=url; else if(which==='truck') _rcTruckUrl=url; else _rcInvoiceUrl=url;
+    const lbl={temp:'Temp log',temp2:'Temp log 2',truck:'Truck cleanliness',invoice:'Invoice'}[which]||'File';
+    if(st) st.innerHTML=`✓ ${lbl} attached — <a href="${url}" target="_blank" style="color:var(--blue);">view</a>`;
   }catch(e){ if(st) st.innerHTML='⚠ '+e.message; }
   finally{ input.value=''; }
 }
@@ -7283,7 +7296,7 @@ function resendReceiving(id, updated){ const r=DB.receivings.find(x=>x.id===id);
   if(updated) subj='UPDATED: '+subj;
   openEmailDispatch('receiving', subj, {label:(updated?'UPDATED — ':'')+(so?'Receiving ':'SO REQUEST — ')+(r.vendor||r.source||''), resend:true,
     mark:{col:'receivings',ids:sibs.map(x=>x.id)},
-    data:{date:r.date,vendor:r.vendor,source:r.source,soNum:so,poNum:r.poNum,temperature:r.temperature,tempLogUrl:r.tempLogUrl,invoiceUrl:r.invoiceUrl,signedSlipUrl:r.signedSlipUrl,imageUrl:r.scanUrl||'',
+    data:{date:r.date,vendor:r.vendor,source:r.source,soNum:so,poNum:r.poNum,temperature:r.temperature,tempLogUrl:r.tempLogUrl,tempLogUrl2:r.tempLogUrl2,truckPhotoUrl:r.truckPhotoUrl,invoiceUrl:r.invoiceUrl,signedSlipUrl:r.signedSlipUrl,imageUrl:r.scanUrl||'',
       rows:sibs.map(x=>({variety:x.variety,lot:x.lotNumber,blockCount:x.blockCount,blockWeightLb:x.blockWeightLb}))}}); }
 // assign an S.O. # to a whole delivery after Katherine replies → closes the open receipt + re-sends an UPDATED report
 async function addReceivingSO(id){
