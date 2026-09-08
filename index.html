@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #122</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #123</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -9784,14 +9784,17 @@ function rDashboard(el){
   const spark=_dashTrend(_dashPeriod);
   const perLbl={week:'this week',lastweek:'last week',month:'this month',year:'this year',all:'all time',custom:'selected range'}[_dashPeriod]||'period';
   const soldP=poundsSoldInRange(r), soldPrev=pr?poundsSoldInRange(pr):0;
+  // revenue in the selected window — same basis as Pounds Sold (non-standing orders sold in range), valued via eRev
+  const _revIn=rg=>(DB.orders||[]).filter(o=>!o.isStanding).reduce((s,o)=>s+(((typeof _orderSoldISO==='function')&&_inRange(_orderSoldISO(o),rg))?((typeof eRev==='function')?eRev(o):0):0),0);
+  const revP=_revIn(r), revPrev=pr?_revIn(pr):0;
   const tile=(cls,label,val,sub,extra)=>`<div class="sc ${cls}" style="min-width:150px;"><div class="sc-l">${label}</div><div class="sc-v">${val}</div><div class="sc-n">${sub||''}</div>${extra||''}</div>`;
   const tiles=`<div class="stats" style="margin-bottom:8px;">
     ${tile('g','Harvest Yield',harvP.toFixed(1)+' lb', (_dashPeriod==='week'?('day '+(new Date().getDay()+1)+' of 7 · '):'')+(pr?('vs prev '+dstr(pctDelta(harvP,harvPrev))):perLbl), spark?`<div style="margin-top:4px;">${miniSpark(spark)}</div>`:'')}
     ${tile('m','Pounds Sold',soldP.toFixed(0)+' lb', (pr?('vs prev '+dstr(pctDelta(soldP,soldPrev))):('sold '+perLbl)))}
+    ${tile('m','Revenue','$'+revP.toFixed(0), (pr?('vs prev '+dstr(pctDelta(revP,revPrev))):('billed '+perLbl)))}
     ${tile('','Blocks Produced',blocksProduced, 'cooked '+perLbl)}
     ${tile('','Blocks Received',blocksReceived, 'in '+perLbl)}
     ${tile('g','Blocks → Fruiting',blocksPlacedP, 'placed '+perLbl)}
-    ${tile('b','On Hand',onHandTot.toFixed(1)+' lb', 'fresh, right now')}
     ${tile(wasteTot>0?'r':'','Waste',wasteTot+' blk', 'disposed '+perLbl)}
     ${tile('','Avg Yield / Block',avgYpb.toFixed(2)+' lb', 'lifetime · valid lots')}
     ${tile('m','Forecast · 7d',fc.toFixed(0)+' lb', 'projected harvest')}
