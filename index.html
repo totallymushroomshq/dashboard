@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #139</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #140</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -6452,7 +6452,8 @@ const NOTIFY_TO = {
   block:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
   shipment: ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
   waste:    ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
-  relocation:['orders@totallymushrooms.com','Allen@totallymushrooms.com']
+  relocation:['orders@totallymushrooms.com','Allen@totallymushrooms.com'],
+  execReport:['Allen@totallymushrooms.com','Mat@totallymushrooms.com','Rowan@totallymushrooms.com']
 };
 function notifyRecips(kind){ return (DB.notify.to&&DB.notify.to[kind]&&DB.notify.to[kind].length)?DB.notify.to[kind]:(NOTIFY_TO[kind]||[]); }
 // Optional recipients — offered on every report form but DEFAULT UNCHECKED (only sometimes needed).
@@ -9634,6 +9635,7 @@ function rDashboard(el){
     <div class="ph"><div class="ph-t">📊 Production Dashboard</div><div class="ph-s">Yield &amp; block flow by variety → lot · ${rTxt}</div></div>
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px;">
       <span style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);">PERIOD:</span> ${selHTML}
+      ${S.role==='admin'?`<button class="btn b-gold b-sm" onclick="emailExecReport()" style="margin-left:auto;" title="Email last week's executive summary to Rowan + founders">✉ Email Exec Report</button>`:''}
     </div>
     ${custHTML}
     ${tiles}
@@ -9706,6 +9708,64 @@ function buildDistroBreakdown(r, pr, perLbl){
       <td class="mn" style="color:var(--fern);">$${D.totRev.toFixed(0)}</td>
       <td class="mn">${pr?dchip(pctDelta(D.totRev,D.totPrevRev)):''}</td></tr></tfoot>
   </table></div>`;
+}
+
+// ── Weekly Executive Report (manual send, plain-text body — EmailJS renders {{message}} as text) ──
+function execReportRanges(){
+  const now=new Date(); const curWk=_weekStart(now);
+  const s=new Date(curWk); s.setDate(curWk.getDate()-7); s.setHours(0,0,0,0);   // last full week
+  const e=new Date(s); e.setDate(s.getDate()+6);
+  const ps=new Date(s); ps.setDate(s.getDate()-7);                                // the week before (for WoW)
+  const pe=new Date(ps); pe.setDate(ps.getDate()+6);
+  return {r:{s,e}, pr:{s:ps,e:pe}};
+}
+function _erRangeLabel(r){ return r.s.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' – '+r.e.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+function _erWoW(cur,prev){ const d=pctDelta(cur,prev); return d.arrow?(d.arrow+' '+d.txt):d.txt; }
+function execReportText(){
+  const {r,pr}=execReportRanges();
+  const D=distroBreakdownData(r,pr);
+  const harv=rg=>(DB.harvests||[]).reduce((s,h)=>s+(_inRange((h.date||''),rg)?(parseFloat(h.weight)||0):0),0);
+  const placed=rg=>(DB.fruitings||[]).reduce((s,f)=>s+(_inRange((f.date||''),rg)?(parseInt(f.blockCount)||0):0),0);
+  const pad=(s,n)=>{ s=''+s; return s.length>=n?s:s+' '.repeat(n-s.length); };
+  const padL=(s,n)=>{ s=''+s; return s.length>=n?s:' '.repeat(n-s.length)+s; };
+  const money=v=>'$'+Math.round(v).toLocaleString('en-US');
+  const L=[];
+  L.push('TOTALLY MUSHROOMS — WEEKLY EXECUTIVE SUMMARY');
+  L.push('Week of '+_erRangeLabel(r)+'   (vs '+_erRangeLabel(pr)+')');
+  L.push('');
+  L.push('── HEADLINE ─────────────────────────────');
+  const kpi=(lbl,val,cur,prev)=>L.push(pad(lbl,16)+pad(val,11)+_erWoW(cur,prev));
+  kpi('Revenue',      money(D.totRev),           D.totRev,         D.totPrevRev);
+  kpi('Pounds Sold',  D.totLb.toFixed(0)+' lb',  D.totLb,          D.totPrevLb);
+  kpi('Total Harvest',harv(r).toFixed(0)+' lb',  harv(r),          harv(pr));
+  kpi('Blocks Placed',placed(r)+' blk',          placed(r),        placed(pr));
+  L.push('');
+  L.push('── BY DISTRIBUTOR ───────────────────────');
+  if(!D.rows.length){ L.push('(no distributor sales this week)'); }
+  D.rows.forEach(g=>{
+    L.push(pad(g.name.slice(0,20),22)+padL(money(g.rev),9)+'  '+padL(g.lb.toFixed(0)+'lb',7)+'  '+_erWoW(g.rev,g.prevRev));
+    const codes=Object.entries(g.codes).sort((a,b)=>b[1]-a[1]).map(([c,q])=>c+'×'+q).join(' · ');
+    if(codes) L.push('  '+codes);
+  });
+  L.push('  '+'─'.repeat(38));
+  L.push(pad('TOTAL',22)+padL(money(D.totRev),9)+'  '+padL(D.totLb.toFixed(0)+'lb',7)+'  '+_erWoW(D.totRev,D.totPrevRev));
+  L.push('');
+  // product-code roll-up (units across all distributors)
+  const codeTot={}; D.rows.forEach(g=>Object.entries(g.codes).forEach(([c,q])=>codeTot[c]=(codeTot[c]||0)+q));
+  const codeRows=Object.entries(codeTot).sort((a,b)=>b[1]-a[1]);
+  if(codeRows.length){
+    L.push('── UNITS BY CODE ────────────────────────');
+    codeRows.forEach(([c,q])=>{ const p=ALL_PRODS.find(x=>x.code===c); L.push(pad(c,7)+padL(q,4)+'  '+(p?p.name:'')); });
+    L.push('');
+  }
+  L.push('Generated '+new Date().toLocaleString('en-US')+' · TM HQ');
+  return L.join('\n');
+}
+function emailExecReport(){
+  if(typeof openEmailDispatch!=='function'){ alert('Email dispatch unavailable.'); return; }
+  const {r}=execReportRanges();
+  const subj='TM Weekly Executive Summary — week of '+_erRangeLabel(r);
+  openEmailDispatch('execReport', subj, {label:'Weekly Executive Summary', report:execReportText()});
 }
 
 function buildYieldAverages(){
