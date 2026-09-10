@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #129</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #130</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -560,29 +560,36 @@ let viewDay = null; // null = today's delivery day; or 'Monday'/'Wednesday'/'Fri
 const DELIVERY_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 
 // ── PERMISSIONS & TAB DEFINITIONS ──
+// Single source of truth for every tab's id + display label. Order here drives the permissions grid; the drawer order is set by GROUPS in buildNav.
 const ALL_INTERNAL_TABS = [
-  {id:'today',l:'Day'},
-  {id:'new-order',l:'+ Order'},{id:'email-parse',l:'Parse Email'},
+  {id:'today',l:'📅 Day'},
+  {id:'analytics',l:'📊 Dashboard'},
+  {id:'new-order',l:'➕ Order'},
+  {id:'email-parse',l:'✉️ Parse Email'},
   {id:'packing',l:'📦 Pack Orders'},
   {id:'receiving',l:'📥 Receiving'},
-  {id:'harvest',l:'Harvest'},{id:'fruiting',l:'Fruiting'},
-  {id:'inventory',l:'Inventory'},{id:'preservation',l:'Preservation'},
-  {id:'cleaning',l:'🧽 Clean · Flip · Waste'},
-  {id:'trace',l:'🔍 Trace &amp; Search'},
-  {id:'trace-doctor',l:'🩺 Trace Doctor',c:'at'},
   {id:'lab',l:'🧫 Lab'},
+  {id:'fruiting',l:'🍄 Fruiting'},
+  {id:'harvest',l:'🧺 Harvest'},
+  {id:'cleaning',l:'🧽 Clean · Flip · Waste'},
   {id:'cordyceps',l:'🐛 Cordyceps'},
-  {id:'analytics',l:'📊 Dashboard'},
-  {id:'admin',l:'⚙ Admin',c:'at'},{id:'security',l:'🔒 Security',c:'at'},
-  {id:'orders-all',l:'Orders',c:'ct'},{id:'reports',l:'📊 Reports',c:'at'},
-  {id:'qb',l:'📒 QB',c:'at'}
+  {id:'inventory',l:'🗃 Inventory'},
+  {id:'preservation',l:'❄️ Preservation'},
+  {id:'trace',l:'🔍 Trace & Search'},
+  {id:'trace-doctor',l:'🩺 Trace Doctor'},
+  {id:'orders-all',l:'🧾 Orders'},
+  {id:'reports',l:'📈 Reports'},
+  {id:'qb',l:'📒 QuickBooks'},
+  {id:'admin',l:'⚙️ Admin'},
+  {id:'security',l:'🔒 Security'}
 ];
 const DEFAULT_PERMS = {
   admin: {today:true,week:true,'new-order':true,'email-parse':true,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,'trace-doctor':true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
   staff: {today:true,week:true,'new-order':true,'email-parse':false,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,'trace-doctor':true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
   accountant: {today:true,week:true,'new-order':false,'email-parse':false,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:false,waste:true,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
 };
-const TAB_LABELS = {today:'Day View',week:'Week View','new-order':'New Order','email-parse':'Parse Email',packing:'Pack Orders',harvest:'Harvest',fruiting:'Fruiting',inventory:'Inventory',preservation:'Preservation',cleaning:'🧽 Clean · Flip · Waste',lab:'Lab — Carthage',analytics:'📊 Dashboard',admin:'Admin Panel',security:'Security Log','orders-all':'All Orders',reports:'Reports',qb:'QuickBooks Export'};
+// One resolver for tab display names — used by the drawer, the top-bar title, and the permissions grid, so they can never drift.
+function tabLabel(id){ const t=ALL_INTERNAL_TABS.find(x=>x.id===id); return (t&&t.l)||id; }
 
 // ── FIREBASE CONFIG ──
 const FIREBASE_CONFIG = {
@@ -2018,11 +2025,12 @@ function buildNav(){
   const allowed=new Set(ALL_INTERNAL_TABS.filter(t=>(perms[t.id]!==undefined?perms[t.id]:dperm[t.id])).map(t=>t.id));
 
   const GROUPS=[
-    {label:'Daily',       ids:['analytics','today','new-order','email-parse']},
-    {label:'Operations',  ids:['packing','receiving','harvest','fruiting','inventory','preservation','cleaning','trace','trace-doctor']},
-    {label:'Production',  ids:['lab','cordyceps']},
-    {label:'Business',    ids:['orders-all','reports','qb'], cls:'drw-acct'},
-    {label:'System',      ids:['admin','security'], cls:'drw-sys'},
+    {label:'Daily',              ids:['today','analytics']},
+    {label:'Orders',             ids:['new-order','email-parse','packing']},
+    {label:'Production',         ids:['receiving','lab','fruiting','harvest','cleaning','cordyceps']},
+    {label:'Inventory & Trace',  ids:['inventory','preservation','trace','trace-doctor']},
+    {label:'Finance',            ids:['orders-all','reports','qb'], cls:'drw-acct'},
+    {label:'System',             ids:['admin','security'], cls:'drw-sys'},
   ];
 
   let firstId=null;
@@ -2035,7 +2043,7 @@ function buildNav(){
       const tab=ALL_INTERNAL_TABS.find(t=>t.id===id); if(!tab) return;
       const b=document.createElement('button');
       b.className='drw-item'+(grp.cls?' '+grp.cls:'');
-      b.textContent=TAB_LABELS[id]||tab.l;
+      b.textContent=tab.l;
       b.dataset.view=id;
       b.onclick=()=>sw(id);
       section.appendChild(b);
@@ -2053,7 +2061,7 @@ function sw(id){
   cv=id;
   closeDrawer();
   document.querySelectorAll('.drw-item').forEach(t=>t.classList.toggle('active',t.dataset.view===id));
-  const lbl=document.getElementById('tb-cv'); if(lbl) lbl.textContent=TAB_LABELS[id]||'';
+  const lbl=document.getElementById('tb-cv'); if(lbl) lbl.textContent=tabLabel(id);
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
@@ -9560,17 +9568,26 @@ function rDashboard(el){
   const _revIn=rg=>(DB.orders||[]).filter(o=>!o.isStanding).reduce((s,o)=>s+(((typeof _orderSoldISO==='function')&&_inRange(_orderSoldISO(o),rg))?((typeof eRev==='function')?eRev(o):0):0),0);
   const revP=_revIn(r), revPrev=pr?_revIn(pr):0;
   const tile=(cls,label,val,sub,extra)=>`<div class="sc ${cls}" style="min-width:150px;"><div class="sc-l">${label}</div><div class="sc-v">${val}</div><div class="sc-n">${sub||''}</div>${extra||''}</div>`;
-  const tiles=`<div class="stats" style="margin-bottom:8px;">
-    ${tile('g','Harvest Yield',harvP.toFixed(1)+' lb', (_dashPeriod==='week'?('day '+(new Date().getDay()+1)+' of 7 · '):'')+(pr?('vs prev '+dstr(pctDelta(harvP,harvPrev))):perLbl), spark?`<div style="margin-top:4px;">${miniSpark(spark)}</div>`:'')}
-    ${tile('m','Pounds Sold',soldP.toFixed(0)+' lb', (pr?('vs prev '+dstr(pctDelta(soldP,soldPrev))):('sold '+perLbl)))}
-    ${tile('m','Revenue','$'+revP.toFixed(0), (pr?('vs prev '+dstr(pctDelta(revP,revPrev))):('billed '+perLbl)))}
-    ${tile('','Blocks Produced',blocksProduced, 'cooked '+perLbl)}
-    ${tile('','Blocks Received',blocksReceived, 'in '+perLbl)}
-    ${tile('g','Blocks → Fruiting',blocksPlacedP, 'placed '+perLbl)}
-    ${tile(wasteTot>0?'r':'','Waste',wasteTot+' blk', 'disposed '+perLbl)}
-    ${tile('','Avg Yield / Block',avgYpb.toFixed(2)+' lb', (_pyFinished?'matured lots · ':'incl. in-progress · ')+perLbl+(nDeadTot?' · '+nDeadTot+' dead out':''))}
-    ${tile('m','Forecast · 7d',fc.toFixed(0)+' lb', 'projected harvest')}
-  </div>`;
+  const bandLbl=(t,first)=>`<div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin:${first?'2px':'16px'} 0 6px;">${t}</div>`;
+  const tiles=
+    bandLbl('Yield &amp; Production',true)+
+    `<div class="stats" style="margin-bottom:4px;">
+      ${tile('g','Harvest Yield',harvP.toFixed(1)+' lb', (_dashPeriod==='week'?('day '+(new Date().getDay()+1)+' of 7 · '):'')+(pr?('vs prev '+dstr(pctDelta(harvP,harvPrev))):perLbl), spark?`<div style="margin-top:4px;">${miniSpark(spark)}</div>`:'')}
+      ${tile('','Avg Yield / Block',avgYpb.toFixed(2)+' lb', (_pyFinished?'matured lots · ':'incl. in-progress · ')+perLbl+(nDeadTot?' · '+nDeadTot+' dead out':''))}
+      ${tile('m','Forecast · 7d',fc.toFixed(0)+' lb', 'projected harvest')}
+    </div>`+
+    bandLbl('Block Flow')+
+    `<div class="stats" style="margin-bottom:4px;">
+      ${tile('','Blocks Produced',blocksProduced, 'cooked '+perLbl)}
+      ${tile('','Blocks Received',blocksReceived, 'in '+perLbl)}
+      ${tile('g','Blocks → Fruiting',blocksPlacedP, 'placed '+perLbl)}
+      ${tile(wasteTot>0?'r':'','Waste',wasteTot+' blk', 'disposed '+perLbl)}
+    </div>`+
+    bandLbl('Sales')+
+    `<div class="stats" style="margin-bottom:8px;">
+      ${tile('m','Pounds Sold',soldP.toFixed(0)+' lb', (pr?('vs prev '+dstr(pctDelta(soldP,soldPrev))):('sold '+perLbl)))}
+      ${tile('m','Revenue','$'+revP.toFixed(0), (pr?('vs prev '+dstr(pctDelta(revP,revPrev))):('billed '+perLbl)))}
+    </div>`;
   // ── main table: by variety → lot ──
   const genColor=ypb=>ypb>=1.0?'var(--fern)':ypb>=0.8?'var(--moss)':ypb>=0.6?'var(--amber)':ypb>0?'var(--rust)':'var(--text3)';
   const rowsHTML=vList.map(x=>{
@@ -13525,7 +13542,7 @@ function renderPermGrid(containerId,role,existingPerms,prefix){
   container.innerHTML=ALL_INTERNAL_TABS.map(t=>`
     <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--white);border:1px solid var(--border);border-radius:3px;cursor:pointer;font-size:12px;color:var(--text2);">
       <input type="checkbox" id="${prefix}${t.id}" ${perms[t.id]?'checked':''} style="width:14px;height:14px;">
-      ${TAB_LABELS[t.id]||t.l}
+      ${t.l}
     </label>`).join('');
 }
 
