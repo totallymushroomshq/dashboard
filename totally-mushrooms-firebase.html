@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #132</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #133</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -581,9 +581,9 @@ const ALL_INTERNAL_TABS = [
   {id:'security',l:'🔒 Security'}
 ];
 const DEFAULT_PERMS = {
-  admin: {today:true,'new-order':true,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,'trace-doctor':true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':true,reports:true},
-  staff: {today:true,week:true,'new-order':true,'email-parse':false,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,'trace-doctor':true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
-  accountant: {today:true,week:true,'new-order':false,'email-parse':false,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:false,waste:true,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
+  // Two roles: Admin (everything, incl. Billing/Orders/System) and Staff (all operations, no finance/system). Accountant retired — the bookkeeper works off the emailed reports, not the app.
+  admin: {today:true,analytics:true,'new-order':true,packing:true,receiving:true,lab:true,fruiting:true,harvest:true,cleaning:true,cordyceps:true,inventory:true,preservation:true,trace:true,'orders-all':true,reports:true,admin:true,security:true,waste:true},
+  staff: {today:true,analytics:true,'new-order':true,packing:true,receiving:true,lab:true,fruiting:true,harvest:true,cleaning:true,cordyceps:true,inventory:true,preservation:true,trace:true,'orders-all':false,reports:false,admin:false,security:false,waste:true}
 };
 // One resolver for tab display names — used by the drawer, the top-bar title, and the permissions grid, so they can never drift.
 function tabLabel(id){ const t=ALL_INTERNAL_TABS.find(x=>x.id===id); return (t&&t.l)||id; }
@@ -13523,7 +13523,6 @@ function openAddUser(){
         <select class="fs" id="au-role">
           <option value="admin">Admin (full access)</option>
           <option value="staff">Staff (operations)</option>
-          <option value="accountant">Accountant (read + reports)</option>
         </select>
       </div>
       <div class="fgl"><label>Temporary Password <span style="font-size:11px;color:var(--text3);">(they should change this)</span></label>
@@ -13607,7 +13606,6 @@ function openEditUser(docId){
         <select class="fs" id="eu-role" onchange="renderPermGrid('eu-perms-grid',this.value,null,'eu_perm_')">
           <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
           <option value="staff" ${u.role==='staff'?'selected':''}>Staff</option>
-          <option value="accountant" ${u.role==='accountant'?'selected':''}>Accountant</option>
         </select>
       </div>
       <div class="fgl"><label>Display Name</label><input class="fi" id="eu-name" value="${u.name||''}"></div>
