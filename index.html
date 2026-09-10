@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #138</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #139</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -9637,6 +9637,7 @@ function rDashboard(el){
     </div>
     ${custHTML}
     ${tiles}
+    ${buildDistroBreakdown(r,pr,perLbl)}
     ${buildPoundsSoldWoW()}
     <div class="sh" style="margin-top:18px;"><span>Harvest &amp; Yield — by Variety → Lot</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">TAP A VARIETY FOR ITS LOTS · TAP A LOT FOR FULL BREAKDOWN</span></div>
     <div class="tw" style="margin-bottom:8px;overflow-x:auto;"><table>
@@ -9667,6 +9668,45 @@ function rDashboard(el){
   if(_dashNoScroll){ _dashNoScroll=false; } else { try{ window.scrollTo(0,0); }catch(e){} }
 }
 
+
+// ── Distributor breakdown (Sales) — per-client codes bought, weight, revenue, WoW ──
+// Shared by the Dashboard Sales band and the weekly Executive Report email.
+function distroBreakdownData(r, pr){
+  const inR = o => o && !o.isStanding && _inRange(_orderSoldISO(o), r);
+  const ords = (DB.orders||[]).filter(inR);
+  const byC = {};
+  ords.forEach(o=>{ const c=(o.client||'—').trim()||'—'; const g=(byC[c]=byC[c]||{name:c,orders:0,lb:0,rev:0,codes:{}});
+    g.orders++; g.lb+=(typeof orderLbs==='function'?orderLbs(o):0); g.rev+=(typeof eRev==='function'?eRev(o):0);
+    ALL_PRODS.forEach(p=>{ const q=parseInt(o[p.dataKey])||0; if(q>0) g.codes[p.code]=(g.codes[p.code]||0)+q; });
+  });
+  const prevRev={}, prevLb={};
+  if(pr){ (DB.orders||[]).filter(o=>o&&!o.isStanding&&_inRange(_orderSoldISO(o),pr)).forEach(o=>{ const c=(o.client||'—').trim()||'—'; prevRev[c]=(prevRev[c]||0)+(typeof eRev==='function'?eRev(o):0); prevLb[c]=(prevLb[c]||0)+(typeof orderLbs==='function'?orderLbs(o):0); }); }
+  const rows=Object.values(byC).map(g=>({...g, prevRev:prevRev[g.name]||0, prevLb:prevLb[g.name]||0})).sort((a,b)=>b.rev-a.rev);
+  return {rows, totLb:rows.reduce((s,g)=>s+g.lb,0), totRev:rows.reduce((s,g)=>s+g.rev,0),
+          totPrevRev:Object.values(prevRev).reduce((s,v)=>s+v,0), totPrevLb:Object.values(prevLb).reduce((s,v)=>s+v,0)};
+}
+function _codeChips(codes){ return Object.entries(codes).sort((a,b)=>b[1]-a[1]).map(([c,q])=>`<span style="display:inline-block;font-family:'Syne Mono',monospace;font-size:10px;background:var(--paper);border:1px solid var(--border);border-radius:4px;padding:1px 5px;margin:0 3px 3px 0;white-space:nowrap;"><b style="color:var(--gold);">${c}</b>&#215;${q}</span>`).join(''); }
+function buildDistroBreakdown(r, pr, perLbl){
+  const D=distroBreakdownData(r, pr);
+  const bandLbl=`<div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin:16px 0 6px;">By Distributor</div>`;
+  if(!D.rows.length) return bandLbl+`<div class="empty" style="padding:14px;font-size:13px;">No distributor sales in this period.</div>`;
+  const dchip=d=>`<span style="color:${d.col};font-weight:700;white-space:nowrap;">${d.arrow} ${d.txt}</span>`;
+  const rows=D.rows.map(g=>`<tr style="border-top:1px solid var(--border);">
+      <td style="font-weight:700;">${g.name} <span style="color:var(--text3);font-weight:400;font-size:11px;">${g.orders} ord</span></td>
+      <td style="max-width:340px;line-height:1.7;">${_codeChips(g.codes)||'<span style="color:var(--text3);">—</span>'}</td>
+      <td class="mn">${g.lb.toFixed(0)}</td>
+      <td class="mn" style="font-weight:700;color:var(--fern);">$${g.rev.toFixed(0)}</td>
+      <td class="mn">${pr?dchip(pctDelta(g.rev,g.prevRev)):'<span style="color:var(--text3);">—</span>'}</td></tr>`).join('');
+  return bandLbl+`<div class="tw" style="margin-bottom:8px;overflow-x:auto;"><table>
+    <thead><tr><th>Distributor</th><th>Codes bought</th><th>Weight (lb)</th><th>Revenue</th><th>Rev vs prev</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr style="border-top:2px solid var(--border-strong,var(--border));font-weight:700;background:rgba(0,0,0,.02);">
+      <td>${D.rows.length} distributor${D.rows.length!==1?'s':''}</td><td></td>
+      <td class="mn">${D.totLb.toFixed(0)}</td>
+      <td class="mn" style="color:var(--fern);">$${D.totRev.toFixed(0)}</td>
+      <td class="mn">${pr?dchip(pctDelta(D.totRev,D.totPrevRev)):''}</td></tr></tfoot>
+  </table></div>`;
+}
 
 function buildYieldAverages(){
   // ── Period filter ──
