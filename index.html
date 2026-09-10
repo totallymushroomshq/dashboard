@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #137</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #138</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2825,7 +2825,7 @@ function buildPackOrderCard(){
       <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Or enter manually: the <strong>S.O. number from the packing slip</strong>, the client, what you packed, and <strong>check the lots that went into this pack</strong>. Generates the order (marked <strong>packed</strong>) with those lots tied for traceability.</div>
       <div class="fg2">
         <div class="fgl"><label>S.O. # <span style="color:var(--text3);font-size:11px;">optional — add later</span></label><input class="fi" id="po-so" placeholder="from Accounting's slip (or blank)"></div>
-        <div class="fgl"><label>Client <span style="color:var(--rust);">*</span></label><input class="fi" id="po-client" list="po-clientl" placeholder="Type or pick client…" autocomplete="off"><datalist id="po-clientl">${clientNames.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('')}</datalist></div>
+        <div class="fgl"><label>Client <span style="color:var(--rust);">*</span></label><input class="fi" id="po-client" list="po-clientl" placeholder="Type or pick client…" ${NOFILL('po_client')}><datalist id="po-clientl">${clientNames.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('')}</datalist></div>
         <div class="fgl"><label>Delivery Day</label><select class="fs" id="po-day">${days.map(d=>`<option value="${d}"${d===todayWd?' selected':''}>${d}</option>`).join('')}</select></div>
         <div class="fgl"><label>Date Delivered</label><input class="fi" type="date" id="po-delivered" value="${tday()}"></div>
       </div>
@@ -2842,9 +2842,9 @@ function buildPackOrderCard(){
       <div style="border:1px dashed var(--border);border-radius:6px;padding:10px 12px;margin-bottom:16px;background:rgba(184,130,10,.03);">
         <div style="font-size:11px;color:var(--text3);margin-bottom:8px;line-height:1.5;">🔎 <b>Lot not listed above?</b> If a lot you used was toasted or removed early, add it from the sheet — it'll be tied to this order and <b>back-filled into traceability</b>.</div>
         <div class="fg2" style="align-items:end;">
-          <div class="fgl"><label>Lot #</label><input class="fi" id="po-ml-lot" list="po-known-lots" autocomplete="off" placeholder="e.g. WS1776" oninput="onPoManualLot()"></div>
-          <div class="fgl"><label>Variety</label><input class="fi" id="po-ml-var" list="po-varieties-dl" autocomplete="off" placeholder="Variety"></div>
-          <div class="fgl"><label>Container</label><input class="fi" id="po-ml-con" list="po-containers-dl" autocomplete="off" placeholder="GH-…"></div>
+          <div class="fgl"><label>Lot #</label><input class="fi" id="po-ml-lot" list="po-known-lots" ${NOFILL('po_ml_lot')} placeholder="e.g. WS1776" oninput="onPoManualLot()"></div>
+          <div class="fgl"><label>Variety</label><input class="fi" id="po-ml-var" list="po-varieties-dl" ${NOFILL('po_ml_var')} placeholder="Variety"></div>
+          <div class="fgl"><label>Container</label><input class="fi" id="po-ml-con" list="po-containers-dl" ${NOFILL('po_ml_con')} placeholder="GH-…"></div>
         </div>
         <button type="button" class="btn b-g b-sm" onclick="poAddManualLot()" style="margin-top:8px;">+ Add lot to this order</button>
         <div id="po-manual-lots" style="margin-top:8px;"></div>
@@ -2865,6 +2865,9 @@ function buildPackOrderCard(){
 function computeOrderDeductions(qtys, checked){
   const today=tday();
   const inSession=(hid)=>DB.packSessions.some(s=>s.date===today && (s.pulled||[]).some(p=>p.harvestId===hid));
+  // Match a catalog variety to a harvest variety by CANONICAL key (alias-safe), so catalog
+  // drift like 'Gold Enoki' vs stored 'Golden Enoki' still matches instead of silently filling 0.
+  const _vk=s=>varietyKey(canonicalVariety(s||''));
   const targetByLot={}; const unmatched=[];
   ALL_PRODS.forEach(p=>{ const N=parseInt(qtys[p.dataKey])||0; if(N<=0) return;
     const total=N*(p.unitLb||3);
@@ -2872,7 +2875,8 @@ function computeOrderDeductions(qtys, checked){
     const groups=(p.composition&&p.composition.length)?p.composition:[{label:'',share:1,varieties:p.varieties||[]}];
     groups.forEach(grp=>{
       const grpLbs=total*(grp.share||1);
-      const relLots=checked.filter(l=>(grp.varieties||[]).includes(l.variety)); // lots checked that fall in this category
+      const grpKeys=new Set((grp.varieties||[]).map(_vk));
+      const relLots=checked.filter(l=>grpKeys.has(_vk(l.variety))); // lots checked that fall in this category (canonical-key match)
       if(!relLots.length){ unmatched.push({code:p.code,name:p.name+(grp.label?' — '+grp.label:''),qty:N,lb:Math.round(grpLbs*100)/100}); return; }
       const perLot=grpLbs/relLots.length; // split this category's share evenly across its checked lots
       relLots.forEach(l=>{ targetByLot[l.harvestId]=(targetByLot[l.harvestId]||0)+perLot; });
