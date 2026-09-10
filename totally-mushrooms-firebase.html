@@ -204,6 +204,11 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 .b-s{background:var(--blue-lt);color:var(--blue);border:1px solid rgba(42,85,120,.2)}.b-s:hover{background:rgba(42,85,120,.15)}
 .b-g{background:transparent;color:var(--text3);border:1px solid var(--border)}.b-g:hover{color:var(--black);border-color:var(--text3)}
 .b-r{background:transparent;color:var(--rust);border:1px solid rgba(184,76,32,.25)}.b-r:hover{background:rgba(184,76,32,.06)}
+/* soft-fill button variants — the button system. Use these instead of inline background/color/border on buttons. */
+.b-gold{background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25)}.b-gold:hover{background:rgba(184,130,10,.18)}
+.b-fern{background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25)}.b-fern:hover{background:rgba(58,96,48,.18)}
+.b-rustf{background:rgba(184,76,32,.09);color:var(--rust);border:1px solid rgba(184,76,32,.25)}.b-rustf:hover{background:rgba(184,76,32,.16)}
+.b-blue{background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.3)}.b-blue:hover{background:rgba(46,109,164,.18)}
 .b-lg{padding:13px 28px;font-size:11px}.b-sm{padding:5px 10px;font-size:11px}
 
 /* ── BADGES ── */
@@ -370,7 +375,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #134</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #135</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2412,7 +2417,7 @@ function rOC(o,container,showApprove){
     }
     // Re-send the packing-slip notification email
     if(['packed','invoiced'].includes(o.status)){
-      actHTML = `<button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send packing-slip email" onclick="resendSlip('${o.id}')">✉</button>` + actHTML;
+      actHTML = `<button class="btn b-sm b-fern" title="Re-send packing-slip email" onclick="resendSlip('${o.id}')">✉</button>` + actHTML;
     }
   }
 
@@ -2698,7 +2703,7 @@ function buildPackSessionsAdmin(){
       <td class="mn">${tot.toFixed(1)} lb</td>
       <td style="font-size:11px;color:var(--text3);">${packSessionSummary(s)}</td>
       <td style="white-space:nowrap;">
-        <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditPackSession('${s.id}')">✎ Edit</button>
+        <button class="btn b-sm b-gold" onclick="openEditPackSession('${s.id}')">✎ Edit</button>
         ${s.status==='closed'?`<button class="btn b-g b-sm" onclick="reopenPackSession('${s.id}')">Reopen</button>`:''}
         ${S.role==='admin'?`<button class="btn b-r b-sm" title="Delete this packed order" onclick="delPackSession('${s.id}')">✕</button>`:''}
       </td>
@@ -2792,7 +2797,7 @@ function buildPackOrderCard(){
         <span class="po-pull-wrap" data-hid="${l.hid}" style="display:${ck?'inline-flex':'none'};align-items:center;gap:6px;">
           <span style="font-size:10px;color:var(--text3);">Pull</span>
           <input type="number" class="po-lot-pull" data-hid="${l.hid}" data-oh="${l.onHand.toFixed(2)}" step="0.1" min="0" max="${l.onHand.toFixed(2)}" placeholder="0" style="width:66px;padding:4px 6px;" oninput="onPoPullInput(this)"> lb
-          <button type="button" class="btn b-sm" style="background:rgba(184,76,32,.1);color:#b84c20;border:1px solid rgba(184,76,32,.3);" title="Mark this lot fully used up (toast)" onclick="poToast('${l.hid}')">🔥 toast</button>
+          <button type="button" class="btn b-sm b-rustf" title="Mark this lot fully used up (toast)" onclick="poToast('${l.hid}')">🔥 toast</button>
           <span class="po-remain" data-hid="${l.hid}" style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);">${l.onHand.toFixed(1)} left</span>
         </span>
       </div>`;}).join('')}</div></div>`).join(''):`<div style="font-size:11px;color:var(--text3);">No harvest lots on hand — log a harvest first.</div>`;
@@ -3033,12 +3038,12 @@ function buildPackedOrdersList(){
   packed.forEach(o=>{ const iso=isoOf(o); const mk=iso.slice(0,7), wk=wkOf(iso), dk=iso;
     const M=byMonth[mk]=byMonth[mk]||{weeks:{}}; const W=M.weeks[wk]=M.weeks[wk]||{days:{}}; (W.days[dk]=W.days[dk]||[]).push(o); });
   const slipCell=o=>{ const url=o.signedSlipUrl||o.tmSlipUrl||o.scanUrl; return url
-    ? `<a class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);text-decoration:none;" href="${url}" target="_blank" rel="noopener">📄 view slip</a>`
+    ? `<a class="btn b-sm b-fern" href="${url}" target="_blank" rel="noopener">📄 view slip</a>`
     : `<span style="color:var(--text3);font-size:10px;">no slip on file</span>`; };
   const rowFor=o=>`<tr>
     <td class="mn">${fDate(isoOf(o))}</td>
     <td>${o.client||'—'}${o.soNum?` <span style="font-size:11px;color:var(--text3);font-family:'Syne Mono',monospace;">SO ${o.soNum}</span>`:''}</td>
-    <td style="white-space:nowrap;">${canEdit()?`${slipCell(o)} ${o.tmSlipUrl?`<a class="btn b-sm" style="background:var(--paper);color:var(--text3);border:1px solid var(--border);text-decoration:none;" href="${o.tmSlipUrl}" target="_blank" rel="noopener" title="TM copy — lot data">📎 TM</a> `:''}<button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="View / edit order" onclick="openEditOrder('${o.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.08);color:var(--fern);border:1px solid rgba(58,96,48,.2);" title="Re-send report email" onclick="resendSlip('${o.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" title="Delete this order" onclick="delOrd('${o.id}')">✕</button>`:''}`:'—'}</td>
+    <td style="white-space:nowrap;">${canEdit()?`${slipCell(o)} ${o.tmSlipUrl?`<a class="btn b-sm" style="background:var(--paper);color:var(--text3);border:1px solid var(--border);text-decoration:none;" href="${o.tmSlipUrl}" target="_blank" rel="noopener" title="TM copy — lot data">📎 TM</a> `:''}<button class="btn b-sm b-gold" title="View / edit order" onclick="openEditOrder('${o.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.08);color:var(--fern);border:1px solid rgba(58,96,48,.2);" title="Re-send report email" onclick="resendSlip('${o.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" title="Delete this order" onclick="delOrd('${o.id}')">✕</button>`:''}`:'—'}</td>
     <td class="mn">${orderCases(o)}</td>
     <td class="mn">${orderLbs(o).toFixed(1)}</td>
     <td class="mn" style="font-weight:700;color:var(--fern);">${money(eRev(o))}</td>
@@ -4114,7 +4119,7 @@ function buildReceivingRecords(){
       <td class="mn" style="font-size:10px;color:var(--text3);">${r.poNum||''}${r.cost?` · $${r.cost}`:''}</td>
       <td style="font-size:11px;color:var(--text3);">${r.receivedBy||''}</td>
       <td>${rep}</td>
-      ${canEdit()?`<td style="white-space:nowrap;">${st==='open'?`<button class="btn b-sm" style="background:rgba(184,130,10,.12);color:var(--gold);border:1px solid rgba(184,130,10,.4);font-weight:700;" title="Add the SO# from Katherine — closes the open receipt &amp; re-sends UPDATED" onclick="addReceivingSO('${r.id}')">✏ SO#</button> `:''}<button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit the whole receiving session — add/remove lots, docs, SO" onclick="openEditReceivingSession('${r.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send notification email" onclick="resendReceiving('${r.id}')">✉</button> ${r.signedSlipUrl?`<a class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);text-decoration:none;" href="${r.signedSlipUrl}" target="_blank" rel="noopener">signed</a> `:''}<button class="btn b-sm" style="background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.25);" title="${r.signedSlipUrl?'Replace signed packing slip':'Upload signed packing slip'}" onclick="uploadReceivingSignedSlip('${r.id}')">🖊${r.signedSlipUrl?'':' +'}</button>${S.role==='admin'?` <button class="btn b-r b-sm" title="Delete this receiving lot" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
+      ${canEdit()?`<td style="white-space:nowrap;">${st==='open'?`<button class="btn b-sm" style="background:rgba(184,130,10,.12);color:var(--gold);border:1px solid rgba(184,130,10,.4);font-weight:700;" title="Add the SO# from Katherine — closes the open receipt &amp; re-sends UPDATED" onclick="addReceivingSO('${r.id}')">✏ SO#</button> `:''}<button class="btn b-sm b-gold" title="Edit the whole receiving session — add/remove lots, docs, SO" onclick="openEditReceivingSession('${r.id}')">✎ Edit</button> <button class="btn b-sm b-fern" title="Re-send notification email" onclick="resendReceiving('${r.id}')">✉</button> ${r.signedSlipUrl?`<a class="btn b-sm b-fern" href="${r.signedSlipUrl}" target="_blank" rel="noopener">signed</a> `:''}<button class="btn b-sm b-blue" title="${r.signedSlipUrl?'Replace signed packing slip':'Upload signed packing slip'}" onclick="uploadReceivingSignedSlip('${r.id}')">🖊${r.signedSlipUrl?'':' +'}</button>${S.role==='admin'?` <button class="btn b-r b-sm" title="Delete this receiving lot" onclick="delReceiving('${r.id}')">✕</button>`:''}</td>`:''}
     </tr>`; }).join('');
   const cols=canEdit()?12:11;
   const openN=hist.filter(r=>_recvStatus(r)==='open').length;
@@ -4714,8 +4719,8 @@ function rFruiting(el){
             <span style="font-family:'Syne Mono',monospace;font-weight:700;color:var(--gold);font-size:13px;">${g.container||'—'}</span>
             <span style="font-size:12px;color:var(--text2);">${g.rows.length} lot${g.rows.length!==1?'s':''} · ${totBlocks} blocks · <strong style="color:var(--fern);">${totProj.toFixed(1)} lb proj</strong></span>
             <span style="font-size:11px;color:var(--text3);flex:1;min-width:100px;">${varlist}</span>
-            ${canEdit()?`<button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit this whole session — add/remove lots, fix fields, send UPDATED report" onclick="event.preventDefault();event.stopPropagation();openEditFruitSession('${firstId}')">✎ edit session</button>
-            <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send this whole session's report" onclick="event.preventDefault();event.stopPropagation();resendFruiting('${firstId}')">✉ resend session</button>`:''}
+            ${canEdit()?`<button class="btn b-sm b-gold" title="Edit this whole session — add/remove lots, fix fields, send UPDATED report" onclick="event.preventDefault();event.stopPropagation();openEditFruitSession('${firstId}')">✎ edit session</button>
+            <button class="btn b-sm b-fern" title="Re-send this whole session's report" onclick="event.preventDefault();event.stopPropagation();resendFruiting('${firstId}')">✉ resend session</button>`:''}
           </summary>
           <div class="tw" style="overflow-x:auto;">
             <table>
@@ -4735,7 +4740,7 @@ function rFruiting(el){
                   <td><span style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;font-weight:700;color:${sc};">${stLbl}</span></td>
                   <td>${canEdit()?`<div style="display:flex;gap:6px;flex-wrap:wrap;">
                     <button class="btn b-g b-sm" onclick="markFruitingHarvested('${f.id}')">Harvested ✓</button>
-                    <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button>
+                    <button class="btn b-sm b-gold" onclick="openEditFruiting('${f.id}')">✎ Edit</button>
                     ${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}
                   </div>`:'—'}</td>
                 </tr>`;
@@ -4776,7 +4781,7 @@ function rFruiting(el){
           <td class="mn">${f.blockCount}</td>
           <td class="mn" style="color:var(--fern);">${((f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK)).toFixed(1)} lb</td>
           <td class="mn">${f.harvestedAt?fDate(f.harvestedAt):'—'}</td>
-          ${canEdit()?`<td><div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFruiting('${f.id}')">✎ Edit</button><button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send the whole fruiting SESSION report — every lot placed this date + container" onclick="resendFruiting('${f.id}')">✉ session</button>${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}</div></td>`:''}
+          ${canEdit()?`<td><div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn b-sm b-gold" onclick="openEditFruiting('${f.id}')">✎ Edit</button><button class="btn b-sm b-fern" title="Re-send the whole fruiting SESSION report — every lot placed this date + container" onclick="resendFruiting('${f.id}')">✉ session</button>${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}</div></td>`:''}
         </tr>`).join('')}</tbody>
       </table>
     </div>`:''}
@@ -5432,7 +5437,7 @@ function reviewBlockBatch(){
   const sheetEditor=(s)=>{
     const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.strain||x.blockCount)).map(x=>({...x, spawnSources:(Array.isArray(x.spawnSources)&&x.spawnSources.length)?x.spawnSources:matchSpawnByStrain(x.strain,s.spawnLots)})); const iso=_toISO(s.productionDate)||s.productionDate||'';
     return `<div class="bb-sheet" data-si="${s.__i}" style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--paper);">
-      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm" style="background:rgba(184,76,32,.08);color:#b84c20;border:1px solid rgba(184,76,32,.25);" onclick="bbRemoveSheet(this)">✕ remove cook</button></div>
+      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm b-rustf" onclick="bbRemoveSheet(this)">✕ remove cook</button></div>
       <div class="fg2">
         <div class="fgl"><label>Production Date</label><input class="fi bb-pdate" type="date" value="${attrEsc(iso)}"></div>
         <div class="fgl"><label>Lot Code</label><input class="fi bb-lot" list="lab-lotcode-l" value="${attrEsc(s.lotCode||'')}" autocomplete="off"></div>
@@ -5545,7 +5550,7 @@ function reviewSpawnBatch(){
   const sheetEditor=(s)=>{
     const iso=_toISO(s.productionDate)||s.productionDate||'';
     return `<div class="sb-sheet" data-si="${s.__i}" style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--paper);">
-      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm" style="background:rgba(184,76,32,.08);color:#b84c20;border:1px solid rgba(184,76,32,.25);" onclick="bbRemoveSpawnSheet(this)">✕ remove run</button></div>
+      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm b-rustf" onclick="bbRemoveSpawnSheet(this)">✕ remove run</button></div>
       <div class="fg2">
         <div class="fgl"><label>Production Date</label><input class="fi sb-pdate" type="date" value="${attrEsc(iso)}"></div>
         <div class="fgl"><label>Lot Code <span style="color:var(--text3);font-size:11px;">base for suffixes</span></label><input class="fi sb-lot" list="lab-lotcode-l" value="${attrEsc(s.lotCode||'')}" autocomplete="off"></div>
@@ -5731,7 +5736,7 @@ function reviewSlipBatch(){
     const lots=(Array.isArray(s.lots)?s.lots:[]).filter(x=>x&&(x.lot||x.variety));
     const iso=_toISO(s.shipDate||s.date)||'';
     return `<div class="slb-sheet" data-si="${s.__i}" style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--paper);">
-      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm" style="background:rgba(184,76,32,.08);color:#b84c20;border:1px solid rgba(184,76,32,.25);" onclick="slbRemoveSheet(this)">✕ remove slip</button></div>
+      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm b-rustf" onclick="slbRemoveSheet(this)">✕ remove slip</button></div>
       <div class="fg2">
         <div class="fgl"><label>Customer</label><input class="fi slb-client" list="slb-client-dl" value="${attrEsc(s.client||'')}" autocomplete="off"></div>
         <div class="fgl"><label>S.O. #</label><input class="fi slb-so" value="${attrEsc(s.soNum||'')}"></div>
@@ -5856,7 +5861,7 @@ function reviewHarvestBatch(){
     const crew=(Array.isArray(s.crew)?s.crew:[]);
     const iso=_toISO(s.date)||s.date||'';
     return `<div class="hb-sheet" data-si="${s.__i}" style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--paper);">
-      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm" style="background:rgba(184,76,32,.08);color:#b84c20;border:1px solid rgba(184,76,32,.25);" onclick="hbRemoveSheet(this)">✕ remove sheet</button></div>
+      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm b-rustf" onclick="hbRemoveSheet(this)">✕ remove sheet</button></div>
       <div class="fg2">
         <div class="fgl"><label>Date</label><input class="fi hb-date" type="date" value="${attrEsc(iso)}"></div>
         <div class="fgl"><label>Container</label><input class="fi hb-con" list="hb-con-dl" value="${attrEsc(s.container||'')}" autocomplete="off"></div>
@@ -6037,7 +6042,7 @@ function reviewFruitBatch(){
     const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.strain||x.blocksUsed||x.blockCount));
     const crew=(Array.isArray(s.crew)?s.crew:[]); const iso=_toISO(s.date)||s.date||'';
     return `<div class="fb-sheet" data-si="${s.__i}" style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--paper);">
-      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm" style="background:rgba(184,76,32,.08);color:#b84c20;border:1px solid rgba(184,76,32,.25);" onclick="fbRemoveSheet(this)">✕ remove sheet</button></div>
+      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm b-rustf" onclick="fbRemoveSheet(this)">✕ remove sheet</button></div>
       <div class="fg2">
         <div class="fgl"><label>Date</label><input class="fi fb-date" type="date" value="${attrEsc(iso)}"></div>
         <div class="fgl"><label>Container</label><input class="fi fb-con" list="fb-con-dl" value="${attrEsc(s.container||'')}" autocomplete="off"></div>
@@ -6231,7 +6236,7 @@ function reviewRecvBatch(){
     const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.variety||x.blockCount)); const iso=_toISO(s.date)||s.date||'';
     const src=(s.source==='internal')?'internal':'vendor';
     return `<div class="rb-sheet" data-si="${s.__i}" style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--paper);">
-      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm" style="background:rgba(184,76,32,.08);color:#b84c20;border:1px solid rgba(184,76,32,.25);" onclick="rbRemoveSheet(this)">✕ remove delivery</button></div>
+      <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm b-rustf" onclick="rbRemoveSheet(this)">✕ remove delivery</button></div>
       <div class="fg2">
         <div class="fgl"><label>Date Received</label><input class="fi rb-date" type="date" value="${attrEsc(iso)}"></div>
         <div class="fgl"><label>S.O. # <span style="color:var(--text3);font-size:11px;">blank → SO-request report</span></label><input class="fi rb-so" value="${attrEsc(s.soNum||'')}" placeholder="often blank"></div>
@@ -7335,7 +7340,7 @@ function rHarvest(el){
             <td class="mn">${h.weight?h.weight+' lb':'—'}</td>
             <td class="mn" style="font-weight:700;color:${col}">${onHand.toFixed(1)} lb</td>
             <td style="font-size:11px;color:var(--text3)">${h.notes||'—'}</td>
-            ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.16);color:var(--gold);border:1px solid var(--border-gold);" title="Edit the whole harvest session (this date + container) — add/remove lots, send UPDATED report" onclick="openEditHarvestSession('${h.id}')">✎ session</button> <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit just this lot" onclick="openEditHarvest('${h.id}')">✎ lot</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send this session's report" onclick="resendHarvestSession('${h.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" title="Delete this harvest lot" onclick="delHarvest('${h.id}')">✕</button>`:''}</td>`:''}
+            ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.16);color:var(--gold);border:1px solid var(--border-gold);" title="Edit the whole harvest session (this date + container) — add/remove lots, send UPDATED report" onclick="openEditHarvestSession('${h.id}')">✎ session</button> <button class="btn b-sm b-gold" title="Edit just this lot" onclick="openEditHarvest('${h.id}')">✎ lot</button> <button class="btn b-sm b-fern" title="Re-send this session's report" onclick="resendHarvestSession('${h.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" title="Delete this harvest lot" onclick="delHarvest('${h.id}')">✕</button>`:''}</td>`:''}
           </tr>`}).join('')
       }</tbody>
     </table></div>
@@ -8137,7 +8142,7 @@ function buildReconcilePanel(){
         <td style="font-size:11px;color:var(--text3);">${[...l.cons].join(', ')||'—'}</td>
         <td class="mn">${oh.toFixed(1)} lb</td>
         <td><input class="fi rec-lot-count" type="number" step="0.1" min="0" value="${oh}" data-var="${vs}" data-lot="${ls}" data-oh="${oh}" oninput="onRecLotInput(this)" style="width:92px;"></td>
-        <td><button type="button" class="btn b-sm" style="background:rgba(184,76,32,.1);color:#b84c20;border:1px solid rgba(184,76,32,.3);" title="This lot is gone — 0 left" onclick="recLotGone(this)">🔥 gone</button></td>
+        <td><button type="button" class="btn b-sm b-rustf" title="This lot is gone — 0 left" onclick="recLotGone(this)">🔥 gone</button></td>
         <td class="mn rec-lot-var" style="font-weight:700;color:var(--text3);">0.0</td>
       </tr>`;
     }).join('');
@@ -8332,7 +8337,7 @@ function rInventory(el){
           <div style="display:flex;gap:6px;flex-wrap:wrap;">
             ${!isEmpty&&canEdit()?`<button class="btn b-a b-sm" onclick="openPreserveModal('${h.id}')">Preserve →</button>`:''}
             ${!isEmpty&&canEdit()&&hasMultiFac?`<button class="btn b-sm" style="background:rgba(42,85,120,.1);color:var(--blue);border:1px solid rgba(42,85,120,.25);" onclick="openTransferModal('${h.id}')">Transfer →</button>`:''}
-            ${S.role==='admin'?`<button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditHarvest('${h.id}')">✎ Edit</button><button class="btn b-sm" style="background:var(--paper);color:var(--text3);border:1px solid var(--border);" onclick="adminEditLot('${h.id}')">Adjust / Deduct</button>`:''}
+            ${S.role==='admin'?`<button class="btn b-sm b-gold" onclick="openEditHarvest('${h.id}')">✎ Edit</button><button class="btn b-sm" style="background:var(--paper);color:var(--text3);border:1px solid var(--border);" onclick="adminEditLot('${h.id}')">Adjust / Deduct</button>`:''}
             ${!canEdit()&&S.role!=='admin'?'<span style="font-size:10px;color:var(--text3);">—</span>':''}
           </div>
         </td>
@@ -8993,7 +8998,7 @@ function rPreservation(el){
           <td class="mn">${b.weightOut?b.weightOut.toFixed(1)+' lb':'—'}</td>
           <td class="mn">${yPct}</td>
           <td>${statusBadge}</td>
-          ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditPreservation('${b.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delPreservationBatch('${b.id}')">✕</button>`:''}</td>`:''}
+          ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm b-gold" onclick="openEditPreservation('${b.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delPreservationBatch('${b.id}')">✕</button>`:''}</td>`:''}
         </tr>`;
       }).join('');
 
@@ -10674,7 +10679,7 @@ function rCleaning(el){
     <td style="font-size:11px;">${(f.spentLots||[]).join(', ')||'—'}</td>
     <td style="font-size:11px;color:var(--text3);">${(f.crew||[]).map(c=>c.emp+' '+c.min+'m').join(', ')||'—'}</td>
     <td style="font-size:11px;color:var(--text3);">${f.notes||''}</td>
-    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditFlip('${f.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delFlip('${f.id}')">✕</button>`:''}</td>`:''}
+    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm b-gold" onclick="openEditFlip('${f.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delFlip('${f.id}')">✕</button>`:''}</td>`:''}
   </tr>`).join(''):`<tr><td colspan="${canEdit()?8:7}" class="empty">No container flips logged yet.</td></tr>`;
   const disp=[...(DB.blockDisposals||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.timestamp||'').localeCompare(a.timestamp||''));
   const totalWasted=disp.reduce((s,dd)=>s+(parseInt(dd.blockCount)||0),0);
@@ -11528,7 +11533,7 @@ function rLabSend(el){
     <td class="mn">${s.blockCount||0}</td><td class="mn">${s.blockWeightLb?s.blockWeightLb+' lb':'—'}</td>
     <td>${stBadge(s)}${s.status==='received'?`<div style="font-size:10px;color:var(--text3);">${s.receivedCount!=null?s.receivedCount+' recv':''} ${s.receivedAt?fDate(s.receivedAt):''}</div>`:''}</td>
     <td style="font-size:11px;color:var(--text3);">${s.carrier||''}${s.carrier&&s.notes?' · ':''}${s.notes||''}</td>
-    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditShipment('${s.id}')">✎</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="Re-send packing report for this day's shipment" onclick="resendShipmentReport('${s.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delShipment('${s.id}')">✕</button>`:''}</td>`:''}
+    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm b-gold" onclick="openEditShipment('${s.id}')">✎</button> <button class="btn b-sm b-fern" title="Re-send packing report for this day's shipment" onclick="resendShipmentReport('${s.id}')">✉</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delShipment('${s.id}')">✕</button>`:''}</td>`:''}
   </tr>`).join(''):`<tr><td colspan="${canEdit()?8:7}" class="empty">No shipments logged yet.</td></tr>`;
   el.innerHTML=`
     <div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.6;">Log blocks shipped from <strong>Carthage → Hyde's Ferry</strong>. Each shipment shows at Hydes as <strong>awaiting receipt</strong> until someone confirms it in the 📥 Receiving tab (they can adjust the count on arrival). Received shipments land in the Hydes placement pool.</div>
@@ -11719,7 +11724,7 @@ function rLabWaste(el){
     <td class="mn">${fDate(d.date)}</td><td>${d.variety||'—'}</td><td class="mn">${d.cookLot||'—'}</td>
     <td class="mn" style="color:var(--rust);font-weight:700;">${d.blockCount||0}</td><td>${d.reason||''}</td>
     <td>${d.container||'—'}</td><td style="font-size:11px;color:var(--text3);">${d.notes||''}</td>
-    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditCarthageWaste('${d.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delCarthageWaste('${d.id}')">✕</button>`:''}</td>`:''}
+    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm b-gold" onclick="openEditCarthageWaste('${d.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delCarthageWaste('${d.id}')">✕</button>`:''}</td>`:''}
   </tr>`).join(''):`<tr><td colspan="${canEdit()?8:7}" class="empty">No pre-Hydes waste logged yet.</td></tr>`;
   el.innerHTML=`
     <div style="font-size:12px;color:var(--text3);margin-bottom:16px;line-height:1.6;">Log block loss at <strong>Carthage</strong> — contamination, failed colonization, souring, or damage that happens <strong>before blocks ship to Hyde's Ferry</strong>. Keeps production yield + waste analytics honest.</div>
@@ -11899,7 +11904,7 @@ function rLabCultures(el){
     <td>${cultureStatusBadge(c.status)}</td>
     <td class="mn">${fDate(c.date)}</td>
     <td style="font-size:11px;color:var(--text3);">${c.loggedBy||''}</td>
-    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditCulture('${c.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delCulture('${c.id}')">✕</button>`:''}</td>`:''}
+    ${canEdit()?`<td style="white-space:nowrap;"><button class="btn b-sm b-gold" onclick="openEditCulture('${c.id}')">✎</button>${S.role==='admin'?` <button class="btn b-r b-sm" onclick="delCulture('${c.id}')">✕</button>`:''}</td>`:''}
   </tr>`).join('') : `<tr><td colspan="${canEdit()?9:8}" class="empty">No cultures logged${q?' match your search':' yet'}.</td></tr>`;
   el.innerHTML=`
     ${canEdit()?`<div class="card"><div class="card-t">Log Culture</div>
@@ -12220,7 +12225,7 @@ function rLabSpawn(el){
             <td style="font-weight:500;">${st.strain||'—'}</td><td class="mn">${made}</td><td class="mn">${used}</td><td class="mn" style="color:var(--fern);font-weight:700;">${Math.max(0,made-used)}</td></tr>`; }).join('')}</tbody></table></div>
         </div>`; })()}
       ${canEdit()?`<div style="padding:10px 15px 14px;border-top:1px solid var(--border);display:flex;gap:8px;">
-        <button class="btn b-sm" style="background:rgba(184,130,10,.1);color:var(--gold);border:1px solid rgba(184,130,10,.25);" onclick="openEditSpawn('${s.id}')">✎ Edit</button>
+        <button class="btn b-sm b-gold" onclick="openEditSpawn('${s.id}')">✎ Edit</button>
         ${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delSpawn('${s.id}')">✕ Delete</button>`:''}
       </div>`:''}
     </details>`).join('') : `<div class="empty" style="padding:20px;">No grain spawn runs logged${q?' match your search':' yet'}.</div>`;
