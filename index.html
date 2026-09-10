@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #141</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #142</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -399,11 +399,6 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
     <div class="gate-card">
       <div class="gate-logo">Totally Mushrooms</div>
       <div class="gate-sub">Nashville, TN · Farm Portal</div>
-      <!-- Client-facing signup hidden — app is internal-only. Code kept dormant. -->
-      <div class="gmt-row" style="display:none;">
-        <button class="gmt a" onclick="gTab('login',this)">Sign In</button>
-        <button class="gmt sky" onclick="gTab('signup',this)">Request Access</button>
-      </div>
 
       <!-- LOGIN -->
       <div class="gpane a" id="gp-login">
@@ -416,34 +411,6 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
         <div class="gate-ok" id="lok" style="display:none;"></div>
         <div style="text-align:center;margin-top:12px;"><a href="#" onclick="forgotPassword();return false;" style="font-size:12px;color:var(--sage);text-decoration:underline;text-underline-offset:2px;font-family:'Syne Mono',monospace;">Forgot password?</a></div>
         <div class="gate-hint">Staff &amp; Admin · Internal access only</div>
-      </div>
-
-      <!-- SIGNUP -->
-      <div class="gpane" id="gp-signup">
-        <div style="font-size:12px;color:var(--sage);margin-bottom:20px;line-height:1.7;font-family:'Syne Mono',monospace;">Fill in your details. The team will review your request and send login details once approved.</div>
-        <div class="fl"><label>Venue / Business Name</label><input class="fi" id="su-n" placeholder="e.g. The Catbird Seat"></div>
-        <div class="fl"><label>Your Name</label><input class="fi" id="su-c" placeholder="Chef / Manager name"></div>
-        <div class="fl"><label>Email Address</label><input class="fi" type="email" id="su-e" placeholder="orders@yourvenue.com"></div>
-        <div class="fl"><label>Phone Number</label><input class="fi" type="tel" id="su-p" placeholder="+1 615 000 0000"></div>
-        <div class="fl"><label>Preferred Delivery Day</label><select class="fs" id="su-d"><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option></select></div>
-        <div class="fl"><label>What are you looking for?</label><textarea class="fta" id="su-note" placeholder="Weekly boxes, wholesale, specific varieties..." style="min-height:70px;"></textarea></div>
-        <button class="gbtn gbtn-s" onclick="subSignup()">Submit Request</button>
-        <div class="gate-err" id="su-err">Please fill in venue name, your name, and email.</div>
-        <div class="gate-ok" id="su-ok">✓ Request submitted!<br>We'll review and be in touch shortly.</div>
-      </div>
-
-      <!-- FIRST LOGIN -->
-      <div class="gpane" id="gp-first">
-        <div class="fl-note">Welcome! Your account has been approved. Set your password and how you'd like to be notified.</div>
-        <div class="fl"><label>New Password (min 6 chars)</label><input class="fi" type="password" id="fl-p1" placeholder="Choose a password"></div>
-        <div class="fl"><label>Confirm Password</label><input class="fi" type="password" id="fl-p2" placeholder="Confirm password"></div>
-        <div style="margin:16px 0 10px;font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:2px;color:var(--spore);">NOTIFICATIONS</div>
-        <div class="tog"><label class="tsw"><input type="checkbox" id="fl-en" checked><div class="ttr"></div></label><label for="fl-en">Email notifications</label></div>
-        <div class="tog"><label class="tsw"><input type="checkbox" id="fl-sn"><div class="ttr"></div></label><label for="fl-sn">SMS / Text notifications</label></div>
-        <div class="fl" style="margin-top:14px;"><label>Email Address</label><input class="fi" type="email" id="fl-ea" placeholder="your@email.com"></div>
-        <div class="fl" id="fl-sf" style="display:none;"><label>Mobile Number</label><input class="fi" type="tel" id="fl-ph" placeholder="+1 615 000 0000"></div>
-        <button class="gbtn gbtn-m" style="margin-top:8px;" onclick="finFirstLogin()">Save & Enter</button>
-        <div class="gate-err" id="fl-err">Passwords don't match or are too short.</div>
       </div>
     </div>
   </div>
@@ -1748,7 +1715,7 @@ function checkResetParam(){
       window.history.replaceState({},'',window.location.pathname);
       auth.sendPasswordResetEmail(resetFor).then(()=>{
         document.getElementById('lerr').style.display='none';
-        const ok=document.getElementById('su-ok');
+        const ok=document.getElementById('lok');
         if(ok){ ok.textContent='✓ Password reset email sent to '+resetFor+'. Check your inbox.'; ok.style.display='block'; }
         else{ alert('✓ Password reset email sent to '+resetFor+'. Check your inbox.'); }
       }).catch(e=>{ alert('Could not send reset: '+e.message); });
@@ -1792,7 +1759,6 @@ const SESSION_TIMEOUT=2*60*60*1000; // 2 hours inactivity
 
 
 document.getElementById('pw').addEventListener('keydown',e=>{ if(e.key==='Enter') login() });
-document.getElementById('fl-sn').addEventListener('change',function(){ document.getElementById('fl-sf').style.display=this.checked?'block':'none' });
 
 // ── CLIENT PASSWORD HASHING (PBKDF2-SHA256, client-side) ──
 // App-wide salt: NOT a secret. Its job is to defeat precomputed rainbow tables,
@@ -1809,13 +1775,6 @@ async function derivePwHash(pw){
 async function pwFields(pw){
   if(!pw) return { pwHash: null, pw: firebase.firestore.FieldValue.delete() };
   return { pwHash: await derivePwHash(pw), pw: firebase.firestore.FieldValue.delete() };
-}
-
-function gTab(name, btn){
-  document.querySelectorAll('.gpane').forEach(p=>p.classList.remove('a'));
-  const pane=document.getElementById('gp-'+name); if(pane) pane.classList.add('a');
-  document.querySelectorAll('.gmt').forEach(b=>b.classList.remove('a'));
-  if(btn) btn.classList.add('a');
 }
 
 async function login(){
@@ -1852,36 +1811,8 @@ async function login(){
     }
   }
 
-  // ── CLIENT LOGIN (hashed password; legacy plaintext accepted until migrated) ──
-  const cand=await derivePwHash(pw);
-  const c=DB.clients.find(x=>x.status==='approved' && (
-    (x.pwHash && x.pwHash===cand) || (!x.pwHash && x.pw && x.pw===pw)
-  ));
-  if(c){ S={role:'client',clientId:c.id,uid:null,email:null,name:c.name,permissions:null,newDevice:false}; launch(); return }
-  const fp=DB.clients.find(x=>x.firstLogin&&x.status==='approved'&&('tm-'+x.id)===pw.toLowerCase());
-  if(fp){ S={role:'client_pending',clientId:fp.id,uid:null,email:null,name:fp.name,permissions:null,newDevice:false}; document.querySelectorAll('.gpane').forEach(p=>p.classList.remove('a')); document.getElementById('gp-first').classList.add('a'); return }
+  // Client login retired — app is internal-only (staff + admin via Firebase Auth above).
   showLoginErr('Incorrect credentials. Try again.');
-}
-
-async function finFirstLogin(){
-  const p1=document.getElementById('fl-p1').value, p2=document.getElementById('fl-p2').value;
-  const err=document.getElementById('fl-err');
-  if(!p1||p1.length<6||p1!==p2){ err.style.display='block'; setTimeout(()=>err.style.display='none',3000); return }
-  const c=DB.clients.find(x=>x.id===S.clientId);
-  if(c){ const pwH=await derivePwHash(p1); c.pwHash=pwH; delete c.pw; c.firstLogin=false; const en=document.getElementById('fl-en').checked, sn=document.getElementById('fl-sn').checked; c.notifPref=en&&sn?'both':en?'email':sn?'sms':'none'; c.notifEmail=document.getElementById('fl-ea').value.trim(); c.notifPhone=document.getElementById('fl-ph').value.trim();
-    FS.update('clients',S.clientId,{pwHash:pwH,pw:firebase.firestore.FieldValue.delete(),firstLogin:false,notifPref:c.notifPref,notifEmail:c.notifEmail,notifPhone:c.notifPhone}); }
-  S.role='client'; launch()
-}
-
-async function subSignup(){
-  const n=document.getElementById('su-n').value.trim(), c=document.getElementById('su-c').value.trim(), e=document.getElementById('su-e').value.trim();
-  if(!n||!c||!e){ document.getElementById('su-err').style.display='block'; setTimeout(()=>document.getElementById('su-err').style.display='none',3000); return }
-  const srData={venue:n,contact:c,email:e,phone:document.getElementById('su-p').value.trim(),day:document.getElementById('su-d').value,note:document.getElementById('su-note').value.trim(),submitted:tday(),status:'new'};
-  const srId = await FS.add('signupRequests', srData);
-  srData.id = srId;
-  DB.signupRequests.push(srData);
-  document.getElementById('su-ok').style.display='block';
-  ['su-n','su-c','su-e','su-p','su-note'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value='' })
 }
 
 window.addEventListener('DOMContentLoaded', async ()=>{
@@ -1974,9 +1905,6 @@ function doLogout(){
 }
 
 // ── NAV ──
-const NAVS={
-  client:[{id:'c-order',l:'Place Order',c:'ct'},{id:'c-standing',l:'Standing Order',c:'ct'},{id:'c-history',l:'History',c:'ct'},{id:'c-settings',l:'Settings',c:'ct'}]
-};
 let cv=null;
 
 function toggleDrawer(){
@@ -1995,22 +1923,6 @@ function buildNav(){
   const nav=document.getElementById('drw-nav'), pill=document.getElementById('role-pill');
   nav.innerHTML='';
   const role=S.role;
-
-  // Client nav
-  if(role==='client'){
-    const cl=DB.clients.find(x=>x.id===S.clientId);
-    pill.textContent=(cl?cl.name.split(' ')[0]:'CLIENT').toUpperCase();
-    pill.className='rpill client';
-    const grp=document.createElement('div'); grp.className='drw-group';
-    grp.innerHTML='<div class="drw-grp-lbl">My Account</div>';
-    NAVS.client.forEach((item,i)=>{
-      const b=document.createElement('button');
-      b.className='drw-item'; b.textContent=item.l; b.dataset.view=item.id;
-      b.onclick=()=>sw(item.id); grp.appendChild(b); if(i===0) sw(item.id);
-    });
-    nav.appendChild(grp);
-    return;
-  }
 
   // Role pill
   if(role==='admin'){
@@ -2070,7 +1982,7 @@ function sw(id){
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTraceTab,'trace-doctor':rTraceDoctor,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rBilling,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTraceTab,'trace-doctor':rTraceDoctor,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rBilling,'orders-all':rOrdersAll,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -13248,7 +13160,7 @@ async function ensureAdminData(){
 }
 function rAdmin(el){
   if(!(DB._adminLoaded&&DB._adminLoaded.all)) ensureAdminData().then(()=>{ if(cv==='admin') rAdmin(document.getElementById('main-views')); }); // recent logins fill in when ready
-  const pend=DB.orders.filter(o=>o.status==='pending'&&!o.isStanding), cust=DB.orders.filter(o=>o.custom&&!o.isStanding), newSR=DB.signupRequests.filter(s=>s.status==='new');
+  const pend=DB.orders.filter(o=>o.status==='pending'&&!o.isStanding), cust=DB.orders.filter(o=>o.custom&&!o.isStanding);
   const staffUsers=DB.users.filter(u=>u.active!==false);
   const recentLogins=[...DB.loginHistory].sort((a,b)=>b.timestamp.localeCompare(a.timestamp)).slice(0,5);
 
@@ -13300,7 +13212,6 @@ function rAdmin(el){
       }).join('')}</div>`:''}
     </div>
 
-    ${newSR.length>0?`<div style="margin-bottom:28px;"><div class="sh"><span>New Signup Requests</span><span class="bdg bn">${newSR.length} new</span></div><div id="sr-list"></div></div>`:''}
     <div style="margin-bottom:28px;"><div class="sh"><span>Orders — Approve / Reject</span><span class="bdg bp">${pend.length} pending</span></div><div class="og" id="aa-g"></div></div>
     <div style="margin-bottom:28px;"><div class="sh"><span>Custom & Wholesale <span class="bdg bad">★</span></span></div><div class="og" id="ac-g"></div><div style="margin-top:14px;"><button class="btn b-a" onclick="sw('new-order')">+ New Custom / Wholesale Order</button></div></div>
     <div style="margin-bottom:28px;">
@@ -13409,45 +13320,10 @@ function rAdmin(el){
       </div>
     </div>`;
 
-  if(newSR.length>0){ const srl=el.querySelector('#sr-list'); newSR.forEach(sr=>rSR(sr,srl)) }
   const ag=el.querySelector('#aa-g'); const std=DB.orders.filter(o=>!o.custom&&!o.isStanding); if(std.length===0) ag.innerHTML='<div class="empty">No standard orders</div>'; else std.forEach(o=>rOC(o,ag,o.status==='pending'));
   const cg=el.querySelector('#ac-g'); if(cust.length===0) cg.innerHTML='<div class="empty">No custom or wholesale orders</div>'; else cust.forEach(o=>rOC(o,cg,o.status==='pending'));
 }
 
-function rSR(sr,container){
-  const div=document.createElement('div'); div.className='src';
-  div.innerHTML=`<div class="src-n">${sr.venue}</div><div class="src-m">CONTACT: ${sr.contact} · EMAIL: ${sr.email} · PHONE: ${sr.phone||'—'}<br>PREFERRED DAY: ${sr.day} · SUBMITTED: ${fDate(sr.submitted)}</div>${sr.note?`<div style="font-size:12px;color:var(--warm);line-height:1.6;margin-bottom:10px;">"${sr.note}"</div>`:''}<div class="src-acts"><button class="btn b-m" onclick="appSR('${sr.id}')">Approve & Create Account</button><button class="btn b-r" onclick="decSR('${sr.id}')">Decline</button></div>`;
-  container.appendChild(div)
-}
-
-function appSR(id){
-  const sr=DB.signupRequests.find(s=>s.id===id); if(!sr) return;
-  document.getElementById('em-title').textContent='Approve: '+sr.venue;
-  document.getElementById('em-body').innerHTML=`
-    <div style="font-size:12px;color:var(--sage);margin-bottom:18px;line-height:1.6;">Set this client's account details. They'll use a temp code to complete first login.</div>
-    <div class="fg2">
-      <div class="fgl"><label>Client Type</label><select class="fs" id="as-t"><option>Restaurant</option><option>Retail</option><option>Individual</option><option>Wholesale</option></select></div>
-      <div class="fgl"><label>Delivery Day</label><select class="fs" id="as-d">${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=>`<option ${sr.day===d?'selected':''}>${d}</option>`).join('')}</select></div>
-      <div class="fgl"><label>Notes</label><input class="fi" id="as-n" placeholder="Delivery notes..."></div>
-    </div>
-    <div class="form-acts"><button class="btn b-m b-lg" onclick="finSR('${id}')">Create Account</button><button class="btn b-g" onclick="closeModal()">Cancel</button></div>`;
-  document.getElementById('edit-modal').classList.add('open')
-}
-
-async function finSR(srId){
-  const sr=DB.signupRequests.find(s=>s.id===srId); if(!sr) return;
-  const cData={name:sr.venue,type:document.getElementById('as-t').value,contact:sr.contact,email:sr.email,phone:sr.phone,day:document.getElementById('as-d').value,notes:document.getElementById('as-n').value.trim(),pwHash:null,notifPref:'email',notifEmail:sr.email,notifPhone:sr.phone,firstLogin:true,status:'approved',isWholesale:document.getElementById('as-t').value==='Wholesale'};
-  const cid = await FS.add('clients', cData);
-  cData.id = cid;
-  DB.clients.push(cData);
-  sr.status='approved';
-  FS.update('signupRequests',srId,{status:'approved'});
-  closeModal();
-  alert(`✓ Account created for ${sr.venue}.\n\nTemp login code: tm-${cid}\n\nSend this to ${sr.email} so they can complete their first login and set their own password.`);
-  rAdmin(document.getElementById('main-views'))
-}
-
-function decSR(id){ if(!confirm('Decline this signup request?')) return; const sr=DB.signupRequests.find(s=>s.id===id); if(!sr) return; sr.status='declined'; FS.update('signupRequests',id,{status:'declined'}); rAdmin(document.getElementById('main-views')) }
 
 // ── ADD CLIENT MODAL ──
 function openAddClient(){
@@ -13759,118 +13635,6 @@ async function deactivateUser(docId){
 
 function closeModal(){ document.getElementById('edit-modal').classList.remove('open') }
 document.getElementById('edit-modal').addEventListener('click',function(e){ if(e.target===this) closeModal() });
-
-// ── CLIENT PORTAL ──
-function gC(){ return DB.clients.find(c=>c.id===S.clientId)||{} }
-
-function rCOrd(el){
-  const c=gC();
-  el.innerHTML=`
-    <div class="portal"><div class="p-hello">Hi, ${c.contact||c.name}.</div><div class="p-sub">${c.name} · ${c.day||'your delivery day'}</div>
-    <div class="card"><div class="card-t">Place This Week's Order</div>
-    <div class="fg2"><div class="fgl"><label>Delivery Day</label><select class="fs" id="co-d">${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=>`<option ${c.day===d?'selected':''}>${d}</option>`).join('')}</select></div></div>
-    <div style="margin:20px 0 10px;" class="sh">Wholesale Codes — 3 lb Boxes <span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">priced per lb · 3 lb box</span></div>
-    <div class="vg">${PRODUCTS.map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);margin-right:8px;">${p.code}</span>${p.name}</div><div class="vi-d">$${p.priceLb.toFixed(2)}/lb · 3 lb box = $${(p.unitLb*p.priceLb).toFixed(2)}</div><input class="qi" type="number" min="0" id="co-${p.dataKey}" value="0"><div class="qu">× 3 lb box</div></div>`).join('')}</div>
-    <div style="margin:16px 0 10px;" class="sh">Retail Packs — ¼ lb</div>
-    <div class="vg">${RETAIL_PACKS.map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);margin-right:8px;">${p.code}</span>${p.name}</div><div class="vi-d">$${p.priceLb.toFixed(2)}/lb · ¼ lb = $${(p.unitLb*p.priceLb).toFixed(2)} each</div><input class="qi" type="number" min="0" id="co-${p.dataKey}" value="0"><div class="qu">× ¼ lb pack</div></div>`).join('')}</div>
-    <div class="fgl" style="margin-bottom:18px;"><label>Notes</label><textarea class="fta" id="co-n" placeholder="Any notes for the farm..."></textarea></div>
-    <div style="background:rgba(200,150,42,.06);border:1px solid rgba(200,150,42,.15);border-radius:3px;padding:14px;margin-bottom:18px;font-size:12px;color:var(--warm);line-height:1.6;"><strong style="color:var(--amber);">Need something custom?</strong><br>Custom requests require a conversation first. Get in touch and we'll sort it out.</div>
-    <div class="form-acts"><button class="btn b-s b-lg" onclick="subCOrd()">Submit Order</button></div>
-    <div class="toast" id="co-t">✓ Order submitted — we'll confirm once approved</div></div></div>`;
-}
-
-async function subCOrd(){
-  const c=gC();
-  const qtys={};
-  ALL_PRODS.forEach(p=>{ qtys[p.dataKey]=parseInt(document.getElementById('co-'+p.dataKey)?.value)||0; });
-  if(!Object.values(qtys).some(v=>v>0)){ alert('Add at least one item.'); return }
-  const oData={clientId:S.clientId,client:c.name,day:document.getElementById('co-d').value,status:'pending',...qtys,notes:document.getElementById('co-n').value.trim(),week:wkStart(),custom:false,isStanding:false};
-  const oId = await FS.add('orders', oData);
-  oData.id = oId;
-  DB.orders.push(oData);
-  toast('co-t'); ALL_PRODS.forEach(p=>{ const el=document.getElementById('co-'+p.dataKey); if(el) el.value='0' });
-}
-
-function rCStand(el){
-  const c=gC();
-  const so=DB.orders.find(o=>o.clientId===S.clientId&&o.isStanding);
-  const thisWeek=DB.orders.find(o=>o.clientId===S.clientId&&!o.isStanding&&o.autoGenerated&&o.week===wkStart()&&o.sourceStandingId===so?.id);
-  el.innerHTML=`
-    <div class="portal"><div class="p-hello">Standing Order</div><div class="p-sub">Your default weekly order · auto-generated each week</div>
-    ${thisWeek?`<div class="card" style="border-left:3px solid var(--fern);margin-bottom:16px;">
-      <div class="card-t">This Week's Order <span class="bdg ${thisWeek.status==='confirmed'?'bc':thisWeek.status==='packed'||thisWeek.status==='invoiced'?'bpk':'bp'}">${thisWeek.status.toUpperCase()}</span></div>
-      <div style="font-size:12px;color:var(--text3);line-height:1.7;">${oSum(thisWeek)} · ${thisWeek.day} · Week of ${fDate(thisWeek.week)}</div>
-    </div>`:''}
-    ${so?`<div class="card"><div class="card-t">Standing Order Template</div>
-    <div style="background:rgba(255,255,255,.02);border:1px solid rgba(196,168,130,.1);border-radius:3px;padding:18px;margin-bottom:20px;">${[['Delivery Day',so.day], ...ALL_PRODS.filter(p=>(so[p.dataKey]||0)>0).map(p=>[p.code+' · '+p.name, (so[p.dataKey]||0)+'× '+(p.unitLb===3?'3lb box':'¼lb pack')]), so.notes?['Notes',so.notes]:null].filter(Boolean).map(([k,v])=>`<div class="so-row"><span class="so-l">${k}</span><span class="so-v">${v}</span></div>`).join('')}</div></div>
-    <div class="card"><div class="card-t">Request a Change</div><div style="font-size:12px;color:var(--spore);margin-bottom:18px;line-height:1.6;">Changes need farm approval and will take effect from next week.</div>
-    <div class="vg">${PRODUCTS.map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);margin-right:8px;">${p.code}</span>${p.name}</div><input class="qi" type="number" min="0" id="so-${p.dataKey}" value="${so[p.dataKey]||0}"><div class="qu">× 3 lb box</div></div>`).join('')}</div>
-    <div class="vg" style="margin-top:8px;">${RETAIL_PACKS.map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);margin-right:8px;">${p.code}</span>${p.name}</div><input class="qi" type="number" min="0" id="so-${p.dataKey}" value="${so[p.dataKey]||0}"><div class="qu">× ¼ lb pack</div></div>`).join('')}</div>
-    <div class="fgl" style="margin-bottom:16px;margin-top:14px;"><label>Reason for Change</label><textarea class="fta" id="so-r" placeholder="Briefly let us know why you're adjusting..."></textarea></div>
-    <div class="form-acts"><button class="btn b-s b-lg" onclick="subSO('${so.id}')">Submit Change Request</button></div>
-    <div class="toast" id="so-t">✓ Change request submitted</div></div>`:`<div class="card"><div style="font-size:14px;color:var(--warm);line-height:1.7;margin-bottom:18px;">No standing order yet. Contact Totally Mushrooms to set one up, or place individual orders each week.</div><button class="btn b-s" onclick="sw('c-order')">→ Place a One-Time Order</button></div>`}
-    </div>`;
-}
-
-async function subSO(sid){
-  const r=document.getElementById('so-r')?.value?.trim();
-  if(!r){ alert('Please add a reason.'); return }
-  const updates={notes:'Standing order edit: '+r};
-  ALL_PRODS.forEach(p=>{ updates[p.dataKey]=parseInt(document.getElementById('so-'+p.dataKey)?.value)||0; });
-  await FS.update('orders',sid,updates);
-  const idx=DB.orders.findIndex(x=>x.id===sid);
-  if(idx>-1) Object.assign(DB.orders[idx],updates);
-  toast('so-t'); renderC();
-}
-
-function rCHist(el){
-  const c=gC(), h=[...DB.orders.filter(o=>o.clientId===S.clientId&&!o.isStanding)].sort((a,b)=>(b.week||'').localeCompare(a.week||''));
-  const weekLabel=w=>w==='standing'?'Standing Template':w?'Week of '+fDate(w):'—';
-  el.innerHTML=`<div class="portal"><div class="p-hello">Order History</div><div class="p-sub">${c.name} · all orders</div>${h.length===0?'<div class="empty" style="margin-top:40px;">No orders yet</div>':h.map(o=>`<div class="hitem"><div><div class="hi-dt">${weekLabel(o.week)} · ${o.day}</div><div class="hi-it">${oSum(o)}</div>${o.notes?`<div style="font-size:11px;color:var(--spore);margin-top:3px;">${o.notes}</div>`:''}</div><div><span class="bdg ${o.status==='confirmed'?'bc':'bp'}">${o.status}</span></div></div>`).join('')}</div>`;
-}
-
-function rCSet(el){
-  const c=gC();
-  el.innerHTML=`
-    <div class="portal"><div class="p-hello">Settings</div><div class="p-sub">Manage your account and notifications</div>
-    <div class="card"><div class="card-t">Account</div>
-    <div class="fg2">
-      <div class="fgl"><label>Venue</label><input class="fi" value="${c.name||''}" disabled style="opacity:.5;cursor:not-allowed;"></div>
-      <div class="fgl"><label>Contact Name</label><input class="fi" id="cs-cn" value="${c.contact||''}"></div>
-      <div class="fgl"><label>Email</label><input class="fi" type="email" id="cs-em" value="${c.notifEmail||c.email||''}"></div>
-      <div class="fgl"><label>Mobile (SMS)</label><input class="fi" type="tel" id="cs-ph" value="${c.notifPhone||c.phone||''}"></div>
-    </div>
-    <div style="margin-top:22px;margin-bottom:14px;" class="sh">Notification Preferences</div>
-    <div class="nb"><div class="nb-t">How would you like to be notified?</div>
-      <div class="tog"><label class="tsw"><input type="checkbox" id="cs-ne" ${c.notifPref==='email'||c.notifPref==='both'?'checked':''}><div class="ttr"></div></label><label for="cs-ne">Email notifications</label></div>
-      <div class="tog"><label class="tsw"><input type="checkbox" id="cs-ns" ${c.notifPref==='sms'||c.notifPref==='both'?'checked':''}><div class="ttr"></div></label><label for="cs-ns">SMS / Text notifications</label></div>
-      <div style="font-size:11px;color:var(--spore);margin-top:10px;line-height:1.6;">You'll be notified when: order confirmed · variety substituted · order needs attention.</div>
-    </div>
-    <div style="margin-top:22px;margin-bottom:14px;" class="sh">Change Password</div>
-    <div style="font-size:11px;color:var(--spore);margin-bottom:12px;">You control your own password. Admin can only reset it if you're locked out.</div>
-    <div class="fg2">
-      <div class="fgl"><label>New Password</label><input class="fi" type="password" id="cs-p1" placeholder="New password (min 6 chars)"></div>
-      <div class="fgl"><label>Confirm Password</label><input class="fi" type="password" id="cs-p2" placeholder="Confirm new password"></div>
-    </div>
-    <div style="font-size:11px;color:var(--spore);margin-top:8px;">Leave blank to keep your current password.</div>
-    <div class="form-acts"><button class="btn b-s b-lg" onclick="saveCSet()">Save Settings</button></div>
-    <div class="toast" id="cs-t">✓ Settings saved</div></div></div>`;
-}
-
-async function saveCSet(){
-  const c=DB.clients.find(x=>x.id===S.clientId); if(!c) return;
-  c.contact=document.getElementById('cs-cn').value.trim();
-  c.notifEmail=document.getElementById('cs-em').value.trim();
-  c.notifPhone=document.getElementById('cs-ph').value.trim();
-  const en=document.getElementById('cs-ne').checked, sn=document.getElementById('cs-ns').checked;
-  c.notifPref=en&&sn?'both':en?'email':sn?'sms':'none';
-  const p1=document.getElementById('cs-p1').value, p2=document.getElementById('cs-p2').value;
-  const upd={contact:c.contact,notifEmail:c.notifEmail,notifPhone:c.notifPhone,notifPref:c.notifPref};
-  if(p1){ if(p1.length<6){ alert('Password must be at least 6 characters.'); return } if(p1!==p2){ alert("Passwords don't match."); return }
-    const pwH=await derivePwHash(p1); c.pwHash=pwH; delete c.pw; upd.pwHash=pwH; upd.pw=firebase.firestore.FieldValue.delete(); }
-  FS.update('clients',S.clientId,upd);
-  toast('cs-t','✓ Settings saved')
-}
 
 // ── ORDERS ALL (Accountant) ──
 function rOrdersAll(el){
