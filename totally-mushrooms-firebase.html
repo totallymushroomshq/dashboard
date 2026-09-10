@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #133</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #134</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2126,7 +2126,7 @@ function rToday(el){
     const neededUnits=todayAllOrds.reduce((s,o)=>s+(o[p.dataKey]||0),0);
     const neededLbs=neededUnits*p.unitLb;
     const onHandLbs=DB.harvests.filter(h=>p.varieties.includes(h.variety))
-      .reduce((s,h)=>s+Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)),0);
+      .reduce((s,h)=>s+lotOnHand(h),0);
     return {key:p.dataKey, code:p.code, label:p.code+' · '+p.name, unit:p.unitLb===3?'3 lb boxes':'¼ lb packs', neededUnits, neededLbs, onHandLbs};
   }).filter(x=>x.neededUnits>0||x.onHandLbs>0);  // hide empty rows for cleaner view
   const snapHTML=snapCards.map(x=>{
@@ -2520,9 +2520,12 @@ function lotCommitted(harvestId){
   return DB.packSessions.filter(s=>s.date===tday()&&s.status==='open')
     .reduce((sum,s)=>sum + (s.pulled||[]).filter(p=>p.harvestId===harvestId).reduce((a,p)=>a+(parseFloat(p.pulledWeight)||0),0), 0);
 }
-// True on-hand available to pull = raw on-hand minus what's committed to open sessions.
+// ── SINGLE SOURCE OF TRUTH: fresh on-hand for a harvest lot (lb) ──
+// weight harvested minus what's been used (packed/sold), sampled, and preserved. Every view reads this instead of re-deriving the subtraction inline.
+function lotOnHand(h){ if(!h) return 0; return Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); }
+// On-hand available to PULL right now = fresh on-hand minus what open pack sessions have already committed.
 function packOnHand(h){
-  return Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)-lotCommitted(h.id));
+  return Math.max(0, lotOnHand(h)-lotCommitted(h.id));
 }
 
 function rPacking(el){
@@ -2644,7 +2647,7 @@ function updateReturnCalc(sessId, harvestId, pulledWeight){
   const h=DB.harvests.find(x=>x.id===harvestId);
   const st=document.getElementById('status-'+sessId+'-'+harvestId);
   if(h&&st){
-    const raw=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0));
+    const raw=lotOnHand(h);
     const left=Math.max(0,raw-usedLbs);
     const cashed=left<=0.05;
     st.textContent=cashed?'✓ Lot cashed out':left.toFixed(1)+' lb stays on hand';
@@ -2776,7 +2779,7 @@ function buildPackOrderCard(){
   const pulledSet=new Set();
   DB.packSessions.filter(ps=>ps.date===tday()&&ps.status==='open').forEach(s=>(s.pulled||[]).forEach(p=>{ if(p.lotNumber) pulledSet.add(p.lotNumber); }));
   const lotMap={};
-  DB.harvests.forEach(h=>{ const oh=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); if(oh<=0.05) return; const lot=h.lotNumber||'—'; const m=lotMap[lot]||(lotMap[lot]={variety:h.variety||'—',onHand:0,cons:new Set(),hid:h.id}); m.onHand+=oh; if(h.container) m.cons.add(h.container); });
+  DB.harvests.forEach(h=>{ const oh=lotOnHand(h); if(oh<=0.05) return; const lot=h.lotNumber||'—'; const m=lotMap[lot]||(lotMap[lot]={variety:h.variety||'—',onHand:0,cons:new Set(),hid:h.id}); m.onHand+=oh; if(h.container) m.cons.add(h.container); });
   const _byVar={}; Object.entries(lotMap).forEach(([lot,m])=>{ (_byVar[m.variety]=_byVar[m.variety]||[]).push({lot,...m}); });
   const lotChecks=Object.keys(_byVar).length?Object.keys(_byVar).sort().map(v=>`
     <div style="margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:4px;">${v}</div>
@@ -7322,7 +7325,7 @@ function rHarvest(el){
       <thead><tr>${thS('harvest','date','Date')}${thS('harvest','container','Container')}${thS('harvest','facility','Facility')}${thS('harvest','lotNumber','Lot Number')}${thS('harvest','variety','Variety')}${thS('harvest','grade','Grade')}${thS('harvest','weight','Harvested')}${thS('harvest','usedWeight','On Hand')}<th>Notes</th>${canEdit()?'<th>Actions</th>':''}</tr></thead>
       <tbody>${s.length===0
         ? `<tr><td colspan="${canEdit()?10:9}" class="empty">No harvests logged yet</td></tr>`
-        : s.map(h=>{ const onHand=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); const pct=h.weight>0?onHand/h.weight:0; const col=pct>0.5?'#3a6030':pct>0.2?'#b8820a':'#b84c20'; return `<tr>
+        : s.map(h=>{ const onHand=lotOnHand(h); const pct=h.weight>0?onHand/h.weight:0; const col=pct>0.5?'#3a6030':pct>0.2?'#b8820a':'#b84c20'; return `<tr>
             <td class="mn">${fDate(h.date)}</td>
             <td>${h.container}</td>
             <td class="mn"><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);background:var(--paper);border:1px solid var(--border);border-radius:3px;padding:2px 6px;">${h.facility||'—'}</span></td>
@@ -7886,7 +7889,7 @@ async function saveVarietyTransfer(){
 
 // Returns facility-adjusted on-hand for a single harvest lot
 function facLotOnHand(h, fac){
-  const total=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0));
+  const total=lotOnHand(h);
   if(fac==='all') return total;
   let atFac=(invFacDest(h.facility||'')===fac)?total:0;
   DB.transfers.filter(t=>t.harvestId===h.id).forEach(t=>{
@@ -8223,7 +8226,7 @@ function rInventory(el){
       const t=openSess.createdAt?new Date(openSess.createdAt).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'';
       const retRows = openSess.pulled.map(p=>{
         const h=DB.harvests.find(x=>x.id===p.harvestId);
-        const raw=h?Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)):0;
+        const raw=h?lotOnHand(h):0;
         const initLeft=Math.max(0,raw-p.pulledWeight); // assumes 0 returned to start
         const cashed=initLeft<=0.05;
         return `
@@ -8640,7 +8643,7 @@ async function saveProductMovement(){
 
 function adminEditLot(harvestId){
   const h = DB.harvests.find(x=>x.id===harvestId); if(!h) return;
-  const onHand = Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0));
+  const onHand = lotOnHand(h);
   document.getElementById('em-title').textContent='Edit Lot — '+h.variety+' ('+h.lotNumber+')';
   document.getElementById('em-body').innerHTML=`
     <div style="font-size:11px;color:var(--text3);margin-bottom:18px;font-family:'Syne Mono',monospace;">
@@ -9399,7 +9402,7 @@ function lotBreakdownHTML(lot){
   const byGrade={}; hvs.forEach(h=>{const g=h.grade||'—';byGrade[g]=(byGrade[g]||0)+(h.weight||0);});
   const gradeStr=Object.entries(byGrade).map(([g,w])=>`${g}: ${w.toFixed(1)}`).join(' · ')||'—';
   const card=(cls,label,val,note)=>`<div class="sc ${cls}"><div class="sc-l">${label}</div><div class="sc-v">${val}</div><div class="sc-n">${note||''}</div></div>`;
-  const hvRows=hvs.length?hvs.map(h=>{const oh=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0));return `<tr><td class="mn">${fDate(h.date)}</td><td>${h.container||''}</td><td class="mn">${h.grade||'—'}</td><td class="mn">${(h.weight||0).toFixed(1)}</td><td class="mn">${(h.usedWeight||0).toFixed(1)}</td><td class="mn">${(h.sampleWeight||0).toFixed(2)}</td><td class="mn">${(h.preservedWeight||0).toFixed(1)}</td><td class="mn" style="font-weight:700;color:var(--fern);">${oh.toFixed(1)}</td></tr>`;}).join(''):`<tr><td colspan="8" class="empty">No harvests recorded for this lot yet.</td></tr>`;
+  const hvRows=hvs.length?hvs.map(h=>{const oh=lotOnHand(h);return `<tr><td class="mn">${fDate(h.date)}</td><td>${h.container||''}</td><td class="mn">${h.grade||'—'}</td><td class="mn">${(h.weight||0).toFixed(1)}</td><td class="mn">${(h.usedWeight||0).toFixed(1)}</td><td class="mn">${(h.sampleWeight||0).toFixed(2)}</td><td class="mn">${(h.preservedWeight||0).toFixed(1)}</td><td class="mn" style="font-weight:700;color:var(--fern);">${oh.toFixed(1)}</td></tr>`;}).join(''):`<tr><td colspan="8" class="empty">No harvests recorded for this lot yet.</td></tr>`;
   const dispRows=disp.length?[...disp].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(d=>`<tr><td class="mn">${fDate(d.date)}</td><td>${d.stage==='pre-fruiting'?'Did not fruit':'Spent'}</td><td>${d.reason||''}</td><td class="mn" style="color:var(--rust);font-weight:700;">${d.blockCount||0}</td><td style="font-size:11px;color:var(--text3);">${d.notes||''}</td></tr>`).join(''):'';
   return `
     <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
@@ -10063,7 +10066,7 @@ async function finalizeSampleSlip(id){
     // deduct the sample's total lbs across the selected lots (oldest first)
     let need=ALL_PRODS.reduce((t,p)=>t+((s[p.dataKey]||0)*p.unitLb),0);
     const lots=sel.map(hid=>DB.harvests.find(h=>h.id===hid)).filter(Boolean).sort((a,b)=>(a.date||'').localeCompare(b.date||''));
-    for(const h of lots){ if(need<=0.001) break; const avail=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); const d=Math.min(avail,need); if(d>0){ h.sampleWeight=(h.sampleWeight||0)+d; updates.push(FS.update('harvests',h.id,{sampleWeight:h.sampleWeight})); need-=d; } }
+    for(const h of lots){ if(need<=0.001) break; const avail=lotOnHand(h); const d=Math.min(avail,need); if(d>0){ h.sampleWeight=(h.sampleWeight||0)+d; updates.push(FS.update('harvests',h.id,{sampleWeight:h.sampleWeight})); need-=d; } }
     s.status='sent'; s.sentAt=tday();
     logAudit('sample_sent',`Packed & sent sample to ${s.recipient} — lots ${s.usedLots.join(', ')||'none'}`);
   }
@@ -10569,7 +10572,7 @@ function runTrace(){
   rTrace(document.getElementById('main-views'));
 }
 function clearTrace(){ _traceQ=''; _traceDate=''; _traceContainer=''; rTrace(document.getElementById('main-views')); }
-function _traceOnHand(h){ return Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); }
+function _traceOnHand(h){ return lotOnHand(h); }
 
 // Trace logic:
 //  • Lot number is required and is the primary key. For UNIQUE (internal) lots it
@@ -11101,7 +11104,7 @@ function _traceCandidates(q){
   (DB.labBatches||[]).forEach(b=>{ (typeof batchVarietyLines==='function'?batchVarietyLines(b):(b.varieties||[])).forEach(v=>{ const c=get(v.lot||((b.lotCode||'')+(v.suffix?' '+v.suffix:''))); if(c){ if(v.variety)c.variety.add(cvv(v.variety)); c.stages.add('cooked'); stamp(c,b.productionDate||b.date); } }); });
   (DB.receivings||[]).forEach(r=>{ const c=get(r.lotNumber); if(c){ if(r.variety)c.variety.add(cvv(r.variety)); c.stages.add('received'); c.recvBlk+=parseInt(r.blockCount)||0; stamp(c,r.date); } });
   DB.fruitings.forEach(f=>{ const c=get(f.lotNumber); if(c){ if(f.variety)c.variety.add(cvv(f.variety)); if(f.containerID)c.cons.add(f.containerID); c.stages.add(f.status==='removed'?'kicked':'fruiting'); c.placed+=parseInt(f.blockCount)||0; stamp(c,f.date); } });
-  DB.harvests.forEach(h=>{ const c=get(h.lotNumber); if(c){ if(h.variety)c.variety.add(cvv(h.variety)); if(h.container)c.cons.add(h.container); c.stages.add('harvested'); c.harv+=(h.weight||0); c.onHand+=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); stamp(c,h.date); } });
+  DB.harvests.forEach(h=>{ const c=get(h.lotNumber); if(c){ if(h.variety)c.variety.add(cvv(h.variety)); if(h.container)c.cons.add(h.container); c.stages.add('harvested'); c.harv+=(h.weight||0); c.onHand+=lotOnHand(h); stamp(c,h.date); } });
   const hit=c=> c.lot.toLowerCase().includes(q) || [...c.variety].some(v=>(v||'').toLowerCase().includes(q)) || [...c.cons].some(cc=>(cc||'').toLowerCase().includes(q));
   const rank=['harvested','fruiting','kicked','received','cooked','spawn'];
   const stageOf=c=>rank.find(s=>c.stages.has(s))||'—';
@@ -14152,7 +14155,7 @@ function rReports(el){
   window.dlHarvestCSV=function(){
     const rows=[['Lot Number','Date','Variety','Container','Grade','Weight (lb)','Used (lb)','Sampled (lb)','Preserved (lb)','On Hand (lb)','Notes']];
     [...DB.harvests].sort((a,b)=>b.date.localeCompare(a.date)).forEach(h=>{
-      const oh=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0));
+      const oh=lotOnHand(h);
       rows.push([h.lotNumber,h.date,h.variety,h.container,h.grade,(h.weight||0).toFixed(2),(h.usedWeight||0).toFixed(2),(h.sampleWeight||0).toFixed(2),(h.preservedWeight||0).toFixed(2),oh.toFixed(2),h.notes||'']);
     });
     dlCSV('tm-harvests-'+tday()+'.csv',rows);
