@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #131</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #132</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -575,15 +575,13 @@ const ALL_INTERNAL_TABS = [
   {id:'inventory',l:'🗃 Inventory'},
   {id:'preservation',l:'❄️ Preservation'},
   {id:'trace',l:'🔍 Trace & Search'},
-  {id:'trace-doctor',l:'🩺 Trace Doctor'},
   {id:'orders-all',l:'🧾 Orders'},
-  {id:'reports',l:'📈 Reports'},
-  {id:'qb',l:'📒 QuickBooks'},
+  {id:'reports',l:'💵 Billing'},
   {id:'admin',l:'⚙️ Admin'},
   {id:'security',l:'🔒 Security'}
 ];
 const DEFAULT_PERMS = {
-  admin: {today:true,week:true,'new-order':true,'email-parse':true,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,'trace-doctor':true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':false,reports:false,qb:true},
+  admin: {today:true,'new-order':true,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,'trace-doctor':true,lab:true,cordyceps:true,analytics:true,admin:true,security:true,'orders-all':true,reports:true},
   staff: {today:true,week:true,'new-order':true,'email-parse':false,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:true,waste:true,trace:true,'trace-doctor':true,lab:true,cordyceps:true,analytics:true,admin:false,security:false,'orders-all':false,reports:false,qb:false},
   accountant: {today:true,week:true,'new-order':false,'email-parse':false,packing:true,receiving:true,harvest:true,fruiting:true,inventory:true,preservation:true,cleaning:false,waste:true,trace:true,lab:false,cordyceps:false,analytics:true,admin:false,security:false,'orders-all':true,reports:true,qb:true}
 };
@@ -2028,7 +2026,7 @@ function buildNav(){
     {label:'Orders',             ids:['new-order','packing']},
     {label:'Production',         ids:['receiving','lab','fruiting','harvest','cleaning','cordyceps']},
     {label:'Inventory & Trace',  ids:['inventory','preservation','trace']},
-    {label:'Finance',            ids:['orders-all','reports','qb'], cls:'drw-acct'},
+    {label:'Finance',            ids:['orders-all','reports'], cls:'drw-acct'},
     {label:'System',             ids:['admin','security'], cls:'drw-sys'},
   ];
 
@@ -2064,7 +2062,7 @@ function sw(id){
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTraceTab,'trace-doctor':rTraceDoctor,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTraceTab,'trace-doctor':rTraceDoctor,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rBilling,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -10395,6 +10393,14 @@ function dlBlockProductionCSV(fromDate, toDate){
   a.download='tm-block-production-'+tday()+'.csv'; a.click();
 }
 
+// ── BILLING — one accountant/export hub hosting Invoicing & Reports + the QuickBooks export (formerly two separate tabs) ──
+let _billingSub='reports';
+function rBilling(el){ (_billingSub==='qb'?rQB:rReports)(el); }
+function billingSetSub(s){ _billingSub=s; rBilling(document.getElementById('main-views')); try{window.scrollTo(0,0);}catch(e){} }
+function billingSubToggle(){
+  const b=(s,l)=>`<button class="btn ${_billingSub===s?'b-m':'b-g'} b-sm" onclick="billingSetSub('${s}')" style="margin:0 6px 0 0;">${l}</button>`;
+  return `<div style="display:flex;flex-wrap:wrap;margin:-4px 0 18px;">${b('reports','🧾 Invoicing & Reports')}${b('qb','📒 QuickBooks Export')}</div>`;
+}
 function rQB(el){
   // Date range — default to current month
   const qbFromEl=document.getElementById('qb-from');
@@ -10454,9 +10460,10 @@ function rQB(el){
 
   el.innerHTML=`
     <div class="ph">
-      <div class="ph-t">QuickBooks</div>
+      <div class="ph-t">💵 Billing</div>
       <div class="ph-s">IIF export for QB Desktop · invoice queue · items · customers · COGS</div>
     </div>
+    ${billingSubToggle()}
 
     <div class="stats" style="margin-bottom:28px;">
       <div class="sc ${pending.length>0?'r':'g'}"><div class="sc-l">Pending Export</div><div class="sc-v">${pending.length}</div><div class="sc-n">invoices not yet in QB</div></div>
@@ -14292,7 +14299,8 @@ function rReports(el){
     </table></div>`;
 
   el.innerHTML=`
-    <div class="ph"><div class="ph-t">Reports</div><div class="ph-s">Export data · mark invoiced · revenue summaries</div></div>
+    <div class="ph"><div class="ph-t">💵 Billing</div><div class="ph-s">Invoicing queue · mark invoiced · revenue summaries · CSV exports</div></div>
+    ${billingSubToggle()}
 
     <div class="sh"><span>Invoicing Queue</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:${packedOrds.length>0?'var(--amber)':'var(--text3)'};">${packedOrds.length} PACKED · AWAITING INVOICE</span></div>
     <div style="margin-bottom:8px;">${packedWkHTML}</div>
