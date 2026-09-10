@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #128</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #129</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2057,7 +2057,7 @@ function sw(id){
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,'new-sample':rNewSample,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTrace,'trace-doctor':rTraceDoctor,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTrace,'trace-doctor':rTraceDoctor,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -2202,15 +2202,6 @@ function rToday(el){
 
 // ── WEEK ──
 // ── WEEKLY DASHBOARD — KPI tiles + variety/lot week-over-week (WoW · YoY · trend · forecast) ──
-let _weekDashExpanded = {};
-function toggleWeekVar(v){ _weekDashExpanded[v]=!_weekDashExpanded[v]; rWeek(document.getElementById('main-views')); }
-function wkMonday(dateStr){
-  if(!dateStr) return '';
-  const d=new Date(dateStr+'T12:00:00'); if(isNaN(d)) return '';
-  const day=d.getDay(); d.setDate(d.getDate()-(day===0?6:day-1));
-  return d.toISOString().split('T')[0];
-}
-function wkShift(iso,days){ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+days); return d.toISOString().split('T')[0]; }
 function miniSpark(vals,color){
   color=color||'var(--fern)'; const n=vals.length; if(!n) return '';
   const max=Math.max(...vals,0.001), w=58,h=16;
@@ -2223,62 +2214,6 @@ function pctDelta(cur,prev){
   const p=((cur-prev)/prev)*100;
   if(Math.abs(p)<0.5) return {txt:'flat',arrow:'▬',col:'var(--text3)'};
   return p>0?{txt:'+'+p.toFixed(0)+'%',arrow:'▲',col:'var(--fern)'}:{txt:p.toFixed(0)+'%',arrow:'▼',col:'var(--rust)'};
-}
-function buildWeeklyDashboard(){
-  const now=new Date(), d0=new Date(now); d0.setDate(now.getDate()-(now.getDay()===0?6:now.getDay()-1));
-  const cur=d0.toISOString().split('T')[0], prev=wkShift(cur,-7), yoy=wkShift(cur,-364);
-  const trendWeeks=[wkShift(cur,-21),wkShift(cur,-14),wkShift(cur,-7),cur];
-  // harvest lb by week -> variety -> lot
-  const H={};
-  DB.harvests.forEach(h=>{ const wk=wkMonday(h.date); if(!wk) return; const v=h.variety||'—', lot=h.lotNumber||'—';
-    ((H[wk]=H[wk]||{})[v]=H[wk][v]||{}); H[wk][v][lot]=(H[wk][v][lot]||0)+(h.weight||0); });
-  const wkVar=(wk,v)=>Object.values((H[wk]||{})[v]||{}).reduce((s,x)=>s+x,0);
-  const wkTot=(wk)=>Object.values(H[wk]||{}).reduce((s,vv)=>s+Object.values(vv).reduce((a,b)=>a+b,0),0);
-  // on-hand by variety -> lot
-  const oh={}; DB.harvests.forEach(h=>{ const on=Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)); if(on<=0.05) return; const v=h.variety||'—', lot=h.lotNumber||'—'; (oh[v]=oh[v]||{}); oh[v][lot]=(oh[v][lot]||0)+on; });
-  const ohVar=v=>Object.values(oh[v]||{}).reduce((s,x)=>s+x,0);
-  const varieties=[...new Set([...Object.keys(H[cur]||{}),...Object.keys(H[prev]||{}),...Object.keys(oh)])].sort();
-  // sales / waste / forecast
-  const ordFor=wk=>DB.orders.filter(o=>o.week===wk&&!o.isStanding);
-  const boxesFor=wk=>ordFor(wk).reduce((s,o)=>s+bxs(o),0);
-  const revFor=wk=>ordFor(wk).filter(o=>['confirmed','packed','invoiced'].includes(o.status)).reduce((s,o)=>s+eRev(o),0);
-  const wasteFor=wk=>(DB.blockDisposals||[]).filter(x=>wkMonday(x.date)===wk).reduce((s,x)=>s+(parseInt(x.blockCount)||0),0);
-  const yld=varietyYield(); const nextWk=wkShift(cur,7); let fcNext=0;
-  DB.fruitings.filter(f=>f.status==='fruiting').forEach(f=>{ const td=VARIETY_TURNAROUND[f.variety]||{min:7,max:14}; const st=new Date(f.date+'T12:00:00'); const hm=new Date(st); hm.setDate(hm.getDate()+td.min); if(wkMonday(hm.toISOString().split('T')[0])===nextWk){ fcNext+=(f.blockCount||0)*(yld[f.variety]?yld[f.variety].rate:(f.rateLbPerBlock||LBSPERBLOCK)); } });
-  // tiles
-  const curY=wkTot(cur), prevY=wkTot(prev), yoyY=wkTot(yoy), trend=trendWeeks.map(wkTot);
-  const ohTot=Object.keys(oh).reduce((s,v)=>s+ohVar(v),0);
-  const dstr=d=>`<span style="color:${d.col};font-weight:700;">${d.arrow} ${d.txt}</span>`;
-  const tile=(cls,label,val,sub,spark)=>`<div class="sc ${cls}" style="min-width:150px;"><div class="sc-l">${label}</div><div class="sc-v">${val}</div><div class="sc-n">${sub||''}</div>${spark?`<div style="margin-top:4px;">${spark}</div>`:''}</div>`;
-  const tiles=`<div class="stats" style="margin-bottom:6px;">
-    ${tile('g','Harvest Yield',curY.toFixed(1)+' lb','WoW '+dstr(pctDelta(curY,prevY))+' · YoY '+(yoyY>0?pctDelta(curY,yoyY).txt:'—'),miniSpark(trend))}
-    ${tile('','Boxes Sold',boxesFor(cur),'WoW '+dstr(pctDelta(boxesFor(cur),boxesFor(prev))))}
-    ${tile('m','Revenue','$'+revFor(cur).toFixed(0),'WoW '+dstr(pctDelta(revFor(cur),revFor(prev))))}
-    ${tile('b','On Hand',ohTot.toFixed(1)+' lb',Object.keys(oh).length+' lots')}
-    ${tile(wasteFor(cur)>0?'r':'','Waste (blocks)',wasteFor(cur),'disposed this wk')}
-    ${tile('','Forecast · Next Wk',fcNext.toFixed(0)+' lb','projected harvest')}
-  </div>`;
-  // table
-  const rows=varieties.map(v=>{
-    const c=wkVar(cur,v), p=wkVar(prev,v), y=wkVar(yoy,v), on=ohVar(v);
-    if(c<0.05&&p<0.05&&on<0.05) return '';
-    const exp=_weekDashExpanded[v]; const vEsc=v.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    const lots=[...new Set([...Object.keys((H[cur]||{})[v]||{}),...Object.keys((H[prev]||{})[v]||{}),...Object.keys(oh[v]||{})])].sort();
-    let out=`<tr style="cursor:pointer;border-top:1px solid var(--border);" onclick="toggleWeekVar('${vEsc}')">
-      <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${exp?'▾':'▸'}</span> ${v}</td>
-      <td class="mn" style="font-weight:700;color:var(--fern);">${c.toFixed(1)}</td>
-      <td class="mn" style="color:var(--text3);">${p.toFixed(1)}</td>
-      <td class="mn">${dstr(pctDelta(c,p))}</td>
-      <td class="mn" style="color:var(--text3);">${y>0?y.toFixed(1):'—'}</td>
-      <td>${miniSpark(trendWeeks.map(wk=>wkVar(wk,v)))}</td>
-      <td class="mn" style="font-weight:700;color:var(--gold);">${on.toFixed(1)}</td></tr>`;
-    if(exp) out+=lots.map(lot=>{ const lc=((H[cur]||{})[v]||{})[lot]||0, lp=((H[prev]||{})[v]||{})[lot]||0, lo=(oh[v]||{})[lot]||0;
-      return `<tr style="background:rgba(0,0,0,.02);font-size:12px;"><td style="padding-left:26px;font-family:'Syne Mono',monospace;color:var(--text3);">${lot}</td><td class="mn">${lc.toFixed(1)}</td><td class="mn" style="color:var(--text3);">${lp.toFixed(1)}</td><td class="mn" style="color:${pctDelta(lc,lp).col};">${pctDelta(lc,lp).arrow||''}</td><td class="mn">—</td><td></td><td class="mn" style="color:var(--gold);">${lo.toFixed(1)}</td></tr>`; }).join('');
-    return out;
-  }).join('');
-  const table=`<div class="sh" style="margin-top:18px;"><span>Harvest by Variety — Week over Week</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">TAP A VARIETY FOR LOTS</span></div>
-    <div class="tw" style="margin-bottom:22px;overflow-x:auto;"><table><thead><tr><th>Variety / Lot</th><th>This Wk</th><th>Last Wk</th><th>Δ</th><th>Yr Ago</th><th>4-wk</th><th>On Hand</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="empty">No harvest data yet.</td></tr>'}</tbody></table></div>`;
-  return `<div class="sh" style="margin-bottom:8px;"><span>📊 Weekly Dashboard</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">WoW live · YoY fills in as history builds</span></div>${tiles}${table}${buildYieldAnalysis()}`;
 }
 // ── YIELD PER BLOCK — supplier/internal performance vs quoted targets (species → lot → container) ──
 let _yieldExpanded = {};
@@ -2415,84 +2350,6 @@ function buildYieldAnalysis(){
       <span style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text3);margin-left:10px;">WINDOW:</span>${winBtn('all','All time')}${winBtn('period','Selected ('+winLbl+')')}
     </div>
     <div class="tw" style="margin-bottom:22px;overflow-x:auto;"><table><thead><tr><th>Species / Lot / Container</th><th>Blocks</th><th>Harv lb</th><th>lb/block</th><th>Target</th><th>Flushes</th><th>Days in</th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="empty">No lots match these filters — widen the source or window.</td></tr>'}</tbody></table></div>`;
-}
-function rWeek(el){
-  const wo=wkOrds(), tB=wo.reduce((s,o)=>s+bxs(o),0), rev=wo.filter(o=>['confirmed','packed','invoiced'].includes(o.status)).reduce((s,o)=>s+eRev(o),0);
-  const now=new Date(), mon=new Date(now); mon.setDate(now.getDate()-(now.getDay()===0?6:now.getDay()-1));
-  const sun=new Date(mon); sun.setDate(mon.getDate()+6);
-  const ALL_DAYS=['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-  const dayDates={}; ALL_DAYS.forEach((d,i)=>{ const dt=new Date(mon); dt.setDate(mon.getDate()+i); dayDates[d]=dt.toISOString().split('T')[0]; });
-  const wkSamps=DB.samples.filter(s=>s.week===wkStart());
-  const wkSampTotalLb=wkSamps.reduce((s,x)=>s+sampTotalLb(x),0);
-
-  // ── WEEK INVENTORY SNAPSHOT (catalog-driven) ──
-  const wkAllOrds=DB.orders.filter(o=>o.week===wkStart()&&['confirmed','pending'].includes(o.status)&&!o.isStanding);
-  const snapCards=ALL_PRODS.map(p=>{
-    const neededUnits=wkAllOrds.reduce((s,o)=>s+(o[p.dataKey]||0),0);
-    const neededLbs=neededUnits*p.unitLb;
-    const onHandLbs=DB.harvests.filter(h=>p.varieties.includes(h.variety)).reduce((s,h)=>s+Math.max(0,(h.weight||0)-(h.usedWeight||0)-(h.sampleWeight||0)-(h.preservedWeight||0)),0);
-    return {key:p.dataKey, label:p.code+' · '+p.name, neededUnits, neededLbs, onHandLbs};
-  }).filter(x=>x.neededUnits>0||x.onHandLbs>0);
-  const sc2={ok:'var(--fern)',warn:'var(--amber)',short:'var(--rust)',idle:'var(--text3)'};
-  const snapHTML=snapCards.map(x=>{
-    const cls=x.neededLbs===0?'idle':x.onHandLbs>=x.neededLbs?'ok':x.onHandLbs>0?'warn':'short';
-    const statusTxt=x.neededLbs===0?'NONE THIS WEEK':x.onHandLbs>=x.neededLbs?'\u2713 COVERED':x.onHandLbs>0?'SHORT \u2212'+(x.neededLbs-x.onHandLbs).toFixed(1)+' lb':'\u2717 NO STOCK';
-    return `<div class="isc ${cls}"><div class="isc-name">${x.label}</div><div class="isc-row">Need: <span>${x.neededUnits>0?x.neededUnits+'\u00d7 ('+x.neededLbs.toFixed(1)+' lb)':'—'}</span></div><div class="isc-row">On hand: <span>${x.onHandLbs.toFixed(1)} lb</span></div><div class="isc-status" style="color:${sc2[cls]}">${statusTxt}</div></div>`;
-  }).join('');
-
-  // ── DAY SECTIONS (only days with deliveries) ──
-  const activeDays=ALL_DAYS.filter(day=>wo.some(o=>o.day===day)||wkSamps.some(s=>s.date===dayDates[day]));
-  const badgeCls=o=>o.status==='confirmed'?'bc':o.status==='packed'?'bpk':o.status==='invoiced'?'biv':o.status==='pending'?'bp':'bcu';
-  const daySections=activeDays.map(day=>{
-    const dO=wo.filter(o=>o.day===day).sort((a,b)=>a.client.localeCompare(b.client));
-    const dS=wkSamps.filter(s=>s.date===dayDates[day]);
-    const dRev=dO.filter(o=>['confirmed','packed','invoiced'].includes(o.status)).reduce((s,o)=>s+eRev(o),0);
-    const dBoxes=dO.reduce((s,o)=>s+bxs(o),0);
-    const ordRows=dO.map(o=>`<tr>
-      <td>${o.client}</td>
-      <td style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2);">${oSumCodes(o)}</td>
-      <td><span class="bdg ${badgeCls(o)}">${o.status}</span></td>
-      <td style="font-size:11px;color:var(--text3);">${o.notes||'—'}</td>
-    </tr>`).join('');
-    const sampRows=dS.map(s=>`<tr>
-      <td style="color:#6a3a9a;">${s.recipient} <span class="bdg bdg-samp">sample</span></td>
-      <td style="font-size:11px;color:#6a3a9a;font-family:'Syne Mono',monospace;">${sampSum(s)}</td>
-      <td></td><td></td>
-    </tr>`).join('');
-    // Totals row: aggregate quantities by code, displayed as code list
-    const totRow=dO.length>1?(()=>{
-      const totals={};
-      ALL_PRODS.forEach(p=>{ totals[p.dataKey]=dO.reduce((s,o)=>s+(o[p.dataKey]||0),0); });
-      const totSummary=ALL_PRODS.filter(p=>totals[p.dataKey]>0).map(p=>totals[p.dataKey]+'× '+p.code).join(' · ')||'—';
-      return `<tr style="border-top:1px solid var(--border);font-weight:600;background:rgba(0,0,0,.02);">
-        <td style="font-size:11px;color:var(--text3);">TOTAL (${dO.length})</td>
-        <td style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2);">${totSummary}</td>
-        <td></td>
-        <td style="font-size:11px;color:var(--text3);">${dBoxes} boxes · $${dRev.toFixed(0)}</td>
-      </tr>`;
-    })():'';
-    return `<div class="sh" style="margin-top:20px;"><span>${day}</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">${dO.length} ORDER${dO.length!==1?'S':''}${dS.length>0?' · '+dS.length+' SAMPLE'+(dS.length!==1?'S':''):''}</span></div>
-    <div class="tw" style="margin-bottom:8px;">
-      <table><thead><tr><th>Client</th><th>Items (codes)</th><th>Status</th><th>Notes</th></tr></thead>
-      <tbody>${ordRows}${sampRows}${totRow}</tbody></table>
-    </div>`;
-  }).join('');
-
-  el.innerHTML=`
-    <div class="ph"><div class="ph-t">This Week</div><div class="ph-s">${mon.toLocaleDateString('en-GB',{month:'short',day:'numeric'})} — ${sun.toLocaleDateString('en-GB',{month:'short',day:'numeric',year:'numeric'})}</div></div>
-    ${buildWeeklyDashboard()}
-    <div class="sh" style="margin-top:4px;"><span>Order Summary</span></div>
-    <div class="stats">
-      <div class="sc"><div class="sc-l">Total Orders</div><div class="sc-v">${wo.length}</div></div>
-      <div class="sc g"><div class="sc-l">Total Boxes</div><div class="sc-v">${tB}</div></div>
-      <div class="sc m"><div class="sc-l">Est. Revenue</div><div class="sc-v">$${rev.toFixed(0)}</div></div>
-      <div class="sc r"><div class="sc-l">Pending</div><div class="sc-v">${wo.filter(o=>o.status==='pending').length}</div></div>
-      <div class="sc samp"><div class="sc-l">Samples Out</div><div class="sc-v" style="color:#6a3a9a">${wkSamps.length}</div><div class="sc-n">${wkSampTotalLb.toFixed(1)} lb total</div></div>
-    </div>
-    <div class="sh" style="margin-top:4px;"><span>Inventory vs This Week's Orders</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">WEEK OF ${mon.toLocaleDateString('en-GB',{month:'short',day:'numeric'}).toUpperCase()}</span></div>
-    <div class="inv-snap">${snapHTML}</div>
-    ${activeDays.length===0?'<div class="empty" style="margin-top:40px;">No orders or samples this week</div>':daySections}
-  `;
 }
 
 // ── ORDER CARD ──
@@ -4230,30 +4087,6 @@ function buildIncomingShipments(){
     </table></div>`;
 }
 // OPEN RECEIPTS — received blocks with NO S.O. # yet (in-house or vendor). Blocks are in inventory; just need an SO from Katherine.
-function buildOpenReceipts(){
-  const open=(DB.receivings||[]).filter(r=>!r.soNum && r.receiptStatus!=='closed' && (r.source==='pack'?false:true));
-  if(!open.length) return '';
-  const groups={};
-  open.forEach(r=>{ const k=[r.date,(r.vendor||''),(r.source||''),(r.poNum||'')].join('|'); (groups[k]=groups[k]||[]).push(r); });
-  const keys=Object.keys(groups).sort((a,b)=>(groups[b][0].date||'').localeCompare(groups[a][0].date||''));
-  const rows=keys.map(k=>{ const g=groups[k]; const r0=g[0];
-    const pieces=g.reduce((s,x)=>s+(parseInt(x.blockCount)||0),0);
-    const vend=r0.source==='internal'?('In-house'+(r0.vendor?' · '+r0.vendor:'')):(r0.vendor||'Vendor');
-    return `<tr style="background:rgba(184,76,32,.045);">
-      <td class="mn">${fDate(r0.date)}</td>
-      <td><span class="bdg" style="background:rgba(184,76,32,.12);color:#b84c20;border:1px solid rgba(184,76,32,.4);font-size:10px;white-space:nowrap;">● OPEN · NEEDS SO #</span></td>
-      <td>${vend}${g.length>1?` <span style="font-size:11px;color:var(--text3);">(${g.length} lots)</span>`:''}</td>
-      <td class="mn" style="font-weight:700;">${pieces}</td>
-      <td style="white-space:nowrap;">${canEdit()?`<button class="btn b-sm" style="background:rgba(184,130,10,.12);color:var(--gold);border:1px solid rgba(184,130,10,.4);font-weight:700;" onclick="addReceivingSO('${r0.id}')">✏ Add SO #</button> <button class="btn b-sm" style="background:rgba(184,130,10,.08);color:var(--gold);border:1px solid rgba(184,130,10,.25);" title="Edit the whole receiving session — lots, temp photo, signed copy" onclick="openEditReceivingSession('${r0.id}')">✎ Edit</button> <button class="btn b-sm" style="background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.25);" title="${r0.signedSlipUrl?'Replace signed slip':'Upload signed packing slip'}" onclick="uploadReceivingSignedSlip('${r0.id}')">🖊${r0.signedSlipUrl?'':' +'}</button> <button class="btn b-sm" style="background:rgba(58,96,48,.1);color:var(--fern);border:1px solid rgba(58,96,48,.25);" title="View / re-send the SO-request report" onclick="resendReceiving('${r0.id}')">✉ report</button>`:'—'}</td>
-    </tr>`;
-  }).join('');
-  const totalOpen=open.reduce((s,r)=>s+(parseInt(r.blockCount)||0),0);
-  return `<div class="sh" style="margin-top:8px;"><span>🚩 Open Receipts — Awaiting S.O. #</span><span class="bdg" style="background:rgba(184,76,32,.14);color:#b84c20;border:1px solid rgba(184,76,32,.35);">${keys.length} OPEN · ${totalOpen} blocks</span></div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">Blocks are already in inventory and usable — these just need an S.O. # from Katherine. Add it here to close the receipt (re-sends an UPDATED report).</div>
-    <div class="tw" style="margin-bottom:24px;"><table>
-      <thead><tr><th>Date Received</th><th>Open Status</th><th>Vendor / Source</th><th>Pieces</th><th>View / Edit Report</th></tr></thead>
-      <tbody>${rows}</tbody></table></div>`;
-}
 // ── ONE unified Receiving Records list — replaces the old Open Receipts + On Hand + History tables. Status chip + text/status filter. ──
 function _recvStatus(r){ if(!r.soNum && r.receiptStatus!=='closed') return 'open'; return receivingOnHand(r)>0 ? 'onhand' : 'placed'; }
 function buildReceivingRecords(){
@@ -9523,98 +9356,6 @@ async function confirmDispatch(batchId){
 }
 
 // ── HARVEST FORECAST HELPER (used by Analytics tab) ──
-function buildForecastSection(){
-  const today=new Date(); today.setHours(0,0,0,0);
-  const active=DB.fruitings.filter(f=>f.status==='fruiting');
-  const fmtD=function(d){ return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}); };
-
-  const hdr='<div class="sh" style="margin-top:32px;border-top:1px solid var(--border);padding-top:20px;">'
-    +'<span style="color:var(--fern);font-weight:700;">HARVEST FORECAST</span>'
-    +'<a href="#" onclick="sw(\'fruiting\');return false;" style="font-family:\'Syne Mono\',monospace;font-size:11px;color:var(--text3);margin-left:12px;text-decoration:none;letter-spacing:1px;">&rarr; GO TO FRUITING</a>'
-    +'</div>';
-
-  if(active.length===0){
-    return hdr+'<div class="empty" style="margin-bottom:28px;">No active fruiting blocks &mdash; log blocks in the Fruiting tab to see forecasts here.</div>';
-  }
-
-  const wf=active.map(function(f){
-    const td=VARIETY_TURNAROUND[f.variety]||{min:7,max:14};
-    const sd=new Date(f.date); sd.setHours(0,0,0,0);
-    const daysIn=Math.floor((today-sd)/(1000*60*60*24));
-    const hMin=new Date(sd); hMin.setDate(sd.getDate()+td.min);
-    const hMax=new Date(sd); hMax.setDate(sd.getDate()+td.max);
-    const projLbs=(f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK);
-    const ws=daysIn<td.min?'early':daysIn<=td.max?'ready':'overdue';
-    return Object.assign({},f,{daysIn:daysIn,hMin:hMin,hMax:hMax,projLbs:projLbs,ws:ws});
-  }).sort(function(a,b){ return a.hMin-b.hMin; });
-
-  const readyCount=wf.filter(function(f){ return f.ws==='ready'; }).length;
-  const overCount=wf.filter(function(f){ return f.ws==='overdue'; }).length;
-  const totalLbs=wf.reduce(function(s,f){ return s+f.projLbs; },0);
-
-  const wkFc={};
-  wf.forEach(function(f){
-    const mon=new Date(f.hMin);
-    mon.setDate(mon.getDate()-(mon.getDay()||7)+1);
-    const wk=mon.toISOString().split('T')[0];
-    if(!wkFc[wk]) wkFc[wk]={start:new Date(mon),varieties:{},projLbs:0,count:0};
-    wkFc[wk].varieties[f.variety]=(wkFc[wk].varieties[f.variety]||0)+f.projLbs;
-    wkFc[wk].projLbs+=f.projLbs;
-    wkFc[wk].count++;
-  });
-
-  // Stats bar
-  var html=hdr;
-  html+='<div class="stats" style="margin-bottom:24px;">'
-    +'<div class="sc m"><div class="sc-l">Active Lots</div><div class="sc-v">'+active.length+'</div><div class="sc-n">in grow room now</div></div>'
-    +'<div class="sc g"><div class="sc-l">Ready to Harvest</div><div class="sc-v">'+readyCount+'</div><div class="sc-n">within window</div></div>'
-    +'<div class="sc '+(overCount>0?'r':'')+'"><div class="sc-l">Past Window</div><div class="sc-v">'+overCount+'</div><div class="sc-n">overdue</div></div>'
-    +'<div class="sc"><div class="sc-l">Projected Yield</div><div class="sc-v" style="font-size:26px;">'+totalLbs.toFixed(1)+'<span style="font-size:14px"> lb</span></div><div class="sc-n">from active blocks</div></div>'
-    +'</div>';
-
-  // Week-by-week forecast cards
-  var wkEntries=Object.entries(wkFc).sort(function(a,b){ return a[0].localeCompare(b[0]); });
-  if(wkEntries.length>0){
-    html+='<div class="sh"><span>By Week</span><span style="font-family:\'Syne Mono\',monospace;font-size:11px;color:var(--text3);">PROJECTED HARVEST WINDOWS</span></div>';
-    html+='<div class="cr" style="margin-bottom:28px;">';
-    wkEntries.forEach(function(entry){
-      var d=entry[1];
-      html+='<div class="cc">';
-      html+='<div class="cc-l">Week of '+d.start.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+'</div>';
-      html+='<div style="font-family:\'Cormorant Garamond\',serif;font-size:42px;font-weight:700;color:var(--fern);line-height:1;margin-bottom:2px;">'+d.projLbs.toFixed(1)+'<span style="font-size:18px;font-weight:400"> lb</span></div>';
-      html+='<div style="font-family:\'Syne Mono\',monospace;font-size:11px;color:var(--text3);letter-spacing:1px;margin-bottom:14px;">'+d.count+' LOT'+(d.count!==1?'S':'')+'</div>';
-      Object.entries(d.varieties).sort(function(a,b){ return b[1]-a[1]; }).forEach(function(ve){
-        html+='<div class="frow"><div class="fv-n">'+ve[0]+'</div><div class="fv-num" style="color:var(--fern);">'+ve[1].toFixed(1)+' lb</div></div>';
-      });
-      html+='</div>';
-    });
-    html+='</div>';
-  }
-
-  // Active blocks table
-  html+='<div class="sh"><span>Active Blocks</span></div>';
-  html+='<div class="tw" style="margin-bottom:8px;overflow-x:auto;"><table>';
-  html+='<thead><tr><th>Date In</th><th>Days In</th><th>Container</th><th>Lot #</th><th>Vendor</th><th>Variety</th><th>Blocks</th><th>Proj. Yield</th><th>Harvest Window</th><th>Status</th></tr></thead>';
-  html+='<tbody>';
-  wf.forEach(function(f){
-    var sc=f.ws==='ready'?'var(--fern)':f.ws==='overdue'?'var(--rust)':'var(--text3)';
-    var stLbl=f.ws==='ready'?'\u2713 READY':f.ws==='overdue'?'\u26a0 OVERDUE':'\u23f3 EARLY';
-    html+='<tr>';
-    html+='<td class="mn">'+fDate(f.date)+'</td>';
-    html+='<td class="mn" style="font-weight:700;color:'+sc+';">'+f.daysIn+'d</td>';
-    html+='<td>'+f.containerID+'</td>';
-    html+='<td style="font-family:\'Syne Mono\',monospace;font-size:11px;">'+f.lotNumber+'</td>';
-    html+='<td style="font-size:11px;color:var(--text3);">'+f.vendor+'</td>';
-    html+='<td style="font-weight:500;">'+f.variety+'</td>';
-    html+='<td class="mn">'+f.blockCount+'</td>';
-    html+='<td class="mn" style="font-weight:700;color:var(--fern);">'+f.projLbs.toFixed(1)+' lb</td>';
-    html+='<td style="font-size:11px;">'+fmtD(f.hMin)+' \u2013 '+fmtD(f.hMax)+'</td>';
-    html+='<td><span style="font-family:\'Syne Mono\',monospace;font-size:11px;letter-spacing:1px;font-weight:700;color:'+sc+';">'+stLbl+'</span></td>';
-    html+='</tr>';
-  });
-  html+='</tbody></table></div>';
-  return html;
-}
 
 // ── ANALYTICS ──
 // ── LOT BREAKDOWN (Analytics): click a lot → yield, waste, blocks that didn't fruit, etc. ──
@@ -9903,162 +9644,6 @@ function rDashboard(el){
   if(_dashNoScroll){ _dashNoScroll=false; } else { try{ window.scrollTo(0,0); }catch(e){} }
 }
 
-function rAna(el){
-  const wo=wkOrds().filter(o=>o.status==='confirmed'), tB=wo.reduce((s,o)=>s+bxs(o),0), rev=wo.reduce((s,o)=>s+eRev(o),0), tH=DB.harvests.reduce((s,h)=>s+h.weight,0), sur=tH-tB*3;
-  const vc={'Oyster Mix':0,"Chef's Mix":0,"Lion's Mane":0,'Chestnuts':0};
-  // Catalog-driven variety counts (each product code is its own bar)
-  PRODUCTS.forEach(p=>{ vc[p.code+' · '+p.name]=0; });
-  wo.forEach(o=>{ PRODUCTS.forEach(p=>{ vc[p.code+' · '+p.name]+=(o[p.dataKey]||0); }); });
-  const hv={}; DB.harvests.forEach(h=>{ hv[h.variety]=(hv[h.variety]||0)+h.weight });
-  const weeks=[{w:'W−5',v:14},{w:'W−4',v:18},{w:'W−3',v:16},{w:'W−2',v:22},{w:'W−1',v:20},{w:'Now',v:tB}], mxW=Math.max(...weeks.map(w=>w.v),1);
-  // Build vars list from catalog (one per box product) for Analytics charts
-  const vars=PRODUCTS.map(p=>p.code+' · '+p.name);
-  const mxVC=Math.max(...Object.values(vc),1);
-  const vcolsPalette=['var(--moss)','var(--gold)','var(--sage)','var(--fern)','#b8820a','#3a6030','#2a5578','#7a3a9a'];
-  const vcols=vars.map((_,i)=>vcolsPalette[i%vcolsPalette.length]);
-
-  // Sample analytics
-  const now2=new Date();
-  const thisMonth=now2.getFullYear()+'-'+(now2.getMonth()+1).toString().padStart(2,'0');
-  const thisYear=now2.getFullYear().toString();
-  const allSamps=DB.samples;
-  const sentSamps=allSamps.filter(s=>s.status==='sent');
-  const pendingSamps=allSamps.filter(s=>s.status==='pending');
-  const wkSamps=allSamps.filter(s=>s.week===wkStart());
-  const monthSamps=sentSamps.filter(s=>s.date.startsWith(thisMonth));
-  const yearSamps=sentSamps.filter(s=>s.date.startsWith(thisYear));
-  const totalSampLb=sentSamps.reduce((s,x)=>s+sampTotalLb(x),0);
-  const wkSampLb=wkSamps.filter(s=>s.status==='sent').reduce((s,x)=>s+sampTotalLb(x),0);
-  const monthSampLb=monthSamps.reduce((s,x)=>s+sampTotalLb(x),0);
-  const yearSampLb=yearSamps.reduce((s,x)=>s+sampTotalLb(x),0);
-
-  // By recipient
-  const byRecip={};
-  sentSamps.forEach(s=>{
-    if(!byRecip[s.recipient]) byRecip[s.recipient]={type:s.recipientType,count:0,totalLb:0,items:{},lastDate:s.date};
-    byRecip[s.recipient].count++;
-    byRecip[s.recipient].totalLb+=sampTotalLb(s);
-    if(s.date>byRecip[s.recipient].lastDate) byRecip[s.recipient].lastDate=s.date;
-    ALL_PRODS.forEach(prd=>{ const q=s[prd.dataKey]||0; if(q>0) byRecip[s.recipient].items[prd.code]=(byRecip[s.recipient].items[prd.code]||0)+q; });
-    if(false && s.lionsPack) byRecip[s.recipient].items['LM\u00bcLb']=(byRecip[s.recipient].items['LM \u00bcLb']||0)+s.lionsPack;
-    if(false && s.chefsPack) byRecip[s.recipient].items['CM\u00bcLb']=(byRecip[s.recipient].items['CM \u00bcLb']||0)+s.chefsPack;
-  });
-  const recipRows=Object.entries(byRecip).sort((a,b)=>b[1].totalLb-a[1].totalLb).map(([name,d])=>{
-    const topItems=Object.entries(d.items).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([v,ct])=>ct+'\u00d7 '+v).join(', ');
-    return `<tr>
-      <td style="font-weight:500;">${name}</td>
-      <td class="mn">${d.type}</td>
-      <td class="mn">${d.count}</td>
-      <td class="mn" style="font-weight:700;color:#6a3a9a;">${d.totalLb.toFixed(2)} lb</td>
-      <td style="font-size:11px;color:var(--text3);">${topItems}</td>
-      <td class="mn">${fDate(d.lastDate)}</td>
-    </tr>`;
-  }).join('');
-
-  // By product type
-  const byVar={};
-  sentSamps.forEach(s=>{
-    ALL_PRODS.forEach(prd=>{ const q=s[prd.dataKey]||0; if(q>0){ const lbl=prd.code+' · '+prd.name; byVar[lbl]=(byVar[lbl]||0)+q*prd.unitLb; } });
-    if(false && s.lionsPack) byVar['LM\u00bcLb Pack']=(byVar['LM \u00bcLb Pack']||0)+s.lionsPack*0.25;
-    if(false && s.chefsPack) byVar['CM\u00bcLb Pack']=(byVar['CM \u00bcLb Pack']||0)+s.chefsPack*0.25;
-  });
-  const maxVarLb=Math.max(...Object.values(byVar),1);
-  const varSampRows=Object.entries(byVar).sort((a,b)=>b[1]-a[1]).map(([v,lb])=>`
-    <div class="frow"><div class="fv-n">${v}</div>
-    <div class="fv-b"><div class="fbar" style="background:#6a3a9a;width:${Math.round(lb/maxVarLb*140)}px;"></div></div>
-    <div class="fv-num">${lb.toFixed(2)} lb</div></div>`).join('');
-
-  // All samples list
-  const allSampsSorted=[...allSamps].sort((a,b)=>b.date.localeCompare(a.date));
-
-  el.innerHTML=`
-    <div class="ph"><div class="ph-t">Analytics</div><div class="ph-s">Yield performance · weekly orders · forecast · sample program</div></div>
-
-    <div class="card" style="margin-top:18px;">
-      <div class="card-t">🔎 Lot Breakdown</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:10px;">Pick any lot to see its full story — blocks received, placed, that didn't fruit, yield harvested, waste, preserved, and what's still on hand.</div>
-      <input class="fi" id="ana-lot-input" list="ana-lotl" placeholder="Type or pick a lot #…" value="${(_anaLot||'').replace(/"/g,'&quot;')}" autocomplete="off" oninput="onAnaLotSelect(this.value)">
-      <datalist id="ana-lotl">${anaKnownLots().map(l=>`<option value="${(l||'').replace(/"/g,'&quot;')}">`).join('')}</datalist>
-      <div id="ana-lot-panel" style="margin-top:16px;">${_anaLot?lotBreakdownHTML(_anaLot):'<div class="empty" style="padding:16px;">Pick a lot above to see its breakdown.</div>'}</div>
-    </div>
-
-    ${buildYieldAverages()}
-
-    <div class="sh" style="margin-top:28px;border-top:1px solid var(--border);padding-top:20px;"><span>Weekly Orders</span></div>
-    <div class="stats">
-      <div class="sc g"><div class="sc-l">Week Revenue</div><div class="sc-v">$${rev.toFixed(0)}</div></div>
-      <div class="sc m"><div class="sc-l">Boxes Out</div><div class="sc-v">${tB}</div></div>
-      <div class="sc"><div class="sc-l">Harvested</div><div class="sc-v">${tH.toFixed(0)}<span style="font-size:16px"> lb</span></div></div>
-      <div class="sc ${sur>=0?'m':'r'}"><div class="sc-l">Surplus/Deficit</div><div class="sc-v" style="font-size:26px;color:${sur>=0?'var(--sage)':'var(--rust)'}">${sur>=0?'+':''}${sur.toFixed(1)}lb</div></div>
-    </div>
-    <div class="cc" style="margin-bottom:20px;"><div class="cc-l">Weekly Boxes Shipped</div><div class="bch">${weeks.map((w,i)=>{ const h=Math.round((w.v/mxW)*110); return `<div class="bg2"><div class="b-v">${w.v}</div><div class="bar${i===5?' hi':i===4?' mo':''}" style="height:${h}px;"></div><div class="b-lb">${w.w}</div></div>` }).join('')}</div></div>
-    <div class="cr">
-      <div class="cc"><div class="cc-l">Variety Breakdown</div>${vars.map((v,i)=>`<div class="frow"><div class="fv-n">${v}</div><div class="fv-b"><div class="fbar fb-o" style="background:${vcols[i]};width:${Math.round((vc[v]||0)/mxVC*140)}px;"></div></div><div class="fv-num">${vc[v]||0} boxes</div></div>`).join('')}</div>
-      <div class="cc"><div class="cc-l">Harvest vs Orders</div>${PRODUCTS.map(p=>{ const ord=(vc[p.code+' · '+p.name]||0)*p.unitLb; const har=p.varieties.reduce((s,v)=>s+(hv[v]||0),0); const mx=Math.max(ord,har,1); return `<div class="frow"><div class="fv-n">${p.code}</div><div class="fv-b"><div class="fbar fb-o" style="width:${Math.round(ord/mx*100)}px;"></div><div class="fbar fb-h" style="width:${Math.round(har/mx*100)}px;"></div></div><div class="fv-num">${ord.toFixed(0)}/${har.toFixed(0)}lb</div></div>` }).join('')}<div style="display:flex;gap:16px;margin-top:12px;"><div style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--fern);display:flex;align-items:center;gap:6px;"><div style="width:12px;height:4px;background:var(--fern);border-radius:2px;"></div>Ordered</div><div style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--amber);display:flex;align-items:center;gap:6px;"><div style="width:12px;height:4px;background:var(--amber);border-radius:2px;"></div>Harvested</div></div></div>
-    </div>
-
-    <!-- ── SAMPLE PROGRAM ── -->
-    <div class="sh" style="margin-top:32px;border-top:1px solid var(--border);padding-top:20px;">
-      <span style="color:#6a3a9a;font-weight:700;">SAMPLE PROGRAM</span>
-      <button class="btn b-sm" style="background:rgba(90,42,130,.1);color:#6a3a9a;border:1px solid rgba(90,42,130,.25);" onclick="sw('new-order');setTimeout(()=>{const el=document.getElementById('no-rt');if(el){el.value='sample';switchReqType('sample')}},100)">+ Log Sample</button>
-    </div>
-    <div class="stats" style="margin-bottom:28px;">
-      <div class="sc samp"><div class="sc-l">This Week</div><div class="sc-v" style="color:#6a3a9a;font-size:26px;">${wkSampLb.toFixed(1)}<span style="font-size:14px"> lb</span></div><div class="sc-n">${wkSamps.filter(s=>s.status==='sent').length} sample${wkSamps.filter(s=>s.status==='sent').length!==1?'s':''} sent</div></div>
-      <div class="sc samp"><div class="sc-l">This Month</div><div class="sc-v" style="color:#6a3a9a;font-size:26px;">${monthSampLb.toFixed(1)}<span style="font-size:14px"> lb</span></div><div class="sc-n">${monthSamps.length} sample${monthSamps.length!==1?'s':''}</div></div>
-      <div class="sc samp"><div class="sc-l">This Year</div><div class="sc-v" style="color:#6a3a9a;font-size:26px;">${yearSampLb.toFixed(1)}<span style="font-size:14px"> lb</span></div><div class="sc-n">${yearSamps.length} sample${yearSamps.length!==1?'s':''}</div></div>
-      <div class="sc samp"><div class="sc-l">All Time</div><div class="sc-v" style="color:#6a3a9a;font-size:26px;">${totalSampLb.toFixed(1)}<span style="font-size:14px"> lb</span></div><div class="sc-n">${Object.keys(byRecip).length} recipient${Object.keys(byRecip).length!==1?'s':''}</div></div>
-      <div class="sc ${pendingSamps.length>0?'r':''}"><div class="sc-l">Pending</div><div class="sc-v">${pendingSamps.length}</div><div class="sc-n">not yet sent</div></div>
-    </div>
-
-    <div class="cr" style="margin-bottom:24px;">
-      <div class="cc">
-        <div class="cc-l">Samples by Product (lb sent)</div>
-        ${Object.keys(byVar).length===0?'<div style="font-size:12px;color:var(--text3);">No samples sent yet.</div>':varSampRows}
-      </div>
-      <div class="cc">
-        <div class="cc-l">Recipients Overview</div>
-        <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:2px;color:var(--text3);margin-bottom:8px;">UNIQUE VENUES SAMPLED</div>
-        <div style="font-family:'Cormorant Garamond',serif;font-size:48px;font-weight:700;color:#6a3a9a;line-height:1;">${Object.keys(byRecip).length}</div>
-        <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-top:4px;">${totalSampLb.toFixed(2)} lb given as samples all time</div>
-        ${Object.keys(byRecip).length>0?`<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:14px;">
-          ${Object.entries(byRecip).sort((a,b)=>b[1].totalLb-a[1].totalLb).slice(0,5).map(([name,d])=>`
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px;">
-              <span style="color:var(--text2);font-weight:500;">${name}</span>
-              <span style="font-family:'Syne Mono',monospace;font-size:10px;color:#6a3a9a;font-weight:700;">${d.totalLb.toFixed(2)} lb</span>
-            </div>`).join('')}
-        </div>`:''}
-      </div>
-    </div>
-
-    <div class="sh"><span>By Recipient / Vendor</span></div>
-    <div class="tw" style="margin-bottom:24px;overflow-x:auto;">
-      <table>
-        <thead><tr><th>Recipient</th><th>Type</th><th>Samples</th><th>Total lb</th><th>Top Items</th><th>Last Sample</th></tr></thead>
-        <tbody>${Object.keys(byRecip).length===0?'<tr><td colspan="7" class="empty">No samples sent yet</td></tr>':recipRows}</tbody>
-      </table>
-    </div>
-
-    <div class="sh"><span>All Sample Records</span></div>
-    <div class="tw">
-      <table>
-        <thead><tr><th>Date</th><th>Recipient</th><th>Type</th><th>Contact</th><th>Items</th><th>Total lb</th><th>Status</th><th>Notes</th></tr></thead>
-        <tbody>${allSampsSorted.length===0?'<tr><td colspan="8" class="empty">No samples logged yet</td></tr>':allSampsSorted.map(s=>`<tr>
-          <td class="mn">${fDate(s.date)}</td>
-          <td style="font-weight:500;">${s.recipient}</td>
-          <td class="mn">${s.recipientType}</td>
-          <td style="font-size:12px;color:var(--text3);">${s.contact||'—'}</td>
-          <td style="font-size:11px;color:var(--text2);">${sampSum(s)}</td>
-          <td class="mn" style="font-weight:700;color:#6a3a9a;">${sampTotalLb(s).toFixed(2)} lb</td>
-          <td><span class="bdg ${s.status==='sent'?'bc':'bdg-samp'}">${s.status}</span></td>
-          <td style="font-size:11px;color:var(--text3);">${s.notes||'—'}</td>
-        </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
-
-    ${buildForecastSection()}
-  `;
-}
 
 function buildYieldAverages(){
   // ── Period filter ──
@@ -10541,30 +10126,6 @@ function deductSampleInventory(sample){
 
 function delSample(id){ if(!confirm('Delete this sample record?')) return; DB.samples=DB.samples.filter(x=>x.id!==id); FS.del('samples',id); renderC() }
 
-function rNewSample(el){
-  const knownNames=DB.clients.map(c=>c.name);
-  el.innerHTML=`
-    <div class="ph"><div class="ph-t">Log Sample</div><div class="ph-s">Track free samples going out — entered same as an order, tracked separately</div></div>
-    <div class="card"><div class="card-t">Sample Details</div>
-    <div class="fg2">
-      <div class="fgl"><label>Recipient / Venue</label><input class="fi" id="ns-rec" placeholder="Restaurant, distro, or business" list="ns-recl" ${NOFILL('tmnsrec')}><datalist id="ns-recl">${knownNames.map(n=>`<option value="${n}">`).join('')}</datalist></div>
-      <div class="fgl"><label>Recipient Type</label><select class="fs" id="ns-type"><option value="">Select type...</option><option>Restaurant</option><option>Distributor</option><option>Retail</option><option>Event</option><option>Other</option></select></div>
-      <div class="fgl"><label>Contact Person</label><input class="fi" id="ns-contact" placeholder="Chef, buyer, manager..."></div>
-      <div class="fgl"><label>Sample Date</label><input class="fi" type="date" id="ns-date" value="${tday()}"></div>
-    </div>
-    <div class="sh" style="margin-top:18px;"><span>Varieties &amp; Weights <span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">(oz — enter 0 to skip)</span></span></div>
-    <div class="oz-input-grid">
-      ${VARIETIES.map(v=>{const sid='nsv-'+v.replace(/[^a-z0-9]/gi,'_');return`<div class="oz-vi"><div class="oz-vi-n">${v}</div><div class="oz-row"><input class="oz-inp" type="number" min="0" step="0.5" id="${sid}" value="0" placeholder="0"></div><div class="oz-unit">oz</div></div>`}).join('')}
-    </div>
-    <div class="fgl" style="margin-bottom:18px;"><label>Notes</label><textarea class="fta" id="ns-notes" placeholder="Who requested it, why they're getting samples, follow-up plan..."></textarea></div>
-    <div class="form-acts">
-      <button class="btn b-lg" style="background:#6a3a9a;color:var(--white);" onclick="subNewSample()">Log Sample</button>
-      <button class="btn b-g" onclick="clrNewSample()">Clear</button>
-    </div>
-    <div class="toast" id="ns-t" style="background:rgba(90,42,130,.07);border-color:rgba(90,42,130,.2);color:#6a3a9a;">✓ Sample logged</div>
-    </div>
-  `;
-}
 
 async function subNewSample(){
   const recipient=document.getElementById('ns-rec').value.trim();
@@ -10967,7 +10528,6 @@ function rQB(el){
       <div>5. Come back here → click <strong>Mark All Exported</strong> to track what's been sent</div>
       <div>6. Export <strong>COGS Labor CSV</strong> monthly and enter labor as a job cost / expense</div>
       <div>7. Export <strong>Production Log CSV</strong> for Katherine &mdash; complete substrate, sterilization &amp; inoculation data per batch</div>
-      <div>7. Export <strong>Production Log CSV</strong> for Katherine &mdash; complete substrate, sterilization &amp; inoculation data per batch</div>
       <div style="margin-top:12px;font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);">IIF import: QB Desktop → File → Utilities → Import → IIF Files → select the .iif file</div>
     </div>
   `;
@@ -11078,7 +10638,6 @@ function dlTraceCSV(){
 // ── CLEANING & CONTAINER FLIP — deep clean, container cycle, spent-block removal ──
 const CLEAN_TYPES=['Deep Clean','Quick Flip','Sanitize'];
 function rCleaning(el){
-  _wasteQueue=[]; // fresh waste staging when the merged tab renders
   const activeC=getActiveContainers();
   const flips=[...(DB.containerFlips||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
   const conOpts=activeC.map(c=>`<option value="${c.code}">${c.code} · ${c.farm} (${c.facility})</option>`).join('');
@@ -11886,109 +11445,8 @@ function setLabSub(s){ _labSub=s; rLab(document.getElementById('main-views')); }
 const WASTE_REASONS=['post-harvest','spoilage','spent','contaminated','other'];
 function fruitingRemaining(f){ return Math.max(0,(f.blockCount||0)-(f.spentBlocks||0)); }
 function wasteableLots(){ return (DB.fruitings||[]).filter(f=>fruitingRemaining(f)>0).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
-let _wasteQueue=[];
-function _readWasteRow(){
-  const lotv=(document.getElementById('wb-lot')?.value||'').trim();
-  const m=wasteableLots().find(f=>(f.lotNumber||'').trim().toLowerCase()===lotv.toLowerCase());
-  return { lotNumber:lotv, variety:(document.getElementById('wb-variety')?.value||'').trim(), container:(document.getElementById('wb-container')?.value||'').trim(),
-    blockCount:parseInt(document.getElementById('wb-cnt')?.value)||0, reason:document.getElementById('wb-reason')?.value||'post-harvest',
-    notes:(document.getElementById('wb-notes')?.value||'').trim(), fruitingId:m?m.id:'' };
-}
-function onWasteLot(){
-  const lotv=(document.getElementById('wb-lot')?.value||'').trim();
-  const m=wasteableLots().find(f=>(f.lotNumber||'').trim().toLowerCase()===lotv.toLowerCase());
-  const hint=document.getElementById('wb-lot-hint');
-  if(m){ const v=document.getElementById('wb-variety'); if(v&&!v.value) v.value=m.variety||''; const c=document.getElementById('wb-container'); if(c&&!c.value) c.value=m.containerID||''; if(hint){ hint.style.color='var(--fern)'; hint.textContent=`✓ ${m.variety} @ ${m.containerID} · ${fruitingRemaining(m)} BLOCKS REMAINING`; } }
-  else if(hint){ hint.style.color='var(--text3)'; hint.textContent=lotv?'⚠ NOT IN FRUITING INVENTORY — LOGS TO LEDGER ONLY':'TYPE TO MATCH A FRUITING LOT'; }
-}
-function addWasteRow(){ const r=_readWasteRow(); if(!r.blockCount){ alert('Enter how many blocks.'); return; } _wasteQueue.push(r); renderWasteQueue(); ['wb-lot','wb-variety','wb-container','wb-cnt','wb-notes'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';}); const h=document.getElementById('wb-lot-hint'); if(h)h.textContent=''; }
-function removeWasteRow(i){ _wasteQueue.splice(i,1); renderWasteQueue(); }
-function updateWasteRow(i,field,value){ const r=_wasteQueue[i]; if(!r)return; r[field]=(field==='blockCount')?(parseInt(value)||0):(value||'').trim(); if(field==='lotNumber'){ const m=wasteableLots().find(f=>(f.lotNumber||'').trim().toLowerCase()===r.lotNumber.toLowerCase()); r.fruitingId=m?m.id:''; if(m){ if(!r.variety) r.variety=m.variety; if(!r.container) r.container=m.containerID; } renderWasteQueue(); } }
-function renderWasteQueue(){
-  const c=document.getElementById('wb-queue'); if(!c) return;
-  c.innerHTML=_wasteQueue.length?`<div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin:14px 0 8px;">＋ ${_wasteQueue.length} STAGED WASTE LINE(S) — VERIFY EACH</div>`+
-    _wasteQueue.map((r,i)=>{ const m=wasteableLots().find(f=>f.id===r.fruitingId); const rem=m?fruitingRemaining(m):null;
-      return `<div style="background:var(--paper);border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:10px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;"><span style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--gold);">#${i+1}${rem!=null?' · '+rem+' remaining':(r.lotNumber?' · ⚠ not in fruiting':'')}</span><button class="btn b-r b-sm" onclick="removeWasteRow(${i})">✕ Remove</button></div>
-      <div class="fg2">
-        <div class="fgl"><label>Fruiting Lot</label><input class="fi" list="wb-lotl" value="${attrEsc(r.lotNumber)}" onchange="updateWasteRow(${i},'lotNumber',this.value)"></div>
-        <div class="fgl"><label>Variety</label><input class="fi" list="hl-v-dl" value="${attrEsc(r.variety)}" onchange="updateWasteRow(${i},'variety',this.value)"></div>
-        <div class="fgl"><label>Container</label><input class="fi" value="${attrEsc(r.container)}" onchange="updateWasteRow(${i},'container',this.value)"></div>
-        <div class="fgl"><label># Blocks Wasted</label><input class="fi" type="number" min="1" value="${r.blockCount}" onchange="updateWasteRow(${i},'blockCount',this.value)"></div>
-        <div class="fgl"><label>Reason</label><select class="fs" onchange="updateWasteRow(${i},'reason',this.value)">${WASTE_REASONS.map(x=>`<option value="${x}" ${r.reason===x?'selected':''}>${x}</option>`).join('')}</select></div>
-      </div></div>`;}).join(''):'';
-  const btn=document.getElementById('wb-logbtn'); if(btn) btn.textContent=_wasteQueue.length?`🗑 Log Waste & Send Report (${_wasteQueue.length+((_readWasteRow().blockCount)?1:0)})`:'🗑 Log Waste & Send Report';
-}
-function wasteSectionHTML(){
-  const disp=[...(DB.blockDisposals||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.timestamp||'').localeCompare(a.timestamp||''));
-  const totalWasted=disp.reduce((s,d)=>s+(parseInt(d.blockCount)||0),0);
-  const wl=wasteableLots();
-  return `
-    <div class="sh" style="margin-top:32px;"><span>🗑 Spent / Wasted Blocks</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">DEDUCTS FROM FRUITING · AUTO-REPORTS TO ORDERS@</span></div>
-    <div class="stats" style="margin-bottom:24px;">
-      <div class="sc r"><div class="sc-l">Blocks Wasted</div><div class="sc-v">${totalWasted}</div><div class="sc-n">all-time</div></div>
-      <div class="sc"><div class="sc-l">Fruiting Lots w/ Blocks</div><div class="sc-v">${wl.length}</div><div class="sc-n">available to waste</div></div>
-      <div class="sc g"><div class="sc-l">Log Entries</div><div class="sc-v">${disp.length}</div><div class="sc-n">disposal records</div></div>
-    </div>
-    ${canEdit()?`<div class="card" style="border-color:rgba(184,76,32,.3);background:rgba(184,76,32,.03);">
-      <div class="card-t">📸 Snap / Upload Waste Column</div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Photograph the harvest/fruiting sheet — AI reads the <b>Post-Harvest Waste</b> &amp; <b>Blocks Spoilage</b> columns and stages the wasted lots below.</div>
-      <label class="btn b-g b-lg" style="cursor:pointer;display:inline-block;">📷 Choose photo / PDF<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapWaste(this)"></label>
-      <div id="wb-snap-status" style="display:none;margin-top:12px;font-size:12px;padding:9px 13px;background:var(--paper);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
-    </div>`:''}
-    ${canEdit()?`<div class="card"><div class="card-t">Log Spent / Wasted Blocks</div>
-      <datalist id="wb-lotl">${wl.map(f=>`<option value="${attrEsc(f.lotNumber)}">${f.variety} · ${f.containerID} · ${fruitingRemaining(f)} left</option>`).join('')}</datalist>
-      <div class="fg2">
-        <div class="fgl"><label>Date</label><input class="fi" type="date" id="wb-date" value="${tday()}"></div>
-        <div class="fgl"><label>Reason</label><select class="fs" id="wb-reason">${WASTE_REASONS.map(x=>`<option value="${x}">${x}</option>`).join('')}</select></div>
-      </div>
-      <div class="fg2">
-        <div class="fgl"><label>Fruiting Lot <span style="color:var(--text3);font-size:11px;">type to match blocks in fruiting</span></label><input class="fi" id="wb-lot" list="wb-lotl" autocomplete="off" oninput="onWasteLot()" placeholder="Type to search fruiting lots…"><div id="wb-lot-hint" style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);margin-top:4px;letter-spacing:1px;">${wl.length?wl.length+' LOT(S) WITH BLOCKS ON HAND':'NO FRUITING BLOCKS ON HAND'}</div></div>
-        <div class="fgl"><label>Variety</label><input class="fi" id="wb-variety" list="hl-v-dl" autocomplete="off"></div>
-        <div class="fgl"><label>Container</label><input class="fi" id="wb-container"></div>
-        <div class="fgl"><label># Blocks Wasted</label><input class="fi" type="number" min="1" id="wb-cnt" placeholder="blocks"></div>
-      </div>
-      <div class="fgl" style="margin-top:4px;"><label>Notes</label><input class="fi" id="wb-notes" placeholder="Optional"></div>
-      <div id="wb-queue" style="margin-bottom:12px;"></div>
-      <div class="form-acts"><button class="btn b-g b-lg" onclick="addWasteRow()">+ Add another lot</button><button class="btn b-m b-lg" id="wb-logbtn" onclick="logWaste()">🗑 Log Waste &amp; Send Report</button></div>
-      <div class="toast" id="wb-t">✓ Waste logged</div>
-    </div>`:''}
-    <div class="sh"><span>Block Waste Ledger</span><span class="bdg bc">${disp.length}</span></div>
-    <div class="tw"><table>
-      <thead><tr><th>Date</th><th>Stage</th><th>Container</th><th>Lot</th><th>Variety</th><th>Blocks</th><th>Reason</th><th>Notes</th>${canEdit()?'<th></th>':''}</tr></thead>
-      <tbody>${disp.length?disp.map(d=>`<tr>
-        <td class="mn">${fDate(d.date)}</td><td class="mn"><span class="bdg bp" style="font-size:10px;">${d.stage||'—'}</span></td>
-        <td class="mn">${d.container||'—'}</td><td class="mn" style="color:var(--gold);">${d.cookLot||d.lotNumber||'—'}</td>
-        <td>${d.variety||'—'}</td><td class="mn" style="color:var(--rust);font-weight:700;">${d.blockCount||0}</td>
-        <td class="mn">${d.reason||'—'}</td><td style="font-size:11px;color:var(--text3);">${d.notes||''}</td>
-        ${canEdit()?`<td style="white-space:nowrap;">${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delWaste('${d.id}')">✕</button>`:''}</td>`:''}
-      </tr>`).join(''):`<tr><td colspan="${canEdit()?9:8}" class="empty">No waste logged yet.</td></tr>`}</tbody>
-    </table></div>`;
-}
 // merged into the Clean & Flip tab — any 'waste' route renders the combined tab
 function rWaste(el){ rCleaning(el||document.getElementById('main-views')); }
-async function logWaste(){
-  const date=document.getElementById('wb-date')?.value||tday();
-  const rows=[..._wasteQueue];
-  const cur=_readWasteRow();
-  if(cur.blockCount||cur.lotNumber){ if(!cur.blockCount){ alert('Enter how many blocks for the lot in the form.'); return; } rows.push(cur); }
-  if(!rows.length){ alert('Add at least one lot to waste.'); return; }
-  const createdIds=[]; let deductedTotal=0, spentLots=0;
-  for(const r of rows){
-    if(r.variety) addVariety(r.variety);
-    const f=r.fruitingId?DB.fruitings.find(x=>x.id===r.fruitingId):(DB.fruitings||[]).find(x=>(x.lotNumber||'').trim().toLowerCase()===(r.lotNumber||'').trim().toLowerCase()&&fruitingRemaining(x)>0);
-    const data={date,stage:'post-harvest',container:r.container||(f&&f.containerID)||'',cookLot:r.lotNumber,lotNumber:r.lotNumber,labBatchId:'',variety:r.variety||(f&&f.variety)||'',source:'',supplier:'',blockCount:r.blockCount,reason:r.reason||'post-harvest',notes:r.notes||'',fruitingId:(f&&f.id)||'',loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
-    if(f){ data.prevStatus=f.status; f.spentBlocks=(f.spentBlocks||0)+r.blockCount; const upd={spentBlocks:f.spentBlocks}; if(fruitingRemaining(f)<=0 && f.status==='fruiting'){ f.status='spent'; upd.status='spent'; upd.spentAt=date; spentLots++; } try{ await FS.update('fruitings',f.id,upd); }catch(e){ console.warn('fruiting waste deduct',e); } data.deducted=r.blockCount; }
-    const id=await FS.add('blockDisposals',data); data.id=id; DB.blockDisposals.push(data); createdIds.push(id); deductedTotal+=r.blockCount;
-  }
-  logAudit('block_waste',`Wasted ${deductedTotal} blocks across ${rows.length} lot(s)`);
-  _wasteQueue=[];
-  toast('wb-t',`✓ ${deductedTotal} blocks wasted${spentLots?` · ${spentLots} lot(s) marked spent`:''}`);
-  rWaste(document.getElementById('main-views'));
-  openEmailDispatch('waste', notifySubject('waste',{date}), {label:'Block Waste '+_mm_dd_yy(date),
-    edit:{kind:'waste',col:'blockDisposals',ids:createdIds,date},
-    data:{date,rows:rows.map(r=>({lotNumber:r.lotNumber,variety:r.variety,container:r.container,blockCount:r.blockCount,reason:r.reason}))}});
-}
 function delWaste(id){ const d=(DB.blockDisposals||[]).find(x=>x.id===id); if(!d||!confirm('Delete this waste entry? Restores its blocks to the fruiting lot.')) return;
   if(d.fruitingId&&d.deducted){ const f=DB.fruitings.find(x=>x.id===d.fruitingId); if(f){ f.spentBlocks=Math.max(0,(f.spentBlocks||0)-d.deducted); const upd={spentBlocks:f.spentBlocks}; if(f.status==='spent'&&fruitingRemaining(f)>0){ f.status=d.prevStatus||'fruiting'; upd.status=f.status; } FS.update('fruitings',f.id,upd); } }
   DB.blockDisposals=DB.blockDisposals.filter(x=>x.id!==id); FS.del('blockDisposals',id); rWaste(document.getElementById('main-views'));
