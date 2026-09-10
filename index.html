@@ -370,7 +370,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #130</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #131</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -565,7 +565,6 @@ const ALL_INTERNAL_TABS = [
   {id:'today',l:'📅 Day'},
   {id:'analytics',l:'📊 Dashboard'},
   {id:'new-order',l:'➕ Order'},
-  {id:'email-parse',l:'✉️ Parse Email'},
   {id:'packing',l:'📦 Pack Orders'},
   {id:'receiving',l:'📥 Receiving'},
   {id:'lab',l:'🧫 Lab'},
@@ -2026,9 +2025,9 @@ function buildNav(){
 
   const GROUPS=[
     {label:'Daily',              ids:['today','analytics']},
-    {label:'Orders',             ids:['new-order','email-parse','packing']},
+    {label:'Orders',             ids:['new-order','packing']},
     {label:'Production',         ids:['receiving','lab','fruiting','harvest','cleaning','cordyceps']},
-    {label:'Inventory & Trace',  ids:['inventory','preservation','trace','trace-doctor']},
+    {label:'Inventory & Trace',  ids:['inventory','preservation','trace']},
     {label:'Finance',            ids:['orders-all','reports','qb'], cls:'drw-acct'},
     {label:'System',             ids:['admin','security'], cls:'drw-sys'},
   ];
@@ -2065,7 +2064,7 @@ function sw(id){
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,'email-parse':rEmail,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTrace,'trace-doctor':rTraceDoctor,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTraceTab,'trace-doctor':rTraceDoctor,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rReports,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -3426,6 +3425,14 @@ function rNewOrd(el){
   const isA=S.role==='admin', allNames=[...new Set([...DB.clients.map(c=>c.name)])];
   el.innerHTML=`
     <div class="ph"><div class="ph-t" id="no-title">New Order</div><div class="ph-s" id="no-sub">Submit for farm approval</div></div>
+    <details class="card" style="margin-bottom:14px;">
+      <summary style="cursor:pointer;list-style:none;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text3);">📧 Paste from an email <span style="font-size:11px;text-transform:none;letter-spacing:0;">— auto-extract, then fill the form below</span></summary>
+      <div style="margin-top:14px;">
+        <div class="fgl" style="margin-bottom:12px;"><label>Paste email body</label><textarea class="fta" id="ep-b" style="min-height:130px;" placeholder="Client: …&#10;Delivery Day: …&#10;Oyster Mix: # boxes&#10;Notes: …"></textarea></div>
+        <div class="form-acts"><button type="button" class="btn b-m" onclick="doParse()">Extract</button><button type="button" class="btn b-g" onclick="document.getElementById('ep-b').value=''">Clear</button></div>
+        <div id="ep-r" style="display:none;margin-top:16px;"><div class="sh"><span>Extracted</span></div><div id="ep-out" style="margin-bottom:12px;"></div><button type="button" class="btn b-s" onclick="importP()">↓ Fill the form below</button></div>
+      </div>
+    </details>
     <div class="card">
 
       <!-- ── TOP FIELDS ── -->
@@ -3628,22 +3635,6 @@ function clrNewOrd(){
 
 // ── EMAIL PARSE ──
 let pBuf=null;
-function rEmail(el){
-  el.innerHTML=`
-    <div class="ph"><div class="ph-t">Parse Email</div><div class="ph-s">Paste a client email to extract the order</div></div>
-    <div class="card"><div class="card-t">Email Template</div>
-    <div style="background:rgba(0,0,0,.3);border:1px solid rgba(196,168,130,.1);border-radius:3px;padding:16px;font-family:'Syne Mono',monospace;font-size:12px;color:var(--sage);line-height:2;white-space:pre;margin-bottom:20px;overflow-x:auto;">Client: [Name]
-Delivery Day: [Monday / Wednesday / Friday]
-Oyster Mix: [# boxes]
-Chef's Mix: [# boxes]
-Lion's Mane: [# boxes]
-Chestnuts: [# boxes]
-Notes: [anything else]</div>
-    <div class="fgl" style="margin-bottom:16px;"><label>Paste Email Body</label><textarea class="fta" id="ep-b" style="min-height:160px;" placeholder="Paste full email here..."></textarea></div>
-    <div class="form-acts"><button class="btn b-m b-lg" onclick="doParse()">Extract Order</button><button class="btn b-g" onclick="document.getElementById('ep-b').value=''">Clear</button></div>
-    <div id="ep-r" style="display:none;margin-top:20px;"><div class="sh">Extracted Order</div><div id="ep-out" style="margin-bottom:16px;"></div><button class="btn b-s" onclick="importP()">→ Import to Order Form</button></div></div>`;
-}
-
 function doParse(){
   const body=document.getElementById('ep-b').value; if(!body.trim()) return;
   function ext(k){ const m=body.match(new RegExp(k+'[:\\s]+([^\\n]+)','i')); return m?m[1].trim():null }
@@ -3654,7 +3645,7 @@ function doParse(){
   document.getElementById('ep-r').style.display='block'
 }
 
-function importP(){ if(!pBuf) return; sw('new-order'); setTimeout(()=>{ const p=pBuf; const sv=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||'' }; sv('no-c',p.client); sv('no-d',p.day); sv('no-oyster',p.oyster||0); sv('no-chefs',p.chefs||0); sv('no-lions',p.lions||0); sv('no-chestnut1',p.chestnut1||0); sv('no-n',p.notes) },150) }
+function importP(){ if(!pBuf) return; const p=pBuf; const sv=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v||'' }; sv('no-c',p.client); sv('no-d',p.day); sv('no-oyster',p.oyster||0); sv('no-chefs',p.chefs||0); sv('no-lions',p.lions||0); sv('no-chestnut1',p.chestnut1||0); sv('no-n',p.notes); if(typeof onOrderClientChange==='function'){try{onOrderClientChange();}catch(e){}} const t=document.getElementById('no-title'); if(t) t.scrollIntoView({behavior:'smooth',block:'start'}); }
 
 // ── HARVEST ──
 // Built-in varieties. Custom ones added on the fly are merged in from appConfig/varieties at load.
@@ -10554,6 +10545,15 @@ function rQB(el){
 let _traceQ = '';
 let _traceDate = '';
 let _traceContainer = '';
+// Trace tab now hosts two modes: Search/Lineage and Repair (formerly the separate Trace Doctor tab). Repair is staff/admin only.
+let _traceMode = 'search';
+function traceSetMode(m){ _traceMode=m; const el=document.getElementById('main-views'); (m==='doctor'?rTraceDoctor:rTrace)(el); }
+function rTraceTab(el){ (_traceMode==='doctor' && (typeof canEdit!=='function'||canEdit())) ? rTraceDoctor(el) : rTrace(el); }
+function traceModeToggle(){
+  if(typeof canEdit==='function' && !canEdit()) return '';   // accountants: search only
+  const b=(m,l)=>`<button class="btn ${_traceMode===m?'b-m':'b-g'} b-sm" onclick="traceSetMode('${m}')" style="margin:0 6px 0 0;">${l}</button>`;
+  return `<div style="display:flex;flex-wrap:wrap;margin:-4px 0 18px;">${b('search','🔍 Search & Lineage')}${b('doctor','🩺 Repair Broken Lots')}</div>`;
+}
 
 function runTrace(){
   _traceQ = (document.getElementById('tr-q')?.value||'').trim();
@@ -11067,7 +11067,8 @@ function rTraceDoctor(el){
   const wsRows=broken.filter(b=>b.ws).map(rowHTML).join('');
   const inRows=broken.filter(b=>!b.ws).map(rowHTML).join('');
   el.innerHTML=`
-    <div class="ph"><div class="ph-t">🩺 Trace Doctor</div><div class="ph-s">Lots that were fruited or harvested but have no origin record. Recover the packing slip or cook sheet, then heal each one — matching reconnects the chain automatically.</div></div>
+    <div class="ph"><div class="ph-t">🔍 Trace &amp; Search</div><div class="ph-s">Lots that were fruited or harvested but have no origin record. Recover the packing slip or cook sheet, then heal each one — matching reconnects the chain automatically.</div></div>
+    ${traceModeToggle()}
     <div class="stats">
       <div class="sc"><div class="sc-l">Broken Lots</div><div class="sc-v">${broken.length}</div><div class="sc-n">no origin record</div></div>
       <div class="sc"><div class="sc-l">Wild Spore</div><div class="sc-v" style="color:var(--plum,#7a4a86);">${wsCount}</div><div class="sc-n">need a receiving</div></div>
@@ -11238,6 +11239,7 @@ function rTrace(el){
 
   el.innerHTML=`
     <div class="ph"><div class="ph-t">🔍 Trace &amp; Search</div><div class="ph-s">Search any lot #, variety, or container — see where it is now, what it yielded, and its full lineage. Partial matches welcome (great for half-remembered Wild Spore lots).</div></div>
+    ${traceModeToggle()}
     <datalist id="tr-lotl">${[...new Set([...DB.fruitings.map(f=>f.lotNumber),...DB.harvests.map(h=>h.lotNumber),...(DB.receivings||[]).map(r=>r.lotNumber)].filter(Boolean))].sort().map(l=>`<option value="${(l||'').replace(/"/g,'&quot;')}">`).join('')}</datalist>
     <div class="card" style="padding:16px;margin-bottom:22px;display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
       <div class="fgl" style="flex:1;min-width:180px;"><label>Search — lot #, variety, or container</label><input class="fi" id="tr-q" list="tr-lotl" value="${q.replace(/"/g,'&quot;')}" placeholder="e.g. WS, shiitake, GH-04, 10223…" autocomplete="off" autofocus></div>
