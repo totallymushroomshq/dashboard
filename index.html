@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #143</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #144</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2103,6 +2103,7 @@ function rToday(el){
       </tr>`).join('')}</tbody></table>
     </div>`:''}
     ${ap.length>0&&canEdit()?`<div class="sh"><span>Pending Approval</span><span class="bdg bp">${ap.length} waiting</span></div><div class="og" id="pg"></div>`:''}
+    ${canEdit()?buildSampleLogCard():''}
     ${todaySamps.length>0?`<div class="sh" style="margin-top:24px;"><span>Samples — Going Out Today</span><span class="bdg bdg-samp" style="margin-left:8px;">${todaySamps.length} pending</span></div><div id="samp-today-cards" class="samp-grid"></div>`:''}
   `;
   if(ap.length>0){ const pg=el.querySelector('#pg'); ap.forEach(o=>rOC(o,pg,true)) }
@@ -3357,7 +3358,6 @@ function rNewOrd(el){
           <label>Request Type</label>
           <select class="fs" id="no-rt" onchange="switchReqType(this.value)">
             <option value="standard">Standard Order</option>
-            <option value="sample">Sample</option>
             ${isA?'<option value="wholesale">Wholesale</option><option value="custom">Custom Request</option>':''}
           </select>
         </div>
@@ -3493,20 +3493,7 @@ async function subNewOrd(){
     return qtys;
   };
 
-  // ── SAMPLE ──
-  if(rt==='sample'){
-    const date=document.getElementById('no-sd').value;
-    if(!date){ alert('Sample date is required.'); return }
-    const qtys=readCatalogQtys('no-');
-    const anyQty=Object.values(qtys).some(v=>v>0);
-    if(!anyQty){ alert('Add at least one item to the sample.'); return }
-    const sData={date,week:wkStart(),recipient:client,recipientType:document.getElementById('no-stype')?.value||'Other',contact:document.getElementById('no-scontact')?.value.trim()||'',...qtys,notes:document.getElementById('no-n').value.trim(),status:'pending'};
-    const sId=await FS.add('samples',sData);
-    DB.samples.push({id:sId,...sData});
-    const toastEl=document.getElementById('no-t');
-    if(toastEl){toastEl.textContent='✓ Sample logged';toastEl.style.background='rgba(90,42,130,.07)';toastEl.style.borderColor='rgba(90,42,130,.2)';toastEl.style.color='#6a3a9a';}
-    toast('no-t'); clrNewOrd(); return;
-  }
+  // Samples are logged on the Today page (🎁 Log a Sample), not here.
 
   // ── ORDER (Standard / Wholesale / Custom) ──
   const day=document.getElementById('no-d').value;
@@ -9719,6 +9706,46 @@ function rSampCardHTML(s, showActions){
   </div>`;
 }
 
+// ── Easy sample logger (compact card on Today) — writes the SAME record shape as the old order-form path ──
+function buildSampleLogCard(){
+  const clientNames=[...new Set((DB.clients||[]).map(c=>c.name).filter(Boolean))].sort();
+  const qtyItem=p=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;background:var(--white);border:1px solid var(--border);border-radius:5px;padding:5px 8px;">
+      <span style="font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);">${p.code}</span>
+      <span style="color:var(--text2);">${p.name}</span>
+      <input class="fi" type="number" min="0" value="0" id="sl-${p.dataKey}" style="width:50px;padding:3px 5px;text-align:center;margin-left:auto;">
+      <span style="font-size:10px;color:var(--text3);">${p.unitLb>=10?'tote':p.unitLb===3?'box':'¼lb'}</span></label>`;
+  const boxes=PRODUCTS.filter(p=>!p.restrict).map(qtyItem).join('');
+  const packs=RETAIL_PACKS.map(qtyItem).join('');
+  return `<div class="card" style="margin-top:24px;border-left:3px solid #6a3a9a;">
+    <div class="card-t">🎁 Log a Sample</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Quick free-sample log — deducts from on-hand when you Pack &amp; Send it below.</div>
+    <div class="fg2" style="margin-bottom:12px;">
+      <div class="fgl"><label>Recipient / Venue <span style="color:var(--rust);">*</span></label><input class="fi" id="sl-rec" list="sl-recl" placeholder="Who's it going to?" ${NOFILL('sl_rec')}><datalist id="sl-recl">${clientNames.map(n=>`<option value="${attrEsc(n)}">`).join('')}</datalist></div>
+      <div class="fgl"><label>Date</label><input class="fi" type="date" id="sl-date" value="${tday()}"></div>
+      <div class="fgl"><label>Type</label><select class="fs" id="sl-type"><option>Restaurant</option><option>Distributor</option><option>Retail</option><option>Event</option><option>Other</option></select></div>
+      <div class="fgl"><label>Contact <span style="color:var(--text3);font-size:11px;">optional</span></label><input class="fi" id="sl-contact" placeholder="Chef, buyer…" ${NOFILL('sl_contact')}></div>
+    </div>
+    <div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--text3);margin-bottom:6px;">WHAT WENT OUT — 3 LB BOXES</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">${boxes}</div>
+    <div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--text3);margin-bottom:6px;">¼ LB PACKS</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">${packs}</div>
+    <div class="fgl" style="margin-bottom:12px;"><label>Notes <span style="color:var(--text3);font-size:11px;">optional</span></label><input class="fi" id="sl-notes" placeholder="Anything to remember about this sample" ${NOFILL('sl_notes')}></div>
+    <button class="btn b-m b-lg" onclick="saveSampleLog()">Log Sample</button>
+    <div class="toast" id="sl-t">✓ Sample logged</div>
+  </div>`;
+}
+async function saveSampleLog(){
+  const recipient=(document.getElementById('sl-rec')?.value||'').trim();
+  if(!recipient){ alert('Recipient / venue is required.'); return; }
+  const date=document.getElementById('sl-date')?.value||tday();
+  const qtys={}; ALL_PRODS.forEach(p=>{ qtys[p.dataKey]=parseInt(document.getElementById('sl-'+p.dataKey)?.value)||0; });
+  if(!Object.values(qtys).some(v=>v>0)){ alert('Add at least one item to the sample.'); return; }
+  const sData={date, week:wkStart(), recipient, recipientType:document.getElementById('sl-type')?.value||'Other', contact:(document.getElementById('sl-contact')?.value||'').trim(), ...qtys, notes:(document.getElementById('sl-notes')?.value||'').trim(), status:'pending'};
+  const btn=event&&event.target; if(btn){ btn.disabled=true; }
+  try{ const sId=await FS.add('samples',sData); DB.samples.push({id:sId,...sData}); try{ logAudit('sample_logged', recipient+' · '+sampSum(sData)); }catch(e){} }
+  catch(e){ alert('Could not save sample: '+(e.message||e)); if(btn) btn.disabled=false; return; }
+  toast('sl-t'); renderC();
+}
 function markSampleSent(id){
   const s=DB.samples.find(x=>x.id===id); if(!s) return;
   if(!confirm('Mark this sample as sent? This will deduct the weight from harvest inventory.')) return;
@@ -9842,35 +9869,6 @@ function deductSampleInventory(sample){
 
 function delSample(id){ if(!confirm('Delete this sample record?')) return; DB.samples=DB.samples.filter(x=>x.id!==id); FS.del('samples',id); renderC() }
 
-
-async function subNewSample(){
-  const recipient=document.getElementById('ns-rec').value.trim();
-  const recipientType=document.getElementById('ns-type').value;
-  const contact=document.getElementById('ns-contact').value.trim();
-  const date=document.getElementById('ns-date').value;
-  if(!recipient||!date){ alert('Recipient and date are required.'); return }
-  const varieties={};
-  VARIETIES.forEach(v=>{
-    const el=document.getElementById('nsv-'+v.replace(/[^a-z0-9]/gi,'_'));
-    const val=parseFloat(el?.value)||0;
-    if(val>0) varieties[v]=val;
-  });
-  if(Object.keys(varieties).length===0){ alert('Enter at least one variety with a weight in oz.'); return }
-  const sData={date, week:wkStart(), recipient, recipientType:recipientType||'Other', contact,
-    varieties, notes:document.getElementById('ns-notes').value.trim(), status:'pending'};
-  const sId = await FS.add('samples', sData);
-  sData.id = sId;
-  DB.samples.push(sData);
-  toast('ns-t');
-  clrNewSample();
-}
-
-function clrNewSample(){
-  ['ns-rec','ns-contact','ns-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
-  const dt=document.getElementById('ns-date');if(dt)dt.value=tday();
-  const tp=document.getElementById('ns-type');if(tp)tp.value='';
-  VARIETIES.forEach(v=>{const el=document.getElementById('nsv-'+v.replace(/[^a-z0-9]/gi,'_'));if(el)el.value='0'});
-}
 
 // ── QUICKBOOKS INTEGRATION ──
 
