@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #144</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #145</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -6526,6 +6526,15 @@ function _downscaleImage(file, maxBytes){
 }
 // ── DOCUMENT SCANNER: illumination-flatten + high contrast + PDF (no library) ──
 function _loadImg(file){ return new Promise((res,rej)=>{ const img=new Image(); const u=URL.createObjectURL(file); img.onload=()=>{ URL.revokeObjectURL(u); res(img); }; img.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error('Could not read image')); }; img.src=u; }); }
+// plain resize → canvas (NO document-scanner enhancement). For real photos (truck / temp gauge),
+// where _enhanceDoc's divide-by-blur would wreck the image. Re-encoding via canvas also converts HEIC→JPEG.
+function _photoCanvas(img, maxDim){
+  let w=img.width||0, h=img.height||0; const m=maxDim||1600;
+  if(!w||!h) throw new Error('Could not read image — if it is a HEIC from an iPhone, try again (iOS should convert it).');
+  if(w>m||h>m){ const s=m/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  c.getContext('2d').drawImage(img,0,0,w,h); return c;
+}
 // flatten uneven lighting (divide by a blurred background) + grayscale + contrast → clean scan
 function _enhanceDoc(img, maxDim){
   let w=img.width, h=img.height; const m=maxDim||1600;
@@ -6606,8 +6615,12 @@ async function processScan(file, kind){
 }
 // store a photo/PDF (temp log, invoice) WITHOUT parsing → returns permanent link
 async function storePhoto(file, tag){
+  // Receiving temp-gauge / truck-cleanliness shots are real PHOTOS, not paper documents —
+  // skip _enhanceDoc (its divide-by-blur turns a photo into an edge-detected sketch).
+  const isPhoto=/^receiving-(temp2?|truck)$/.test(tag||'');
   let b64, mime;
   if((file.type==='application/pdf')||/\.pdf$/i.test(file.name||'')){ b64=await _fileToB64(file); mime='application/pdf'; }
+  else if(isPhoto){ const img=await _loadImg(file); const ph=_canvasToJpeg(_photoCanvas(img,1600),600000); b64=_jpegToPdfB64(ph.b64,ph.w,ph.h); mime='application/pdf'; }
   else { const img=await _loadImg(file); const enh=_canvasToJpeg(_enhanceDoc(img),300000); b64=_jpegToPdfB64(enh.b64,enh.w,enh.h); mime='application/pdf'; }
   const user=firebase.auth().currentUser; if(!user) throw new Error('Not signed in — reload and log in.');
   const tok=await user.getIdToken();
