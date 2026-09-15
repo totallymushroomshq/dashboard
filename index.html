@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #146</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #147</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -571,6 +571,10 @@ const FIREBASE_CONFIG = {
 firebase.initializeApp(FIREBASE_CONFIG);
 const fdb = firebase.firestore();
 fdb.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+// Offline cache (IndexedDB): lets loadDB paint instantly from local data on repeat logins
+// instead of re-downloading everything over a slow farm connection. Safe no-op if it can't enable.
+let _fsPersist=false;
+try{ fdb.enablePersistence({synchronizeTabs:true}).then(()=>{_fsPersist=true;}).catch(()=>{}); }catch(e){}
 const auth = firebase.auth();
 // Secondary app instance for creating new users without disrupting current session
 let _secondaryApp = null;
@@ -614,90 +618,71 @@ const FS = {
 };
 
 // ── LOAD ALL DATA FROM FIRESTORE ──
-async function loadDB(){
+async function loadDB(opts){
+  opts=opts||{};
+  const src=opts.source;                         // 'cache' → instant local paint; undefined → server (authoritative)
+  const gOpt=src?{source:src}:undefined;
+  // cache reads must never reject on a miss (empty is fine); server reads propagate errors
+  const ga=c=>{ const p=fdb.collection(c).get(gOpt).then(s=>s.docs.map(d=>({id:d.id,...d.data()}))); return src?p.catch(()=>[]):p; };
+  const dget=id=>fdb.collection('appConfig').doc(id).get(gOpt).then(d=>[id,d.exists?d.data():null]).catch(()=>[id,null]);
   try {
-    // NOTE: auditLog, revisions, loginHistory are NOT loaded here — they're admin-only and huge (~3 MB combined).
-    // They're lazy-loaded by ensureAdminData() when the Admin / Security views open, which keeps login fast on mobile.
+    const _t0=Date.now();
+    // NOTE: auditLog, revisions, loginHistory are NOT loaded here — admin-only and large; lazy via ensureAdminData().
     const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,transfers,productMovements,containerSessions,preservationBatches,labBatches,blockDisposals,receivings,cultures,spawnRuns,cordyceps,containerFlips,shipments] = await Promise.all([
-      FS.getAll('orders'), FS.getAll('clients'), FS.getAll('harvests'),
-      FS.getAll('samples'), FS.getAll('fruitings'), FS.getAll('preservation'),
-      FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('packSessions'),
-      FS.getAll('users'), FS.getAll('transfers'), FS.getAll('productMovements'),
-      FS.getAll('containerSessions'), FS.getAll('preservationBatches'),
-      FS.getAll('labBatches'), FS.getAll('blockDisposals'), FS.getAll('receivings'),
-      FS.getAll('cultures'), FS.getAll('spawnRuns'), FS.getAll('cordyceps'), FS.getAll('containerFlips'), FS.getAll('shipments')
+      ga('orders'), ga('clients'), ga('harvests'), ga('samples'), ga('fruitings'), ga('preservation'),
+      ga('notifLog'), ga('signupRequests'), ga('packSessions'), ga('users'), ga('transfers'), ga('productMovements'),
+      ga('containerSessions'), ga('preservationBatches'), ga('labBatches'), ga('blockDisposals'), ga('receivings'),
+      ga('cultures'), ga('spawnRuns'), ga('cordyceps'), ga('containerFlips'), ga('shipments')
     ]);
+    const _tCol=Date.now()-_t0;
     DB.auditLog=[]; DB.revisions=[]; DB.loginHistory=[]; DB._adminLoaded={}; // lazy — see ensureAdminData()
     DB.receivings=receivings; DB.cultures=cultures; DB.spawnRuns=spawnRuns; DB.cordyceps=cordyceps; DB.containerFlips=containerFlips||[]; DB.shipments=shipments||[];
     DB.orders=orders; DB.clients=clients; DB.harvests=harvests;
     DB.samples=samples; DB.fruitings=fruitings; DB.preservation=preservation;
-    // ── ONE-TIME MIGRATION: drop o.chestnut (legacy ungraded field) since chestnut is now CH01/CH02 only.
-    // Runs every load but is idempotent — only writes when the field is non-zero/present.
-    DB.orders.forEach(o=>{
-      if(o.chestnut!==undefined && o.chestnut!==null && o.chestnut!==0){
-        try { FS.update('orders', o.id, {chestnut: firebase.firestore.FieldValue.delete()}); } catch(e){ /* old SDK fallback */ FS.update('orders', o.id, {chestnut: 0}); }
-        delete o.chestnut;
-      }
-    });
-    DB.samples.forEach(s=>{
-      if(s.chestnut!==undefined && s.chestnut!==null && s.chestnut!==0){
-        try { FS.update('samples', s.id, {chestnut: firebase.firestore.FieldValue.delete()}); } catch(e){ FS.update('samples', s.id, {chestnut: 0}); }
-        delete s.chestnut;
-      }
-    });
+    // ── ONE-TIME MIGRATION: drop o.chestnut (legacy ungraded field). Server load only — never write during a cache paint.
+    if(!src){
+      DB.orders.forEach(o=>{
+        if(o.chestnut!==undefined && o.chestnut!==null && o.chestnut!==0){
+          try { FS.update('orders', o.id, {chestnut: firebase.firestore.FieldValue.delete()}); } catch(e){ FS.update('orders', o.id, {chestnut: 0}); }
+          delete o.chestnut;
+        }
+      });
+      DB.samples.forEach(s=>{
+        if(s.chestnut!==undefined && s.chestnut!==null && s.chestnut!==0){
+          try { FS.update('samples', s.id, {chestnut: firebase.firestore.FieldValue.delete()}); } catch(e){ FS.update('samples', s.id, {chestnut: 0}); }
+          delete s.chestnut;
+        }
+      });
+    }
     DB.notifLog=notifLog; DB.signupRequests=signupRequests; DB.packSessions=packSessions;
     DB.users=users; DB.transfers=transfers; DB.productMovements=productMovements; DB.containerSessions=containerSessions; DB.preservationBatches=preservationBatches;
     DB.labBatches=labBatches; DB.blockDisposals=blockDisposals;
-    // Load EmailJS config from appConfig
-    try{
-      const cfgDoc=await fdb.collection('appConfig').doc('emailjs').get();
-      if(cfgDoc.exists){ Object.assign(DB.emailjs,cfgDoc.data()); }
-    }catch(e){ console.warn('EmailJS config not found'); }
-    // Load notification (auto-email) config from appConfig
-    try{
-      const nDoc=await fdb.collection('appConfig').doc('notify').get();
-      if(nDoc.exists){ Object.assign(DB.notify,nDoc.data()); }
-    }catch(e){ console.warn('notify config not found'); }
-    // Load active facilities config from appConfig
-    try{
-      const facDoc=await fdb.collection('appConfig').doc('facilities').get();
-      if(facDoc.exists&&facDoc.data().active){ DB.facilities=facDoc.data().active; }
-    }catch(e){ console.warn('Facilities config not found — using defaults'); }
-    // Load container active/inactive overrides from appConfig
-    try{
-      const conDoc=await fdb.collection('appConfig').doc('containers').get();
-      if(conDoc.exists){ DB.containerOverrides=conDoc.data()||{}; }
-    }catch(e){ console.warn('Container overrides not found — using defaults'); }
-    // Load custom varieties (added on the fly) from appConfig and merge into VARIETIES
-    try{
-      const vDoc=await fdb.collection('appConfig').doc('varieties').get();
-      if(vDoc.exists){
-        customVarieties = (vDoc.data().custom||[]).filter(Boolean);
-        customVarieties.forEach(n=>{
-          if(!VARIETIES.some(v=>v.toLowerCase()===n.toLowerCase())) VARIETIES.push(n);
-          if(!VARIETY_TURNAROUND[n]) VARIETY_TURNAROUND[n]={min:7,max:14,yieldPct:0.18};
-        });
-      }
-    }catch(e){ console.warn('Custom varieties not found — using built-in list'); }
-    // Load admin-defined variety merges (aliases) and layer them onto the built-in alias map
-    try{
-      const aDoc=await fdb.collection('appConfig').doc('variety-aliases').get();
-      if(aDoc.exists) applyStoredVarietyAliases(aDoc.data().map||{});
-    }catch(e){ /* no custom merges yet */ }
-    // Load dead/excluded-lot list (yield average) from appConfig
-    try{
-      const yDoc=await fdb.collection('appConfig').doc('yield-excludes').get();
-      if(yDoc.exists && typeof applyStoredYieldExcludes==='function') applyStoredYieldExcludes(yDoc.data());
-    }catch(e){ /* none yet */ }
-    // Load custom suppliers (added on the fly) from appConfig
-    try{
-      const sDoc=await fdb.collection('appConfig').doc('suppliers').get();
-      if(sDoc.exists){ customSuppliers=(sDoc.data().custom||[]).filter(Boolean); }
-    }catch(e){ console.warn('Custom suppliers not found — using defaults'); }
-    // Init EmailJS if configured
-    if(DB.emailjs.publicKey){ emailjs.init({publicKey:DB.emailjs.publicKey}); }
+    // ── appConfig docs in ONE parallel batch (was 8 sequential round-trips — brutal on slow networks) ──
+    const _t1=Date.now();
+    const cfg={};
+    (await Promise.all(['emailjs','notify','facilities','containers','varieties','variety-aliases','yield-excludes','suppliers'].map(dget)))
+      .forEach(([id,d])=>{ cfg[id]=d; });
+    if(cfg.emailjs) Object.assign(DB.emailjs,cfg.emailjs);
+    if(cfg.notify) Object.assign(DB.notify,cfg.notify);
+    if(cfg.facilities&&cfg.facilities.active) DB.facilities=cfg.facilities.active;
+    if(cfg.containers) DB.containerOverrides=cfg.containers||{};
+    if(cfg.varieties){
+      customVarieties=(cfg.varieties.custom||[]).filter(Boolean);
+      customVarieties.forEach(n=>{
+        if(!VARIETIES.some(v=>v.toLowerCase()===n.toLowerCase())) VARIETIES.push(n);
+        if(!VARIETY_TURNAROUND[n]) VARIETY_TURNAROUND[n]={min:7,max:14,yieldPct:0.18};
+      });
+    }
+    if(cfg['variety-aliases']) applyStoredVarietyAliases(cfg['variety-aliases'].map||{});
+    if(cfg['yield-excludes'] && typeof applyStoredYieldExcludes==='function') applyStoredYieldExcludes(cfg['yield-excludes']);
+    if(cfg.suppliers) customSuppliers=(cfg.suppliers.custom||[]).filter(Boolean);
+    if(DB.emailjs.publicKey){ try{ emailjs.init({publicKey:DB.emailjs.publicKey}); }catch(e){} }
+    try{ window.__loadMs={src:src||'server', col:_tCol, cfg:Date.now()-_t1}; }catch(e){}
+    console.log('[loadDB]',(src||'server'),'— collections',_tCol+'ms, appConfig',(Date.now()-_t1)+'ms');
   } catch(e){ console.error('Firestore load error:',e); throw e; }
 }
+// True if the local cache already holds enough to paint the app without waiting on the network.
+function _haveCachedData(uid){ return !!(DB.users&&DB.users.find(u=>u.uid===uid)&&(DB.harvests.length||DB.orders.length||DB.fruitings.length)); }
 
 
 
@@ -1770,6 +1755,17 @@ async function pwFields(pw){
   return { pwHash: await derivePwHash(pw), pw: firebase.firestore.FieldValue.delete() };
 }
 
+// Set the session, log the login (fire-and-forget), and enter the app.
+function _enterSession(uid,email,userDoc){
+  const _isNewDev=!isDeviceTrusted(uid);
+  S={role:userDoc.role,clientId:null,uid,email,name:userDoc.name||'',
+     permissions:userDoc.permissions||DEFAULT_PERMS[userDoc.role]||DEFAULT_PERMS.staff,
+     newDevice:_isNewDev};
+  try{ logLogin(uid,email,userDoc.role,userDoc.name||'',_isNewDev); }catch(e){}
+  _loginBusy=false;
+  launch();
+  if(S.newDevice) showNewDeviceBanner(uid);
+}
 let _loginBusy=false;
 async function login(){
   if(_loginBusy) return;                       // guard: autofill + Enter + click can fire this 2–3× → concurrent loadDB() wedges it
@@ -1782,26 +1778,25 @@ async function login(){
   try{
     const cred=await auth.signInWithEmailAndPassword(email,pw);
     const uid=cred.user.uid;
-    // Load data now that we're authenticated (security lockdown — no pre-login reads).
-    await loadDB();
-    await autoGenerateStandingOrders();
-    const userDoc=DB.users.find(u=>u.uid===uid);
-    if(userDoc&&userDoc.active!==false){
-      const _isNewDev=!isDeviceTrusted(uid);
-      S={role:userDoc.role,clientId:null,uid,email,name:userDoc.name||'',
-         permissions:userDoc.permissions||DEFAULT_PERMS[userDoc.role]||DEFAULT_PERMS.staff,
-         newDevice:_isNewDev};
-      await logLogin(uid,email,userDoc.role,userDoc.name||'',_isNewDev);
-      _loginBusy=false;                        // clear before we navigate away (gate may return later on timeout)
-      launch();
-      if(S.newDevice) showNewDeviceBanner(uid);
-      return;
-    } else {
-      // Authenticated but not a recognized internal account
-      await auth.signOut();
-      showLoginErr('Account not recognized. Contact admin.');
-      release(); return;
+    // FAST PATH — if the offline cache already has data, enter instantly and refresh from the server in the background.
+    if(_fsPersist){
+      try{ await loadDB({source:'cache'}); }catch(e){}
+      const ud=DB.users.find(u=>u.uid===uid);
+      if(ud && ud.active!==false && _haveCachedData(uid)){
+        _enterSession(uid,email,ud);
+        loadDB().then(()=>{ const u2=DB.users.find(u=>u.uid===uid);
+          if(!u2||u2.active===false){ auth.signOut().then(()=>location.reload()); return; }
+          S.role=u2.role; S.permissions=u2.permissions||DEFAULT_PERMS[u2.role]||DEFAULT_PERMS.staff; S.name=u2.name||S.name;
+          buildNav(); renderC();
+        }).catch(err=>console.warn('bg refresh failed',err));
+        return;
+      }
     }
+    // NO usable cache — authoritative server load, then enter (security lockdown: no pre-login reads).
+    await loadDB();
+    const userDoc=DB.users.find(u=>u.uid===uid);
+    if(userDoc&&userDoc.active!==false){ _enterSession(uid,email,userDoc); return; }
+    else { await auth.signOut(); showLoginErr('Account not recognized. Contact admin.'); release(); return; }
   }catch(e){
     showLoginErr(e.message||'Sign-in failed. Check email and password.');
     release(); return;
@@ -1821,9 +1816,41 @@ window.addEventListener('DOMContentLoaded', async ()=>{
     const unsub = auth.onAuthStateChanged(async (user)=>{
       unsub();
       if(user){
+        const uid=user.uid;
+        const paintApp=(ud)=>{
+          S={role:ud.role,clientId:null,uid,email:user.email,name:ud.name||'',
+             permissions:ud.permissions||DEFAULT_PERMS[ud.role]||DEFAULT_PERMS.staff,
+             newDevice:!isDeviceTrusted(uid)};
+          bar.style.width='100%';
+          document.getElementById('app-loader').style.display='none';
+          document.getElementById('gate').style.display='none';
+          document.getElementById('app').style.display='block';
+          buildNav(); renderC(); resetSessionTimer();
+          if(!window._activityBound){
+            window._activityBound=true;
+            document.addEventListener('click',resetSessionTimer);
+            document.addEventListener('keydown',resetSessionTimer);
+            document.addEventListener('touchstart',resetSessionTimer);
+          }
+          if(S.newDevice) setTimeout(()=>showNewDeviceBanner(uid),500);
+        };
+        // FAST PATH — paint from the offline cache immediately, then refresh from the server in the background.
+        if(_fsPersist){
+          try{ await loadDB({source:'cache'}); }catch(e){}
+          const ud=DB.users.find(u=>u.uid===uid);
+          if(ud && ud.active!==false && _haveCachedData(uid)){
+            paintApp(ud); resolve();
+            loadDB().then(()=>{ const u2=DB.users.find(u=>u.uid===uid);
+              if(!u2||u2.active===false){ auth.signOut().then(()=>location.reload()); return; }
+              S.role=u2.role; S.permissions=u2.permissions||DEFAULT_PERMS[u2.role]||DEFAULT_PERMS.staff; S.name=u2.name||S.name;
+              buildNav(); renderC();
+            }).catch(err=>console.warn('bg refresh failed',err));
+            return;
+          }
+        }
+        // SERVER PATH — authoritative load (first-ever login, or empty cache).
         try {
           await loadDB();
-          await autoGenerateStandingOrders();
           bar.style.width='80%';
         } catch(e){
           console.error('Firestore load error:', e);
@@ -1833,26 +1860,9 @@ window.addEventListener('DOMContentLoaded', async ()=>{
           errEl.style.display='block';
           errEl.style.color='#c8a82a';
         }
-        const userDoc = DB.users.find(u=>u.uid===user.uid);
+        const userDoc = DB.users.find(u=>u.uid===uid);
         if(userDoc && userDoc.active!==false){
-          S={role:userDoc.role,clientId:null,uid:user.uid,email:user.email,
-             name:userDoc.name||'',
-             permissions:userDoc.permissions||DEFAULT_PERMS[userDoc.role]||DEFAULT_PERMS.staff,
-             newDevice:!isDeviceTrusted(user.uid)};
-          bar.style.width='100%';
-          await new Promise(r=>setTimeout(r,200));
-          document.getElementById('app-loader').style.display='none';
-          document.getElementById('gate').style.display='none';
-          document.getElementById('app').style.display='block';
-          buildNav(); renderC();
-          resetSessionTimer();
-          if(!window._activityBound){
-            window._activityBound=true;
-            document.addEventListener('click',resetSessionTimer);
-            document.addEventListener('keydown',resetSessionTimer);
-            document.addEventListener('touchstart',resetSessionTimer);
-          }
-          if(S.newDevice) setTimeout(()=>showNewDeviceBanner(user.uid),500);
+          paintApp(userDoc);
           resolve();
           return;
         } else {
