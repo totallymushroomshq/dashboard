@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #145</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #146</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -402,11 +402,13 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 
       <!-- LOGIN -->
       <div class="gpane a" id="gp-login">
-        <div class="fl"><label>Email</label><input class="fi" type="email" id="login-email" placeholder="your@email.com"></div>
-        <div class="fl"><label>Password</label><div style="position:relative;"><input class="fi" type="password" id="pw" placeholder="Enter your password" autocomplete="current-password" style="padding-right:42px;"><button type="button" onclick="togglePw('pw','pw-eye')" style="position:absolute;right:0;top:0;bottom:0;width:40px;background:transparent;border:none;cursor:pointer;color:var(--text3);display:flex;align-items:center;justify-content:center;padding:0;" id="pw-eye" aria-label="Show password">
+        <form id="login-form" onsubmit="login();return false;">
+        <div class="fl"><label>Email</label><input class="fi" type="email" id="login-email" name="username" autocomplete="username" placeholder="your@email.com"></div>
+        <div class="fl"><label>Password</label><div style="position:relative;"><input class="fi" type="password" id="pw" name="password" placeholder="Enter your password" autocomplete="current-password" style="padding-right:42px;"><button type="button" onclick="togglePw('pw','pw-eye')" style="position:absolute;right:0;top:0;bottom:0;width:40px;background:transparent;border:none;cursor:pointer;color:var(--text3);display:flex;align-items:center;justify-content:center;padding:0;" id="pw-eye" aria-label="Show password">
           <svg id="pw-eye-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button></div></div>
-        <button class="gbtn gbtn-m" onclick="login()">Enter</button>
+        <button type="submit" id="login-btn" class="gbtn gbtn-m">Enter</button>
+        </form>
         <div class="gate-err" id="lerr">Incorrect password. Try again.</div>
         <div class="gate-ok" id="lok" style="display:none;"></div>
         <div style="text-align:center;margin-top:12px;"><a href="#" onclick="forgotPassword();return false;" style="font-size:12px;color:var(--sage);text-decoration:underline;text-underline-offset:2px;font-family:'Syne Mono',monospace;">Forgot password?</a></div>
@@ -1768,42 +1770,42 @@ async function pwFields(pw){
   return { pwHash: await derivePwHash(pw), pw: firebase.firestore.FieldValue.delete() };
 }
 
+let _loginBusy=false;
 async function login(){
+  if(_loginBusy) return;                       // guard: autofill + Enter + click can fire this 2–3× → concurrent loadDB() wedges it
   const email=document.getElementById('login-email').value.trim();
   const pw=document.getElementById('pw').value.trim();
-
-  // ── FIREBASE AUTH (email-based, internal users) ──
-  if(email && pw){
-    try{
-      const cred=await auth.signInWithEmailAndPassword(email,pw);
-      const uid=cred.user.uid;
-      // Load data now that we're authenticated (security lockdown — no pre-login reads).
-      await loadDB();
-      await autoGenerateStandingOrders();
-      const userDoc=DB.users.find(u=>u.uid===uid);
-      if(userDoc&&userDoc.active!==false){
-        const _isNewDev=!isDeviceTrusted(uid);
-        S={role:userDoc.role,clientId:null,uid,email,name:userDoc.name||'',
-           permissions:userDoc.permissions||DEFAULT_PERMS[userDoc.role]||DEFAULT_PERMS.staff,
-           newDevice:_isNewDev};
-        await logLogin(uid,email,userDoc.role,userDoc.name||'',_isNewDev);
-        launch();
-        if(S.newDevice) showNewDeviceBanner(uid);
-        return;
-      } else {
-        // No user doc — not a recognized internal account
-        await auth.signOut();
-        showLoginErr('Account not recognized. Contact admin.');
-        return;
-      }
-    }catch(e){
-      showLoginErr(e.message||'Sign-in failed. Check email and password.');
+  if(!email||!pw){ showLoginErr('Enter your email and password.'); return; }
+  const btn=document.getElementById('login-btn'); const _label=btn?btn.textContent:'';
+  _loginBusy=true; if(btn){ btn.disabled=true; btn.textContent='Signing in…'; }
+  const release=()=>{ _loginBusy=false; if(btn){ btn.disabled=false; btn.textContent=_label||'Enter'; } };
+  try{
+    const cred=await auth.signInWithEmailAndPassword(email,pw);
+    const uid=cred.user.uid;
+    // Load data now that we're authenticated (security lockdown — no pre-login reads).
+    await loadDB();
+    await autoGenerateStandingOrders();
+    const userDoc=DB.users.find(u=>u.uid===uid);
+    if(userDoc&&userDoc.active!==false){
+      const _isNewDev=!isDeviceTrusted(uid);
+      S={role:userDoc.role,clientId:null,uid,email,name:userDoc.name||'',
+         permissions:userDoc.permissions||DEFAULT_PERMS[userDoc.role]||DEFAULT_PERMS.staff,
+         newDevice:_isNewDev};
+      await logLogin(uid,email,userDoc.role,userDoc.name||'',_isNewDev);
+      _loginBusy=false;                        // clear before we navigate away (gate may return later on timeout)
+      launch();
+      if(S.newDevice) showNewDeviceBanner(uid);
       return;
+    } else {
+      // Authenticated but not a recognized internal account
+      await auth.signOut();
+      showLoginErr('Account not recognized. Contact admin.');
+      release(); return;
     }
+  }catch(e){
+    showLoginErr(e.message||'Sign-in failed. Check email and password.');
+    release(); return;
   }
-
-  // Client login retired — app is internal-only (staff + admin via Firebase Auth above).
-  showLoginErr('Incorrect credentials. Try again.');
 }
 
 window.addEventListener('DOMContentLoaded', async ()=>{
