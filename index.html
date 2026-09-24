@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #148</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #149</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -861,8 +861,8 @@ const PRODUCTS = [
   {code:'CH01', name:'Chestnut #1',      desc:'TOP GRADE intact veil — youngest harvest',                                      priceLb:10.00, unitLb:3, dataKey:'chestnut1',  varieties:['Chestnut']},
   {code:'CH02', name:'Chestnut #2',      desc:'HIGH GRADE open veil — younger harvest',                                        priceLb:9.00,  unitLb:3, dataKey:'chestnut2',  varieties:['Chestnut']},
   {code:'WD01', name:'Wild Mix',         desc:'Wild, Local, Bioregional specialty (Lynx Paw, Coral Tooth, Golden Needle, White Winter, ToT Oyster)', priceLb:9.50, unitLb:3, dataKey:'wildMix', varieties:['Lynx Paw','Coral Tooth','Gold Enoki','White Enoki','Blue Oyster','Snow Oyster','Italian Oyster','Black Pearl']},
-  {code:'MO6',  name:'Oyster Mix 10# Tote', desc:'Oyster Mix 10 lb tote (Blue, White, Italian, Black Pearl, ToT)', priceLb:8.00,  unitLb:10, dataKey:'oyster10',  restrict:'Opryland', varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Cumberland Oyster','Black Pearl']},
-  {code:'SHT10',name:'Shiitake 10# Tote',  desc:'Shiitake 10 lb tote',                                           priceLb:10.00, unitLb:10, dataKey:'shiitake10', restrict:'Opryland', varieties:['Shiitake']},
+  {code:'MO6',  name:'Oyster Mix 10# Tote', desc:'Oyster Mix 10 lb tote (Blue, White, Italian, Black Pearl, ToT)', priceLb:8.00,  unitLb:10, dataKey:'oyster10',  varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Cumberland Oyster','Black Pearl']},
+  {code:'SHT10',name:'Shiitake 10# Tote',  desc:'Shiitake 10 lb tote',                                           priceLb:10.00, unitLb:10, dataKey:'shiitake10', varieties:['Shiitake']},
 ];
 const RETAIL_PACKS = [
   {code:'LRP', name:"Lion's Mane ¼lb Pack", desc:"Lion's Mane retail pack", priceLb:8.00, unitLb:0.25, dataKey:'lionsPack', varieties:["Lion's Mane"]},
@@ -3338,7 +3338,7 @@ function closeSlip(){
 document.getElementById('slip-modal').addEventListener('click',function(e){ if(e.target===this) closeSlip() });
 
 // ── NEW ORDER / REQUEST ──
-// #3 — show client-restricted items (e.g. 10# totes → Opryland only) only when the
+// #3 — show client-restricted items (e.g. 10# totes → Freshpoint, the middle-man for Opryland) only when the
 // typed client matches the restriction; zero them out otherwise so they never land on
 // another client's order.
 function onOrderClientChange(){
