@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #149</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #150</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -11670,7 +11670,11 @@ function rLabCultures(el){
 let _spawnQ = '';
 const SPAWN_RUN_STATUSES = [['colonizing','Colonizing'],['ready','Ready'],['used','Used up'],['contaminated','Contaminated']];
 function nextSpawnLot(){ const yr=new Date().getFullYear(); const ex=(DB.spawnRuns||[]).filter(s=>s.spawnLot&&s.spawnLot.startsWith('SPN-'+yr+'-')).map(s=>parseInt(s.spawnLot.slice(-3))||0); return 'SPN-'+yr+'-'+String((ex.length?Math.max(...ex):0)+1).padStart(3,'0'); }
-function spawnOnHand(s){ return Math.max(0,(parseInt(s.bagCount)||0)-(parseInt(s.usedBags)||0)); }
+// Total bags drawn from a run — BOTH ledgers: usedBags (dropdown-pick draws via applySpawnDraw)
+// and usedByLot (typed/"Spawn Lots Combined" draws via drawDownSpawn). Historically the pool
+// display only counted usedBags, so manually-typed spawn lots never reduced on-hand. Count both.
+function spawnUsed(s){ return (parseInt(s&&s.usedBags)||0)+Object.values((s&&s.usedByLot)||{}).reduce((a,b)=>a+(parseInt(b)||0),0); }
+function spawnOnHand(s){ return Math.max(0,(parseInt(s.bagCount)||0)-spawnUsed(s)); }
 function onHandSpawn(){ return (DB.spawnRuns||[]).filter(s=>s.status!=='contaminated'&&s.status!=='used'&&spawnOnHand(s)>0).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
 function spawnStatusBadge(s){ const m={colonizing:['Colonizing','var(--amber)'],ready:['Ready','var(--fern)'],used:['Used','var(--text3)'],contaminated:['Contam','var(--rust)']}; const [l,c]=m[s]||['—','var(--text3)']; return `<span style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:${c};background:${c}22;border:1px solid ${c}44;border-radius:3px;padding:2px 7px;">${l}</span>`; }
 function onSpawnCulture(){ const v=(document.getElementById('sp-culture')?.value||'').trim(); const c=(DB.cultures||[]).find(x=>x.cultureLot===v||x.id===v); if(c && c.strain){ const first=document.querySelector('#sp-strains .sp-srow .sp-sstrain'); if(first && !first.value){ first.value=c.strain; onSpawnStrainInput(0); } } }
@@ -11922,7 +11926,7 @@ function rLabSpawn(el){
     const st=strs[0];
     return `<tr>
       <td class="mn" style="color:var(--gold);font-weight:700;">${st&&st.lot?st.lot:spawnLabel(s)}</td><td style="font-weight:500;">${s.strain}</td><td>${s.grain||'—'}</td>
-      <td class="mn" style="font-size:10px;color:var(--text3);">${s.sourceCultureLot||s.cultureSource||'—'}</td><td class="mn">${s.bagCount||0}</td><td class="mn">${s.usedBags||0}</td>
+      <td class="mn" style="font-size:10px;color:var(--text3);">${s.sourceCultureLot||s.cultureSource||'—'}</td><td class="mn">${s.bagCount||0}</td><td class="mn">${spawnUsed(s)}</td>
       <td class="mn" style="color:var(--fern);font-weight:700;">${spawnOnHand(s)}</td><td>${spawnStatusBadge(s.status)}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="8" class="empty">No spawn on hand — log a grain spawn run below.</td></tr>`;
