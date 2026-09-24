@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #150</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #151</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5315,14 +5315,27 @@ async function snapBlockBatch(input){
   }catch(e){ show('⚠ '+e.message); }
   finally{ input.value=''; }
 }
+function bbSpawnRow(ss){ ss=ss||{};
+  return `<div class="bb-srow" style="display:flex;gap:5px;align-items:center;margin-bottom:3px;">
+    <input class="fi bb-slot" list="lab-lotcode-l" value="${attrEsc(ss.lot||'')}" placeholder="spawn lot #" style="flex:1 1 130px;min-width:100px;" autocomplete="off">
+    <input class="fi bb-sbags" type="number" min="0" step="1" value="${(ss.bags!=null&&ss.bags!=='')?ss.bags:''}" placeholder="bags" style="max-width:72px;"><span style="font-size:10px;color:var(--text3);">bags</span>
+    <button type="button" class="btn b-r b-sm" title="Remove spawn lot" onclick="this.closest('.bb-srow').remove()">✕</button>
+  </div>`;
+}
+function bbAddSpawn(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('bb-srows')) w.insertAdjacentHTML('beforeend',bbSpawnRow({})); }
 function bbStrainRow(r){ r=r||{};
-  return `<div class="bb-strainrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
+  const srcs=(Array.isArray(r.spawnSources)&&r.spawnSources.length)?r.spawnSources:(r.spawnLot?parseSpawnSrcText(r.spawnLot):[{}]);
+  return `<div class="bb-strainrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed var(--border);">
     <input class="fi bb-suffix" value="${attrEsc(r.suffix||'')}" placeholder="suffix (A)" style="max-width:90px;">
     <input class="fi bb-var" list="bb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Strain" style="flex:1;min-width:120px;" autocomplete="off" onchange="if(typeof hbResolveVariety==='function'){this.value=hbResolveVariety(this.value);}">
     <input class="fi bb-gen" value="${attrEsc(r.generation||'')}" placeholder="Gen" style="max-width:64px;">
     <input class="fi bb-bc" type="number" min="0" value="${(r.blockCount!=null&&r.blockCount!=='')?r.blockCount:''}" placeholder="blocks" style="max-width:84px;">
-    <input class="fi bb-slot" list="lab-lotcode-l" value="${attrEsc((Array.isArray(r.spawnSources)&&r.spawnSources.length)?fmtSpawnSrc(r.spawnSources):(r.spawnLot||''))}" placeholder="spawn lots: 070326-7 ×7, 070926-8 ×8" title="Combined spawn lots — one per lot as ‘lot ×bags’, comma-separated" style="flex:1;min-width:150px;" autocomplete="off">
-    <button type="button" class="btn b-r b-sm" onclick="this.closest('.bb-strainrow').remove()">✕</button>
+    <div class="bb-spawnwrap" style="flex:1 1 100%;padding:7px 9px;background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.18);border-radius:5px;">
+      <div style="font-size:10px;color:var(--text3);margin-bottom:4px;font-family:'Syne Mono',monospace;letter-spacing:.5px;">SPAWN LOTS &mdash; one row per lot (draws each from the pool)</div>
+      <div class="bb-srows">${srcs.map(bbSpawnRow).join('')}</div>
+      <button type="button" class="btn b-g b-sm" onclick="bbAddSpawn(this)">+ spawn lot</button>
+    </div>
+    <button type="button" class="btn b-r b-sm" onclick="this.closest('.bb-strainrow').remove()">✕ strain</button>
   </div>`;
 }
 function bbAddStrain(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('bb-strains')) w.insertAdjacentHTML('beforeend',bbStrainRow({})); }
@@ -5331,11 +5344,14 @@ function _readBlockBatchFromDOM(){
   const out=[];
   document.querySelectorAll('.bb-sheet').forEach(el=>{
     const si=parseInt(el.getAttribute('data-si')); const orig=(_blockBatch[si])||{};
-    const rows=[...el.querySelectorAll('.bb-strainrow')].map(row=>({
-      suffix:(row.querySelector('.bb-suffix')?.value||'').trim(), strain:(row.querySelector('.bb-var')?.value||'').trim(),
-      generation:(row.querySelector('.bb-gen')?.value||'').trim(), blockCount:parseInt(row.querySelector('.bb-bc')?.value)||0,
-      spawnLot:(row.querySelector('.bb-slot')?.value||'').trim(), spawnSources:parseSpawnSrcText(row.querySelector('.bb-slot')?.value)
-    })).filter(r=>r.suffix||r.strain||r.blockCount);
+    const rows=[...el.querySelectorAll('.bb-strainrow')].map(row=>{
+      const ss=[...row.querySelectorAll('.bb-srow')].map(sr=>({lot:(sr.querySelector('.bb-slot')?.value||'').trim(),bags:parseInt(sr.querySelector('.bb-sbags')?.value)||0})).filter(s=>s.lot||s.bags);
+      return {
+        suffix:(row.querySelector('.bb-suffix')?.value||'').trim(), strain:(row.querySelector('.bb-var')?.value||'').trim(),
+        generation:(row.querySelector('.bb-gen')?.value||'').trim(), blockCount:parseInt(row.querySelector('.bb-bc')?.value)||0,
+        spawnSources:ss, spawnLot:ss.map(s=>s.lot).filter(Boolean).join(', ')
+      };
+    }).filter(r=>r.suffix||r.strain||r.blockCount);
     const g=id=>(el.querySelector('.'+id)?.value||'').trim();
     out.push({...orig, productionDate:el.querySelector('.bb-pdate')?.value||orig.productionDate||'', lotCode:g('bb-lot'),
       substrateBatch:g('bb-sbatch'), order:g('bb-order'), batch:g('bb-batch'), blocksProduced:parseInt(el.querySelector('.bb-produced')?.value)||0, rows });
@@ -11041,7 +11057,16 @@ function matchSpawnByStrain(strain, spawnLots){
 }
 // Parse a comma-separated "lot ×bags, lot ×bags" string → [{lot,bags}]
 function parseSpawnSrcText(txt){ txt=(txt||'').trim(); if(!txt) return [];
-  return txt.split(',').map(t=>{ const m=t.trim().match(/^(.*?)\s*[×xX]\s*(\d+)\s*(?:bg|bags?)?$/); return m?{lot:m[1].trim(),bags:parseInt(m[2])||0}:{lot:t.trim(),bags:0}; }).filter(s=>s.lot||s.bags);
+  return txt.split(',').map(t=>{ t=t.trim();
+    // "LOT × N" / "LOT xN" / "LOT x N bags"
+    let m=t.match(/^(.*?)\s*[×xX]\s*(\d+)\s*(?:bg|bags?)?$/);
+    if(m) return {lot:m[1].trim(),bags:parseInt(m[2])||0};
+    // legacy sheet/AI format "LOT-N" where N is 1–2 digits = bag count (072026-7, 10218B-18, 071026A-1).
+    // Longer numeric tails stay part of the lot code (SPN-2026-020, IH-050826).
+    let d=t.match(/^(.+?)-(\d{1,2})$/);
+    if(d) return {lot:d[1].trim(),bags:parseInt(d[2])||0};
+    return {lot:t,bags:0};
+  }).filter(s=>s.lot||s.bags);
 }
 function fmtSpawnSrc(ss){ return (Array.isArray(ss)?ss:[]).filter(s=>s.lot||s.bags).map(s=>`${s.lot||''}${s.bags?' ×'+s.bags:''}`).join(', '); }
 function addPlSpawnSource(i){ const w=document.getElementById('plv-spawnsrc-'+i); if(w){ w.insertAdjacentHTML('beforeend',plSpawnSrcRow(i,{})); } }
