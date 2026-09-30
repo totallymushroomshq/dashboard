@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #152</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #153</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -407,6 +407,10 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
         <div class="fl"><label>Password</label><div style="position:relative;"><input class="fi" type="password" id="pw" name="password" placeholder="Enter your password" autocomplete="current-password" style="padding-right:42px;"><button type="button" onclick="togglePw('pw','pw-eye')" style="position:absolute;right:0;top:0;bottom:0;width:40px;background:transparent;border:none;cursor:pointer;color:var(--text3);display:flex;align-items:center;justify-content:center;padding:0;" id="pw-eye" aria-label="Show password">
           <svg id="pw-eye-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button></div></div>
+        <label style="display:flex;align-items:center;gap:8px;margin:4px 0 14px;font-size:12px;color:var(--text3);cursor:pointer;font-family:'Syne Mono',monospace;">
+          <input type="checkbox" id="login-remember" style="width:15px;height:15px;accent-color:var(--fern);cursor:pointer;">
+          Keep me signed in on this device
+        </label>
         <button type="submit" id="login-btn" class="gbtn gbtn-m">Enter</button>
         </form>
         <div class="gate-err" id="lerr">Incorrect password. Try again.</div>
@@ -1775,6 +1779,11 @@ async function login(){
   const btn=document.getElementById('login-btn'); const _label=btn?btn.textContent:'';
   _loginBusy=true; if(btn){ btn.disabled=true; btn.textContent='Signing in…'; }
   const release=()=>{ _loginBusy=false; if(btn){ btn.disabled=false; btn.textContent=_label||'Enter'; } };
+  // Session persistence: only keep the login across app/browser restarts if the user opted in.
+  // Default = SESSION (clears when the app/browser closes) so an admin login never silently auto-enters later.
+  const _remember=!!document.getElementById('login-remember')?.checked;
+  try{ localStorage.setItem('tm-remember',_remember?'1':'0'); }catch(e){}
+  try{ await auth.setPersistence(_remember?firebase.auth.Auth.Persistence.LOCAL:firebase.auth.Auth.Persistence.SESSION); }catch(e){ console.warn('setPersistence',e); }
   try{
     const cred=await auth.signInWithEmailAndPassword(email,pw);
     const uid=cred.user.uid;
@@ -1815,6 +1824,13 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   await new Promise(resolve=>{
     const unsub = auth.onAuthStateChanged(async (user)=>{
       unsub();
+      // Do NOT auto-enter unless the user chose "keep me signed in". This also clears any legacy
+      // always-persisted admin session (from before this rule) — it signs out and shows the gate.
+      let _remembered=false; try{ _remembered=localStorage.getItem('tm-remember')==='1'; }catch(e){}
+      if(user && !_remembered){
+        try{ await auth.signOut(); }catch(e){}
+        user=null;
+      }
       if(user){
         const uid=user.uid;
         const paintApp=(ud)=>{
