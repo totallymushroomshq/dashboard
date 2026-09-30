@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #154</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #155</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4837,6 +4837,17 @@ function renderFruitingQueue(){
 // Fruiting blocks should come from LIVE INVENTORY (received-blocks pool). If a typed lot
 // isn't there, demand an explanation (saved to the record) — soft gate for the beta phase.
 function validateFruitingLots(rows){
+  // ── QUANTITY GATE ── can't place more blocks of a lot than the received-blocks pool holds.
+  // (A lot with 0 on hand is handled by the "not in inventory" explanation below; this catches shortfalls.)
+  const req={}; // lotKey -> {lot, blocks}
+  rows.forEach(r=>{ if(!r.lotNumber||r.receivingId) return; const k=_lotKey(r.lotNumber); if(!k) return; (req[k]=req[k]||{lot:r.lotNumber,blocks:0}); req[k].blocks+=parseInt(r.blockCount)||0; });
+  for(const k of Object.keys(req)){
+    const avail=(DB.receivings||[]).filter(rc=>_lotKey(rc.lotNumber)===k).reduce((s,rc)=>s+receivingOnHand(rc),0);
+    if(avail>0.001 && req[k].blocks>avail+0.001){
+      alert('⛔ Can’t finish this session.\n\nYou’re placing '+req[k].blocks+' blocks of lot “'+req[k].lot+'”, but the received-blocks pool only shows '+Math.round(avail)+' on hand.\n\nFix the receiving first, then try again:\n• If the lot # was mistyped it won’t match — correct it, or\n• Adjust the received block count in the receiving session, or\n• Reduce the blocks you’re placing here.');
+      return false;
+    }
+  }
   for(const r of rows){
     if(!r.lotNumber) continue;
     if(r.receivingId) continue; // placed from a received batch = already in inventory
