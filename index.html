@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #153</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #154</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -3905,6 +3905,20 @@ async function drawDownReceivings(lotNumber, blockCount, preferId){
     try{ await FS.update('receivings',rec.id,upd); }catch(e){ console.warn('drawDownReceivings',e); } }
   return {drawn,ids,shortfall:remaining};
 }
+// GIVE BACK a placement to on-hand receivings (reverse of drawDownReceivings) — used when a fruiting
+// placement is edited (lot/count changed) or removed, so the receiving inventory re-syncs. Prefers the
+// originally-linked receiving, else matches by lot key; restores 'on-hand' status if it re-opens.
+async function reverseReceivingDraw(lotNumber, blockCount, preferId){
+  let give=parseInt(blockCount)||0; if(give<=0) return;
+  const k=_lotKey(lotNumber||'');
+  let cands=(DB.receivings||[]).filter(r=>(parseInt(r.placedCount)||0)>0 && ((preferId&&r.id===preferId) || (k&&_lotKey(r.lotNumber)===k)));
+  cands.sort((a,b)=>((b.id===preferId?1:0)-(a.id===preferId?1:0)) || (b.date||'').localeCompare(a.date||'')); // linked first, then newest
+  for(const rec of cands){ if(give<=0) break; const back=Math.min(parseInt(rec.placedCount)||0, give); if(back<=0) continue;
+    rec.placedCount=(parseInt(rec.placedCount)||0)-back; give-=back;
+    const u={placedCount:rec.placedCount}; if(rec.status==='placed' && receivingOnHand(rec)>0){ rec.status='on-hand'; u.status='on-hand'; }
+    try{ await FS.update('receivings',rec.id,u); }catch(e){ console.warn('reverseReceivingDraw',e); }
+  }
+}
 // ── SPAWN on-hand: a grain-spawn run makes bags for its strain-lots; block production consumes them via spawnSources ──
 function _spawnRunBagsByLot(s){ // {lotKey: producedBags} for one spawn run
   const out={};
@@ -4933,9 +4947,10 @@ async function kickAllStale(){
   renderC();
 }
 
-function delFruiting(id){
+async function delFruiting(id){
   const f=DB.fruitings.find(x=>x.id===id);
   if(!confirm(`Delete this fruiting record${f?` (Lot ${f.lotNumber||''} · ${f.variety||''} · ${f.blockCount||0} blocks)`:''}?`)) return;
+  if(f){ try{ await reverseReceivingDraw(f.lotNumber, parseInt(f.blockCount)||0, f.receivingId); }catch(e){ console.warn('delFruiting giveback',e); } } // give the blocks back to receiving inventory
   DB.fruitings=DB.fruitings.filter(x=>x.id!==id);
   FS.del('fruitings',id);
   if(f) logAudit('fruiting_deleted',`Deleted fruiting Lot ${f.lotNumber||''} — ${f.variety||''} (${f.blockCount||0} blocks)`);
@@ -4977,6 +4992,7 @@ function openEditFruiting(id){
 }
 async function saveFruitingEdit(id){
   const f=DB.fruitings.find(x=>x.id===id); if(!f) return;
+  const oldLot=f.lotNumber, oldBC=parseInt(f.blockCount)||0, oldRecvId=f.receivingId; // for receiving re-sync
   const val=i=>(document.getElementById(i)?.value||'').trim();
   const bc=parseInt(document.getElementById('ef-bc')?.value)||0;
   if(!val('ef-lot')){ alert('Lot number is required.'); return; }
@@ -4993,6 +5009,14 @@ async function saveFruitingEdit(id){
   if(upd.source==='supplier' && upd.vendor) addSupplier(upd.vendor);
   Object.assign(f,upd);
   try{ await FS.update('fruitings',id,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  // Re-sync receiving draw-down when the lot or block count changed: give back the old placement, draw the new.
+  if(_lotKey(oldLot||'')!==_lotKey(upd.lotNumber||'') || oldBC!==bc){
+    try{
+      await reverseReceivingDraw(oldLot, oldBC, oldRecvId);
+      const dd=await drawDownReceivings(upd.lotNumber, bc);
+      f.receivingId=dd.ids[0]||''; await FS.update('fruitings',id,{receivingId:f.receivingId});
+    }catch(e){ console.warn('fruiting edit redraw',e); }
+  }
   logAudit('fruiting_edited',`Edited fruiting Lot ${upd.lotNumber} — ${upd.variety} (${bc} blocks, ${upd.status})`);
   toast('ef-t','✓ Fruiting updated');
   setTimeout(()=>{ closeModal(); rFruiting(document.getElementById('main-views')); },800);
@@ -6970,10 +6994,16 @@ async function saveFruitSession(send){
   const keptIds=new Set(); let firstId=null;
   for(const r of rows){
     const flds={date,containerID:container,source,vendor,lotNumber:r.lotNumber,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,sessionId,...(newScan?{scanUrl:newScan}:{})};
-    if(r.id){ const f=DB.fruitings.find(x=>x.id===r.id); if(f){ Object.assign(f,flds); try{ await FS.update('fruitings',r.id,flds); }catch(e){ console.warn('fse upd',e); } keptIds.add(r.id); firstId=firstId||r.id; } }
-    else { const fData={...flds,rateLbPerBlock:LBSPERBLOCK,notes:'added on session edit',scanUrl:newScan||S0.scanUrl||'',status:'fruiting',createdAt:new Date().toISOString()}; const nid=await FS.add('fruitings',fData); DB.fruitings.push({id:nid,...fData}); keptIds.add(nid); firstId=firstId||nid; try{ await drawDownReceivings(fData.lotNumber, fData.blockCount); }catch(e){} }
+    if(r.id){ const f=DB.fruitings.find(x=>x.id===r.id); if(f){
+        const _oL=f.lotNumber, _oBC=parseInt(f.blockCount)||0, _oRid=f.receivingId;
+        Object.assign(f,flds); try{ await FS.update('fruitings',r.id,flds); }catch(e){ console.warn('fse upd',e); } keptIds.add(r.id); firstId=firstId||r.id;
+        if(_lotKey(_oL||'')!==_lotKey(r.lotNumber||'') || _oBC!==(parseInt(r.blockCount)||0)){
+          try{ await reverseReceivingDraw(_oL,_oBC,_oRid); const dd=await drawDownReceivings(r.lotNumber,r.blockCount); f.receivingId=dd.ids[0]||''; await FS.update('fruitings',r.id,{receivingId:f.receivingId}); }catch(e){ console.warn('fse redraw',e); }
+        }
+      } }
+    else { const fData={...flds,rateLbPerBlock:LBSPERBLOCK,notes:'added on session edit',scanUrl:newScan||S0.scanUrl||'',status:'fruiting',createdAt:new Date().toISOString()}; const nid=await FS.add('fruitings',fData); DB.fruitings.push({id:nid,...fData}); keptIds.add(nid); firstId=firstId||nid; try{ const dd=await drawDownReceivings(fData.lotNumber, fData.blockCount); if(dd.ids.length){ fData.receivingId=dd.ids[0]; await FS.update('fruitings',nid,{receivingId:dd.ids[0]}); const nf=DB.fruitings.find(x=>x.id===nid); if(nf) nf.receivingId=dd.ids[0]; } }catch(e){} }
   }
-  for(const id of S0.ids){ if(!keptIds.has(id)){ DB.fruitings=DB.fruitings.filter(x=>x.id!==id); try{ await FS.del('fruitings',id); }catch(e){ console.warn('fse del',e); } } }
+  for(const id of S0.ids){ if(!keptIds.has(id)){ const _rm=DB.fruitings.find(x=>x.id===id); if(_rm){ try{ await reverseReceivingDraw(_rm.lotNumber, parseInt(_rm.blockCount)||0, _rm.receivingId); }catch(e){ console.warn('fse del giveback',e); } } DB.fruitings=DB.fruitings.filter(x=>x.id!==id); try{ await FS.del('fruitings',id); }catch(e){ console.warn('fse del',e); } } }
   logAudit('fruiting_edited',`Edited fruiting session ${container} ${_mmddyy(date)} — ${rows.length} lot(s)`);
   _fruitSessEdit=null;
   if(send && firstId){ resendFruiting(firstId, true); }
