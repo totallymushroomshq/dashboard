@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #156</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #157</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4625,7 +4625,7 @@ function rFruiting(el){
       <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="1" id="fr-bc" placeholder="# of blocks" oninput="updateFruitingPreview()"></div>
       <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="fr-bw" placeholder="e.g. 5.5" oninput="updateFruitingPreview()"></div>
       <div class="fgl"><label>Forecast Rate <span style="color:var(--text3);font-size:11px;">lb / block</span></label><input class="fi" type="number" min="0" step="0.1" id="fr-rate" value="${LBSPERBLOCK}" oninput="updateFruitingPreview()"></div>
-      <div class="fgl"><label>Unusable Blocks <span style="color:var(--text3);font-size:11px;">→ waste stream</span></label><input class="fi" type="number" min="0" id="fr-unusable" placeholder="0"></div>
+      <div class="fgl"><label>Spoiled / Unusable Blocks <span style="color:var(--text3);font-size:11px;">→ spoilage report (manufacturer credit)</span></label><input class="fi" type="number" min="0" id="fr-unusable" placeholder="0"></div>
     </div>
     <div id="fr-preview" style="display:none;background:rgba(58,96,48,.07);border:1px solid rgba(58,96,48,.2);border-radius:3px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:var(--text2);line-height:1.6;"></div>
     <div class="fgl" style="margin-bottom:16px;"><label>Notes</label><textarea class="fta" id="fr-notes" placeholder="Block source, substrate mix, any observations…"></textarea></div>
@@ -4824,7 +4824,7 @@ function renderFruitingQueue(){
         <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="1" value="${r.blockCount}" onchange="updateFruitingRow(${i},'blockCount',this.value)" placeholder="# of blocks"></div>
         <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" value="${r.blockWeightLb||''}" placeholder="e.g. 5.5" onchange="updateFruitingRow(${i},'blockWeightLb',this.value)"></div>
         <div class="fgl"><label>Forecast Rate <span style="color:var(--text3);font-size:11px;">lb / block</span></label><input class="fi" type="number" min="0" step="0.1" value="${r.rateLbPerBlock||LBSPERBLOCK}" onchange="updateFruitingRow(${i},'rateLbPerBlock',this.value)"></div>
-        <div class="fgl"><label>Unusable Blocks <span style="color:var(--text3);font-size:11px;">→ waste stream</span></label><input class="fi" type="number" min="0" value="${r.unusable||''}" placeholder="0" onchange="updateFruitingRow(${i},'unusable',this.value)"></div>
+        <div class="fgl"><label>Spoiled / Unusable Blocks <span style="color:var(--text3);font-size:11px;">→ spoilage report (manufacturer credit)</span></label><input class="fi" type="number" min="0" value="${r.unusable||''}" placeholder="0" onchange="updateFruitingRow(${i},'unusable',this.value)"></div>
       </div>
       <div class="fgl" style="margin-top:8px;"><label>Notes</label><input class="fi" value="${attrEsc(r.notes||'')}" onchange="updateFruitingRow(${i},'notes',this.value)" placeholder="Block source, substrate mix, observations…"></div>
     </div>`;}).join('') : '';
@@ -4889,9 +4889,9 @@ async function _doFruitingCommit(rows, crew){
     DB.fruitings.push({id:fId,...fData}); _frCreatedIds.push(fId);
     // Unusable blocks → waste stream (same blockDisposals stream as harvest)
     if(r.unusable>0){
-      const dData={date:r.date,stage:'pre-fruiting',container:r.containerID,cookLot:'',labBatchId:'',variety:r.variety,source:r.source,supplier:r.vendor,blockCount:r.unusable,reason:'unusable',notes:`Unusable at fruiting — lot ${r.lotNumber}${r.notes?(' · '+r.notes):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+      const dData={date:r.date,stage:'pre-fruiting',container:r.containerID,cookLot:'',labBatchId:'',lotNumber:r.lotNumber||'',variety:r.variety,source:r.source,supplier:r.vendor,blockCount:r.unusable,reason:'spoiled',notes:`Spoiled/unusable at fruiting — lot ${r.lotNumber}${r.notes?(' · '+r.notes):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
       const dId=await FS.add('blockDisposals',dData); dData.id=dId; DB.blockDisposals.push(dData);
-      logAudit('blocks_removed',`${r.unusable} unusable blocks at fruiting — lot ${r.lotNumber} — ${r.containerID}`);
+      logAudit('blocks_removed',`${r.unusable} spoiled/unusable blocks at fruiting — lot ${r.lotNumber} — ${r.containerID}`);
     }
     n++;
   }
@@ -6442,6 +6442,7 @@ const NOTIFY_TO = {
   block:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
   shipment: ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
   waste:    ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
+  spoilage: ['Allen@totallymushrooms.com','Mat@totallymushrooms.com','orders@totallymushrooms.com'],
   relocation:['orders@totallymushrooms.com','Allen@totallymushrooms.com'],
   execReport:['Allen@totallymushrooms.com','Mat@totallymushrooms.com','Rowan@totallymushrooms.com','Terry@totallymushrooms.com','Kitty@totallymushrooms.com']
 };
@@ -7424,6 +7425,7 @@ function rHarvest(el){
         </div>
         <div class="fgl"><label>Supplier / Production Company</label><input class="fi" id="sb-supplier" placeholder="e.g. Wild Spore, In-house" list="sb-supplier-list"></div>
       </div>
+      <div class="fgl" style="margin-top:4px;"><label>Supplier Lot # <span style="color:var(--text3);font-size:11px;">for manufacturer credit (external blocks)</span></label><input class="fi" id="sb-lotnum" placeholder="e.g. WS-$56$-260910-04" autocomplete="off"></div>
       <div class="fgl" style="margin-top:4px;">
         <label>Notes</label>
         <input class="fi" id="sb-notes" placeholder="Flush count reached, signs of contamination, etc.">
@@ -7474,6 +7476,8 @@ function rHarvest(el){
         </tr>`).join('')}</tbody>
       </table></div>`:''}`;
     })()}
+
+    ${buildSpoilageReportHTML()}
 
     <!-- ── BLOCK REMOVAL HISTORY ── -->
     ${(()=>{
@@ -7778,7 +7782,8 @@ async function logSpentBlocks(){
     if(!container){ alert('Select the container the blocks came from.'); return; }
   }
   if(!date||!blockCount){ alert('Date and block count are required.'); return; }
-  const data={date,stage,container,cookLot,labBatchId,variety,source,supplier,blockCount,reason,notes,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+  const lotNumber=(document.getElementById('sb-lotnum')?.value||'').trim();
+  const data={date,stage,container,cookLot,labBatchId,lotNumber,variety,source,supplier,blockCount,reason,notes,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
   if(!DB._isDemoMode){
     const id=await FS.add('blockDisposals',data);
     data.id=id;
@@ -9820,7 +9825,61 @@ function emailExecReport(){
   openEmailDispatch('execReport', subj, {label:'Executive Summary · '+_erPeriodTitle(), report:execReportText()});
 }
 
-
+// ── BLOCK SPOILAGE REPORT (for manufacturer credit) ──
+// Supplier-received blocks that spoiled / failed (manufacturer's fault) — grouped by supplier → lot.
+const _SPOIL_REASONS=new Set(['spoiled','contaminated','unusable','failed-to-fruit','dead']);
+function _isInhouseSup(s){ return /in[-\s]?house|carthage|tm hfp|cheekee|^tm\b/i.test(s||''); }
+function spoilageItems(){
+  return (DB.blockDisposals||[]).filter(d=>_SPOIL_REASONS.has(d.reason) && d.source!=='internal' && !_isInhouseSup(d.supplier) && (parseInt(d.blockCount)||0)>0);
+}
+function _spoilLot(d){ const l=(d.lotNumber||d.cookLot||'').trim(); if(l) return l; const m=/lot\s+([^\s·,]+)/i.exec(d.notes||''); return m?m[1]:'—'; }
+function spoilageReportText(){
+  const items=spoilageItems();
+  const pad=(s,n)=>{s=''+s;return s.length>=n?s:s+' '.repeat(n-s.length);};
+  const padL=(s,n)=>{s=''+s;return s.length>=n?s:' '.repeat(n-s.length)+s;};
+  const L=['TOTALLY MUSHROOMS — BLOCK SPOILAGE REPORT','Generated '+new Date().toLocaleString('en-US'),'For manufacturer credit — supplier-received blocks that spoiled / failed.',''];
+  if(!items.length){ L.push('(no supplier spoilage on record)'); return L.join('\n'); }
+  const bySup={}; items.forEach(d=>{ const s=(d.supplier||'').trim()||'Unspecified supplier'; (bySup[s]=bySup[s]||[]).push(d); });
+  let grand=0;
+  Object.keys(bySup).sort().forEach(sup=>{
+    const rows=bySup[sup].sort((a,b)=>(a.date||'').localeCompare(b.date||'')); const tot=rows.reduce((s,d)=>s+(parseInt(d.blockCount)||0),0); grand+=tot;
+    L.push('── '+sup.toUpperCase()+' ─────────────────────');
+    L.push(pad('DATE',11)+pad('LOT',16)+pad('VARIETY',18)+padL('BLKS',5)+'  REASON');
+    rows.forEach(d=>L.push(pad(fDate(d.date),11)+pad(_spoilLot(d).slice(0,15),16)+pad((d.variety||'—').slice(0,17),18)+padL(parseInt(d.blockCount)||0,5)+'  '+(d.reason||'')));
+    L.push(pad('',50)+padL(tot+' blk',7)); L.push('');
+  });
+  L.push('════════════════════════════════════════'); L.push(pad('TOTAL SPOILED BLOCKS',50)+padL(grand+' blk',7)); L.push('');
+  L.push('Please issue credit for the blocks above. — Totally Mushrooms');
+  return L.join('\n');
+}
+function emailSpoilageReport(){
+  if(typeof openEmailDispatch!=='function'){ alert('Email dispatch unavailable.'); return; }
+  if(!spoilageItems().length){ alert('No supplier spoilage on record to report.'); return; }
+  openEmailDispatch('spoilage','TM Block Spoilage Report — manufacturer credit',{label:'Spoilage Report',report:spoilageReportText()});
+}
+function printSpoilageReport(){
+  const txt=spoilageReportText(); const w=window.open('','_blank'); if(!w){ alert('Allow pop-ups to print the report.'); return; }
+  w.document.write('<pre style="font-family:ui-monospace,Menlo,monospace;font-size:12px;white-space:pre-wrap;padding:28px;line-height:1.5;">'+txt.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</pre>');
+  w.document.close(); w.focus(); setTimeout(()=>{try{w.print();}catch(e){}},300);
+}
+function buildSpoilageReportHTML(){
+  const items=spoilageItems(); if(!items.length) return '';
+  const bySup={}; items.forEach(d=>{ const s=(d.supplier||'').trim()||'Unspecified'; (bySup[s]=bySup[s]||[]).push(d); });
+  const grand=items.reduce((s,d)=>s+(parseInt(d.blockCount)||0),0);
+  let body='';
+  Object.keys(bySup).sort().forEach(sup=>{
+    const rows=bySup[sup].sort((a,b)=>(a.date||'').localeCompare(b.date||'')); const tot=rows.reduce((s,d)=>s+(parseInt(d.blockCount)||0),0);
+    body+=`<tr style="background:rgba(154,42,42,.06);"><td colspan="5" style="font-weight:700;padding:7px 12px;">${sup} <span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">· ${tot} blocks</span></td></tr>`;
+    body+=rows.map(d=>`<tr><td class="mn">${fDate(d.date)}</td><td class="mn" style="color:var(--gold);font-weight:700;">${_spoilLot(d)}</td><td>${d.variety||'—'}</td><td class="mn" style="color:#9a2a2a;font-weight:700;">${parseInt(d.blockCount)||0}</td><td style="font-size:11px;color:var(--text3);">${d.reason||''}${d.container?' · '+d.container:''}</td></tr>`).join('');
+  });
+  return `<div class="sh" style="margin-top:28px;"><span>📋 Spoilage Report — Manufacturer Credit</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">${grand} BLOCKS · SUPPLIER-RECEIVED</span></div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.6;">Supplier blocks that spoiled or failed, by supplier &amp; lot — the basis for seeking credit from the manufacturer. Fed by the fruiting “Spoiled / Unusable Blocks” field and the spoilage form above.</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <button class="btn b-m b-sm" onclick="emailSpoilageReport()">✉ Email Spoilage Report</button>
+      <button class="btn b-g b-sm" onclick="printSpoilageReport()">🖨 Print</button>
+    </div>
+    <div class="tw"><table><thead><tr><th>Date</th><th>Lot</th><th>Variety</th><th>Blocks</th><th>Reason · Container</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
 
 // ── SAMPLES ──
 
