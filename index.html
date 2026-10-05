@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #157</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #158</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5757,7 +5757,7 @@ async function commitSlipBatch(btn){
     const iso=_toISO(s.shipDate||s.date)||tday();
     const day=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(iso+'T12:00:00').getDay()]||'';
     const qtys={}; let anyQty=false;
-    (s.items||[]).forEach(it=>{ const prod=ALL_PRODS.find(p=>p.code.toUpperCase()===(it.code||'').trim().toUpperCase()); const q=parseInt(it.shipped)||0; if(prod&&q>0){ qtys[prod.dataKey]=(qtys[prod.dataKey]||0)+q; anyQty=true; } });
+    (s.items||[]).forEach(it=>{ const prod=_prodFromSlipItem(it); const q=parseInt(it.shipped)||parseInt(it.ordered)||0; if(prod&&q>0){ qtys[prod.dataKey]=(qtys[prod.dataKey]||0)+q; anyQty=true; } });
     if(!anyQty) continue;
     const cr=DB.clients.find(c=>(c.name||'').toLowerCase()===client.toLowerCase());
     const lots=(s.lots||[]).map(l=>({lot:(l.lot||'').trim(),variety:canonicalVariety((l.variety||'').trim()),container:(l.container||'').trim()})).filter(l=>l.lot);
@@ -7238,6 +7238,27 @@ function uploadSignedSlip(id){
 }
 
 // ── PACKING SLIP snap → parse → prefill the Pack→Order form ──
+// Resolve a parsed slip/sheet line to a catalog product. Exact code first, then name/description
+// keywords — so a slip that writes "Shiitake 10 lb" / "Organic Shiitake 10lb box" still maps to SHT10
+// (the 10# tote), not the oyster tote or the 3-lb shiitake box. Distributor slips name items their own way.
+function _prodFromSlipItem(it){
+  it=it||{};
+  const codeRaw=(it.code||'').trim(), code=codeRaw.toUpperCase();
+  let p=ALL_PRODS.find(x=>x.code.toUpperCase()===code); if(p) return p;                 // exact code (e.g. MO6)
+  const ck=code.replace(/[^A-Z0-9]/g,''); if(ck){ p=ALL_PRODS.find(x=>x.code.toUpperCase().replace(/[^A-Z0-9]/g,'')===ck); if(p) return p; }
+  const txt=(codeRaw+' '+(it.name||'')+' '+(it.description||it.desc||'')).toLowerCase();
+  if(!/[a-z]/.test(txt)) return null;
+  const tenlb=/10\s*(?:#|lb|lbs|pounds?)/.test(txt)||txt.includes('10lb')||txt.includes('tote');
+  const quarter=/1\/4|¼|quarter|\.25|retail\s*pack/.test(txt);
+  if(txt.includes('shiitake'))   return ALL_PRODS.find(x=>x.code===(tenlb?'SHT10':'CB09'))||null;
+  if(txt.includes('oyster'))     return ALL_PRODS.find(x=>x.code===(tenlb?'MO6':'MO8'))||null;
+  if(txt.includes('lion'))       return ALL_PRODS.find(x=>x.code===(quarter?'LRP':'CB08'))||null;
+  if(txt.includes('chef'))       return ALL_PRODS.find(x=>x.code===(quarter?'CRP':'CM5'))||null;
+  if(txt.includes('black pearl'))return ALL_PRODS.find(x=>x.code==='CB07')||null;
+  if(txt.includes('chestnut'))   return ALL_PRODS.find(x=>x.code==='CH01')||null;         // defaults to grade #1
+  if(txt.includes('wild'))       return ALL_PRODS.find(x=>x.code==='WD01')||null;
+  p=ALL_PRODS.find(x=>x.name&&txt.includes(x.name.toLowerCase())); return p||null;        // last resort: full product name
+}
 async function snapSlip(input){
   const file=input.files&&input.files[0]; if(!file) return;
   const st=document.getElementById('po-snap-status');
@@ -7254,10 +7275,9 @@ async function snapSlip(input){
     // map slip item codes → product qty inputs
     let matched=0, unmatched=[];
     (d.items||[]).forEach(it=>{
-      const code=(it.code||'').trim().toUpperCase();
       const qty=parseInt(it.shipped)||parseInt(it.ordered)||0; if(!qty) return;
-      const prod=ALL_PRODS.find(p=>p.code.toUpperCase()===code);
-      if(prod){ set('po-'+prod.dataKey,qty); matched++; } else unmatched.push(`${it.code||'?'}×${qty}`);
+      const prod=_prodFromSlipItem(it);
+      if(prod){ set('po-'+prod.dataKey,qty); matched++; } else unmatched.push(`${it.code||it.name||'?'}×${qty}`);
     });
     // pre-check lots that match on-hand lot checkboxes
     const slipLots=(d.lots||[]).map(l=>(l.lot||'').trim()).filter(Boolean);
