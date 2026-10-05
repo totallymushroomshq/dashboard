@@ -378,7 +378,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #155</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #156</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5889,14 +5889,20 @@ function cancelHarvestBatch(){ _harvestBatch=[]; rHarvest(document.getElementByI
 async function commitHarvestBatch(btn){
   _harvestBatch=_readHarvestBatchFromDOM(); // capture all edits from the review form first
   const sheets=_harvestBatch; if(!sheets.length) return;
-  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
-  const prepared=[];
+  const groups=[]; const allRows=[];
   for(const s of sheets){
     const iso=_toISO(s.date)||tday(); const con=(s.container||'').trim(); const fac=_sheetFacility(con);
     const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.strain||x.harvested))
       .map(r=>({date:iso,container:con,facility:fac,lotNumber:(r.lot||'').trim(),variety:(r.strain||'').trim(),grade:(r.grade||'A'),weight:parseFloat(r.harvested)||0,notes:'batch scan'}));
     if(!rows.length) continue;
-    try{ normalizeRowVarieties(rows); }catch(e){}
+    groups.push({s,iso,con,fac,rows}); rows.forEach(r=>allRows.push(r));
+  }
+  if(!groups.length) return;
+  if(!normalizeRowVarieties(allRows)) return; // one report of all new varieties; Cancel aborts, nothing submitted
+  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
+  const prepared=[];
+  for(const g of groups){
+    const {s,iso,con,fac,rows}=g;
     const createdIds=[];
     for(const r of rows){ if(r.variety) addVariety(r.variety);
       const hData={date:r.date,container:r.container,facility:r.facility,lotNumber:r.lotNumber,variety:r.variety,grade:r.grade,weight:r.weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes:r.notes,scanUrl:s.pageUrl||'',createdAt:new Date().toISOString()};
@@ -6067,14 +6073,20 @@ function reviewFruitBatch(){
 async function commitFruitBatch(btn){
   _fruitBatch=_readFruitBatchFromDOM();
   const sheets=_fruitBatch; if(!sheets.length) return;
-  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
-  const prepared=[];
+  const groups=[]; const allRows=[];
   for(const s of sheets){
     const iso=_toISO(s.date)||tday(); const con=(s.container||'').trim(); const fac=_sheetFacility(con);
     const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.strain||x.blocksUsed))
       .map(r=>({date:iso,container:con,facility:fac,lotNumber:(r.lot||'').trim(),variety:(r.strain||'').trim(),blockCount:parseInt(r.blocksUsed)||0}));
     if(!rows.length) continue;
-    try{ normalizeRowVarieties(rows); }catch(e){}
+    groups.push({s,iso,con,fac,rows}); rows.forEach(r=>allRows.push(r));
+  }
+  if(!groups.length) return;
+  if(!normalizeRowVarieties(allRows)) return; // one report of all new varieties; Cancel aborts, nothing submitted
+  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
+  const prepared=[];
+  for(const g of groups){
+    const {s,iso,con,fac,rows}=g;
     const sess='frs-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
     for(const r of rows){ if(r.variety) addVariety(r.variety);
       const rec=(DB.receivings||[]).find(x=>_lotKey(x.lotNumber)===_lotKey(r.lotNumber) && receivingOnHand(x)>0.001)
@@ -6257,9 +6269,8 @@ function reviewRecvBatch(){
 async function commitRecvBatch(btn){
   _recvBatch=_readRecvBatchFromDOM();
   const sheets=_recvBatch; if(!sheets.length) return;
-  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
-  const receivedBy=S.name||S.role||'';
-  const prepared=[];
+  // Phase 1: build every sheet's rows, then run ONE consolidated new-variety check across the whole batch.
+  const groups=[]; const allRows=[];
   for(const s of sheets){
     const iso=_toISO(s.date)||tday(); const source=(s.source==='internal')?'internal':'vendor';
     const vendor=(s.vendor||'').trim()||(source==='internal'?'In-house Production':'');
@@ -6267,7 +6278,17 @@ async function commitRecvBatch(btn){
     const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.variety||x.blockCount))
       .map(r=>({variety:(r.variety||'').trim(),lotNumber:(r.lot||'').trim(),blockCount:parseInt(r.blockCount)||0,blockWeightLb:parseFloat(r.blockWeightLb)||0}));
     if(!rows.length) continue;
-    try{ normalizeRowVarieties(rows); }catch(e){}
+    groups.push({s,iso,source,vendor,soNum,receiptStatus,rows}); rows.forEach(r=>allRows.push(r));
+  }
+  if(!groups.length) return;
+  // ONE report of every new variety in the batch; Cancel = go back and fix, nothing is submitted.
+  if(!normalizeRowVarieties(allRows)) return;
+  // Phase 2: submit.
+  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
+  const receivedBy=S.name||S.role||'';
+  const prepared=[];
+  for(const g of groups){
+    const {s,iso,source,vendor,soNum,receiptStatus,rows}=g;
     rows.forEach(r=>{ if(r.variety) addVariety(r.variety); });
     if(source!=='internal' && vendor) addSupplier(vendor);
     const createdIds=[];
