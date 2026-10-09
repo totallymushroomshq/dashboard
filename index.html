@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #160</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #161</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2759,7 +2759,7 @@ function buildPackOrderCard(){
         </label>
         <div id="po-snap-status" style="display:none;margin-top:10px;font-size:12px;padding:8px 12px;background:var(--white);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
       </div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Or enter manually: the <strong>S.O. number from the packing slip</strong>, the client, what you packed, and <strong>check the lots that went into this pack</strong>. Generates the order (marked <strong>packed</strong>) with those lots tied for traceability.</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Upload the slip above and it fills the <strong>S.O., client, items &amp; lots</strong> — then just review and <strong>Generate Packed Order</strong>. Everything below is editable if you need to tweak it; the lot selection is tucked under “Manual lot selection” (you won’t usually need it).</div>
       <div class="fg2">
         <div class="fgl"><label>S.O. # <span style="color:var(--text3);font-size:11px;">optional — add later</span></label><input class="fi" id="po-so" placeholder="from Accounting's slip (or blank)"></div>
         <div class="fgl"><label>Client <span style="color:var(--rust);">*</span></label><input class="fi" id="po-client" list="po-clientl" placeholder="Type or pick client…" ${NOFILL('po_client')}><datalist id="po-clientl">${clientNames.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('')}</datalist></div>
@@ -2769,6 +2769,9 @@ function buildPackOrderCard(){
       <div style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);letter-spacing:1px;margin:14px 0 8px;">CASES / UNITS PACKED (by code)</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px;">${prodInputs}</div>
       <div class="fgl" style="margin-bottom:12px;"><label>Notes</label><input class="fi" id="po-notes" placeholder="Optional"></div>
+      <details class="po-manual" style="margin:6px 0 12px;border:1px solid var(--border);border-radius:6px;background:var(--paper);">
+      <summary style="cursor:pointer;padding:9px 12px;font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text2);">🔧 MANUAL LOT SELECTION &amp; PULLS <span style="text-transform:none;letter-spacing:0;color:var(--text3);">— optional; the uploaded slip fills &amp; ties these automatically</span></summary>
+      <div style="padding:4px 12px 12px;">
       <div style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);letter-spacing:1px;margin:6px 0 8px;">LOTS THAT WENT INTO THIS PACK <span style="text-transform:none;letter-spacing:0;">— check the lots used, then set how much to pull from each</span></div>
       <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:8px;background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.2);border-radius:5px;padding:8px 11px;">📦 <b>You control the draw-down.</b> Check a lot, then type how many <b>lb to pull</b> from it — or hit <b>🔥 toast</b> to use it up entirely. <b>Suggest pulls</b> pre-fills from the order (Chef's Mix = ⅓ oyster · ⅓ shiitake · ⅓ chestnut); adjust from there. Only what you enter is deducted — nothing arbitrary. Session-pulled lots are skipped.</div>
       <div style="margin-bottom:8px;"><button type="button" class="btn b-g b-sm" onclick="poSuggestPulls()">✨ Suggest pulls from order</button> <button type="button" class="btn b-g b-sm" onclick="poClearPulls()">clear pulls</button> <span id="po-pull-total" style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-left:6px;"></span></div>
@@ -2786,6 +2789,7 @@ function buildPackOrderCard(){
         <button type="button" class="btn b-g b-sm" onclick="poAddManualLot()" style="margin-top:8px;">+ Add lot to this order</button>
         <div id="po-manual-lots" style="margin-top:8px;"></div>
       </div>
+      </div></details>
       <div class="form-acts">
         <button class="btn b-m b-lg" onclick="savePackOrder()">Generate Packed Order</button>
         <button class="btn b-g" onclick="clrPackOrder()">Clear</button>
