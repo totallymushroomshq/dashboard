@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #161</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #162</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2750,11 +2750,8 @@ function buildPackOrderCard(){
     <div class="card" style="margin-bottom:24px;border:2px solid var(--gold);">
       <div class="card-t">📦 Pack → Log Order (from SO#)</div>
       <div style="background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.3);border-radius:6px;padding:12px 14px;margin-bottom:14px;">
-        <div style="font-size:12px;font-weight:600;color:var(--fern);margin-bottom:8px;">📸 Snap / Upload the <b>signed packing slip</b> — AI fills client, SO, items &amp; lots</div>
-        <label class="btn b-g" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
-          <input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapSlip(this)">
-        </label>
-        <label class="btn b-lg" style="cursor:pointer;display:inline-block;margin-left:8px;background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.3);">📚 Batch PDF (multiple slips)
+        <div style="font-size:12px;font-weight:600;color:var(--fern);margin-bottom:8px;">📸 Upload the <b>signed packing slip(s)</b> — AI reads client, SO, items &amp; lots into a full review page (one slip or many) with the gold/green auto-fill checks</div>
+        <label class="btn b-m b-lg" style="cursor:pointer;display:inline-block;">📚 Upload Packing Slip(s)
           <input type="file" accept="application/pdf,.pdf" style="display:none;" onchange="snapSlipBatch(this)">
         </label>
         <div id="po-snap-status" style="display:none;margin-top:10px;font-size:12px;padding:8px 12px;background:var(--white);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
@@ -5772,8 +5769,8 @@ function slbItemRow(it){ it=it||{};
 }
 function slbLotRow(l){ l=l||{};
   return `<div class="slb-lotrow" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
-    <input class="fi slb-lot" list="slb-lot-dl" value="${attrEsc(l.lot||'')}" placeholder="Lot #" style="flex:1;min-width:100px;" autocomplete="off" oninput="wireLotVarCon(this,'.slb-var','.slb-con')">
-    <input class="fi slb-var" list="slb-var-dl" value="${attrEsc(l.variety||'')}" placeholder="Variety" style="flex:1;min-width:104px;" autocomplete="off">
+    <input class="fi slb-lot" list="slb-lot-dl" value="${attrEsc(l.lot||'')}" placeholder="Lot #" style="flex:1;min-width:100px;" autocomplete="off" oninput="wireLotVarCon(this,'.slb-var','.slb-con')" onchange="onLotResolve(this,()=>wireLotVarCon(this,'.slb-var','.slb-con'))">
+    <input class="fi slb-var" list="slb-var-dl" value="${attrEsc(l.variety||'')}" placeholder="Variety" style="flex:1;min-width:104px;" autocomplete="off" onchange="onVarietyResolve(this)">
     <input class="fi slb-con" list="slb-con-dl" value="${attrEsc(l.container||'')}" placeholder="GH-…" style="flex:1;min-width:120px;" autocomplete="off" oninput="wireConLotVar(this,'.slb-lot','.slb-var')">
     <button type="button" class="btn b-r b-sm" onclick="this.closest('.slb-lotrow').remove()">✕</button>
   </div>`;
@@ -5832,8 +5829,15 @@ function reviewSlipBatch(){
       </div>
     </div>`;
   try{ window.scrollTo(0,0); }catch(e){}
-  // lock variety/container off each already-filled lot (parsed rows never fired oninput) so the golden auto-fill bars show on load
-  try{ document.querySelectorAll('#main-views .slb-lotrow .slb-lot').forEach(el=>{ if((el.value||'').trim()) wireLotVarCon(el,'.slb-var','.slb-con'); }); }catch(e){}
+  // Resolve + color every AI-prefilled value on load (parsed rows never fire input): lots → gold/green, varieties → canonical + gold/green, product codes → real catalog code.
+  try{
+    document.querySelectorAll('#main-views .slb-lotrow').forEach(row=>{
+      const lot=row.querySelector('.slb-lot'), vr=row.querySelector('.slb-var');
+      if(lot&&(lot.value||'').trim()){ onLotResolve(lot); wireLotVarCon(lot,'.slb-var','.slb-con'); }
+      if(vr&&(vr.value||'').trim()) onVarietyResolve(vr);
+    });
+    document.querySelectorAll('#main-views .slb-itemrow .slb-code').forEach(cEl=>{ const raw=(cEl.value||'').trim(); if(!raw) return; const p=_prodFromSlipItem({code:raw}); if(p && p.code.toUpperCase()!==raw.toUpperCase()){ cEl.value=p.code; markAF(cEl); } });
+  }catch(e){}
 }
 async function commitSlipBatch(btn){
   _slipBatch=_readSlipBatchFromDOM();
