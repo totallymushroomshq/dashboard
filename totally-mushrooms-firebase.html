@@ -26,6 +26,8 @@
   --white:#ffffff;
   --border:#e0d8c8;
   --border-gold:rgba(184,130,10,.25);
+  --fern-lt:#e6efdd;
+  --border-fern:rgba(58,96,48,.30);
   --text:#111008;
   --text2:#5a4e38;
   --text3:#665a3c;
@@ -61,6 +63,9 @@ body{font-family:'Syne',sans-serif;background:var(--paper);color:var(--text);min
 .fi.af,.fs.af,.fta.af{background:var(--gold-lt);border-color:var(--border-gold);box-shadow:inset 3px 0 0 var(--gold);font-weight:600}
 .af-wrap{position:relative}
 .af-tag{position:absolute;top:-8px;right:6px;background:var(--gold);color:#fff;font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.5px;padding:1px 6px;border-radius:8px;pointer-events:none;z-index:2}
+/* green = auto-filled but a best-guess that needs a human double-check (vs gold = confidently locked) */
+.fi.afg,.fs.afg,.fta.afg{background:var(--fern-lt);border-color:var(--border-fern);box-shadow:inset 3px 0 0 var(--fern);font-weight:600}
+.afg-tag{position:absolute;top:-8px;right:6px;background:var(--fern);color:#fff;font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.5px;padding:1px 6px;border-radius:8px;pointer-events:none;z-index:2}
 .fs option{background:var(--white)}
 .fta{resize:vertical;min-height:80px}
 .gbtn{width:100%;padding:14px;border:none;border-radius:3px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:600;letter-spacing:3px;text-transform:uppercase;transition:all .15s}
@@ -378,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #136</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #164</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -399,51 +404,24 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
     <div class="gate-card">
       <div class="gate-logo">Totally Mushrooms</div>
       <div class="gate-sub">Nashville, TN · Farm Portal</div>
-      <!-- Client-facing signup hidden — app is internal-only. Code kept dormant. -->
-      <div class="gmt-row" style="display:none;">
-        <button class="gmt a" onclick="gTab('login',this)">Sign In</button>
-        <button class="gmt sky" onclick="gTab('signup',this)">Request Access</button>
-      </div>
 
       <!-- LOGIN -->
       <div class="gpane a" id="gp-login">
-        <div class="fl"><label>Email</label><input class="fi" type="email" id="login-email" placeholder="your@email.com"></div>
-        <div class="fl"><label>Password</label><div style="position:relative;"><input class="fi" type="password" id="pw" placeholder="Enter your password" autocomplete="current-password" style="padding-right:42px;"><button type="button" onclick="togglePw('pw','pw-eye')" style="position:absolute;right:0;top:0;bottom:0;width:40px;background:transparent;border:none;cursor:pointer;color:var(--text3);display:flex;align-items:center;justify-content:center;padding:0;" id="pw-eye" aria-label="Show password">
+        <form id="login-form" onsubmit="login();return false;">
+        <div class="fl"><label>Email</label><input class="fi" type="email" id="login-email" name="username" autocomplete="username" placeholder="your@email.com"></div>
+        <div class="fl"><label>Password</label><div style="position:relative;"><input class="fi" type="password" id="pw" name="password" placeholder="Enter your password" autocomplete="current-password" style="padding-right:42px;"><button type="button" onclick="togglePw('pw','pw-eye')" style="position:absolute;right:0;top:0;bottom:0;width:40px;background:transparent;border:none;cursor:pointer;color:var(--text3);display:flex;align-items:center;justify-content:center;padding:0;" id="pw-eye" aria-label="Show password">
           <svg id="pw-eye-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         </button></div></div>
-        <button class="gbtn gbtn-m" onclick="login()">Enter</button>
+        <label style="display:flex;align-items:center;gap:8px;margin:4px 0 14px;font-size:12px;color:var(--text3);cursor:pointer;font-family:'Syne Mono',monospace;">
+          <input type="checkbox" id="login-remember" style="width:15px;height:15px;accent-color:var(--fern);cursor:pointer;">
+          Keep me signed in on this device
+        </label>
+        <button type="submit" id="login-btn" class="gbtn gbtn-m">Enter</button>
+        </form>
         <div class="gate-err" id="lerr">Incorrect password. Try again.</div>
         <div class="gate-ok" id="lok" style="display:none;"></div>
         <div style="text-align:center;margin-top:12px;"><a href="#" onclick="forgotPassword();return false;" style="font-size:12px;color:var(--sage);text-decoration:underline;text-underline-offset:2px;font-family:'Syne Mono',monospace;">Forgot password?</a></div>
         <div class="gate-hint">Staff &amp; Admin · Internal access only</div>
-      </div>
-
-      <!-- SIGNUP -->
-      <div class="gpane" id="gp-signup">
-        <div style="font-size:12px;color:var(--sage);margin-bottom:20px;line-height:1.7;font-family:'Syne Mono',monospace;">Fill in your details. The team will review your request and send login details once approved.</div>
-        <div class="fl"><label>Venue / Business Name</label><input class="fi" id="su-n" placeholder="e.g. The Catbird Seat"></div>
-        <div class="fl"><label>Your Name</label><input class="fi" id="su-c" placeholder="Chef / Manager name"></div>
-        <div class="fl"><label>Email Address</label><input class="fi" type="email" id="su-e" placeholder="orders@yourvenue.com"></div>
-        <div class="fl"><label>Phone Number</label><input class="fi" type="tel" id="su-p" placeholder="+1 615 000 0000"></div>
-        <div class="fl"><label>Preferred Delivery Day</label><select class="fs" id="su-d"><option>Monday</option><option>Tuesday</option><option>Wednesday</option><option>Thursday</option><option>Friday</option><option>Saturday</option><option>Sunday</option></select></div>
-        <div class="fl"><label>What are you looking for?</label><textarea class="fta" id="su-note" placeholder="Weekly boxes, wholesale, specific varieties..." style="min-height:70px;"></textarea></div>
-        <button class="gbtn gbtn-s" onclick="subSignup()">Submit Request</button>
-        <div class="gate-err" id="su-err">Please fill in venue name, your name, and email.</div>
-        <div class="gate-ok" id="su-ok">✓ Request submitted!<br>We'll review and be in touch shortly.</div>
-      </div>
-
-      <!-- FIRST LOGIN -->
-      <div class="gpane" id="gp-first">
-        <div class="fl-note">Welcome! Your account has been approved. Set your password and how you'd like to be notified.</div>
-        <div class="fl"><label>New Password (min 6 chars)</label><input class="fi" type="password" id="fl-p1" placeholder="Choose a password"></div>
-        <div class="fl"><label>Confirm Password</label><input class="fi" type="password" id="fl-p2" placeholder="Confirm password"></div>
-        <div style="margin:16px 0 10px;font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:2px;color:var(--spore);">NOTIFICATIONS</div>
-        <div class="tog"><label class="tsw"><input type="checkbox" id="fl-en" checked><div class="ttr"></div></label><label for="fl-en">Email notifications</label></div>
-        <div class="tog"><label class="tsw"><input type="checkbox" id="fl-sn"><div class="ttr"></div></label><label for="fl-sn">SMS / Text notifications</label></div>
-        <div class="fl" style="margin-top:14px;"><label>Email Address</label><input class="fi" type="email" id="fl-ea" placeholder="your@email.com"></div>
-        <div class="fl" id="fl-sf" style="display:none;"><label>Mobile Number</label><input class="fi" type="tel" id="fl-ph" placeholder="+1 615 000 0000"></div>
-        <button class="gbtn gbtn-m" style="margin-top:8px;" onclick="finFirstLogin()">Save & Enter</button>
-        <div class="gate-err" id="fl-err">Passwords don't match or are too short.</div>
       </div>
     </div>
   </div>
@@ -553,15 +531,6 @@ function applyYieldCustom(){
   _yieldCustomTo=document.getElementById('ya-to')?.value||'';
   if(_yieldCustomFrom&&_yieldCustomTo) (typeof _reDash==='function'?_reDash:renderC)();
 }
-function yieldDateRange(){
-  const t=tday();
-  if(_yieldPeriod==='week') return {from:wkStart(),to:t};
-  if(_yieldPeriod==='month') return {from:t.slice(0,7)+'-01',to:t};
-  if(_yieldPeriod==='30d'){ const d=new Date(t+'T12:00:00'); d.setDate(d.getDate()-30); return {from:d.toISOString().split('T')[0],to:t}; }
-  if(_yieldPeriod==='year') return {from:t.slice(0,4)+'-01-01',to:t};
-  if(_yieldPeriod==='custom') return {from:_yieldCustomFrom||t,to:_yieldCustomTo||t};
-  return {from:wkStart(),to:t};
-}
 // Audit session ID — unique per page load, groups all changes made in one sitting
 const _auditSession = Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 let viewDay = null; // null = today's delivery day; or 'Monday'/'Wednesday'/'Friday'
@@ -611,6 +580,10 @@ const FIREBASE_CONFIG = {
 firebase.initializeApp(FIREBASE_CONFIG);
 const fdb = firebase.firestore();
 fdb.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+// Offline cache (IndexedDB): lets loadDB paint instantly from local data on repeat logins
+// instead of re-downloading everything over a slow farm connection. Safe no-op if it can't enable.
+let _fsPersist=false;
+try{ fdb.enablePersistence({synchronizeTabs:true}).then(()=>{_fsPersist=true;}).catch(()=>{}); }catch(e){}
 const auth = firebase.auth();
 // Secondary app instance for creating new users without disrupting current session
 let _secondaryApp = null;
@@ -654,90 +627,71 @@ const FS = {
 };
 
 // ── LOAD ALL DATA FROM FIRESTORE ──
-async function loadDB(){
+async function loadDB(opts){
+  opts=opts||{};
+  const src=opts.source;                         // 'cache' → instant local paint; undefined → server (authoritative)
+  const gOpt=src?{source:src}:undefined;
+  // cache reads must never reject on a miss (empty is fine); server reads propagate errors
+  const ga=c=>{ const p=fdb.collection(c).get(gOpt).then(s=>s.docs.map(d=>({id:d.id,...d.data()}))); return src?p.catch(()=>[]):p; };
+  const dget=id=>fdb.collection('appConfig').doc(id).get(gOpt).then(d=>[id,d.exists?d.data():null]).catch(()=>[id,null]);
   try {
-    // NOTE: auditLog, revisions, loginHistory are NOT loaded here — they're admin-only and huge (~3 MB combined).
-    // They're lazy-loaded by ensureAdminData() when the Admin / Security views open, which keeps login fast on mobile.
+    const _t0=Date.now();
+    // NOTE: auditLog, revisions, loginHistory are NOT loaded here — admin-only and large; lazy via ensureAdminData().
     const [orders,clients,harvests,samples,fruitings,preservation,notifLog,signupRequests,packSessions,users,transfers,productMovements,containerSessions,preservationBatches,labBatches,blockDisposals,receivings,cultures,spawnRuns,cordyceps,containerFlips,shipments] = await Promise.all([
-      FS.getAll('orders'), FS.getAll('clients'), FS.getAll('harvests'),
-      FS.getAll('samples'), FS.getAll('fruitings'), FS.getAll('preservation'),
-      FS.getAll('notifLog'), FS.getAll('signupRequests'), FS.getAll('packSessions'),
-      FS.getAll('users'), FS.getAll('transfers'), FS.getAll('productMovements'),
-      FS.getAll('containerSessions'), FS.getAll('preservationBatches'),
-      FS.getAll('labBatches'), FS.getAll('blockDisposals'), FS.getAll('receivings'),
-      FS.getAll('cultures'), FS.getAll('spawnRuns'), FS.getAll('cordyceps'), FS.getAll('containerFlips'), FS.getAll('shipments')
+      ga('orders'), ga('clients'), ga('harvests'), ga('samples'), ga('fruitings'), ga('preservation'),
+      ga('notifLog'), ga('signupRequests'), ga('packSessions'), ga('users'), ga('transfers'), ga('productMovements'),
+      ga('containerSessions'), ga('preservationBatches'), ga('labBatches'), ga('blockDisposals'), ga('receivings'),
+      ga('cultures'), ga('spawnRuns'), ga('cordyceps'), ga('containerFlips'), ga('shipments')
     ]);
+    const _tCol=Date.now()-_t0;
     DB.auditLog=[]; DB.revisions=[]; DB.loginHistory=[]; DB._adminLoaded={}; // lazy — see ensureAdminData()
     DB.receivings=receivings; DB.cultures=cultures; DB.spawnRuns=spawnRuns; DB.cordyceps=cordyceps; DB.containerFlips=containerFlips||[]; DB.shipments=shipments||[];
     DB.orders=orders; DB.clients=clients; DB.harvests=harvests;
     DB.samples=samples; DB.fruitings=fruitings; DB.preservation=preservation;
-    // ── ONE-TIME MIGRATION: drop o.chestnut (legacy ungraded field) since chestnut is now CH01/CH02 only.
-    // Runs every load but is idempotent — only writes when the field is non-zero/present.
-    DB.orders.forEach(o=>{
-      if(o.chestnut!==undefined && o.chestnut!==null && o.chestnut!==0){
-        try { FS.update('orders', o.id, {chestnut: firebase.firestore.FieldValue.delete()}); } catch(e){ /* old SDK fallback */ FS.update('orders', o.id, {chestnut: 0}); }
-        delete o.chestnut;
-      }
-    });
-    DB.samples.forEach(s=>{
-      if(s.chestnut!==undefined && s.chestnut!==null && s.chestnut!==0){
-        try { FS.update('samples', s.id, {chestnut: firebase.firestore.FieldValue.delete()}); } catch(e){ FS.update('samples', s.id, {chestnut: 0}); }
-        delete s.chestnut;
-      }
-    });
+    // ── ONE-TIME MIGRATION: drop o.chestnut (legacy ungraded field). Server load only — never write during a cache paint.
+    if(!src){
+      DB.orders.forEach(o=>{
+        if(o.chestnut!==undefined && o.chestnut!==null && o.chestnut!==0){
+          try { FS.update('orders', o.id, {chestnut: firebase.firestore.FieldValue.delete()}); } catch(e){ FS.update('orders', o.id, {chestnut: 0}); }
+          delete o.chestnut;
+        }
+      });
+      DB.samples.forEach(s=>{
+        if(s.chestnut!==undefined && s.chestnut!==null && s.chestnut!==0){
+          try { FS.update('samples', s.id, {chestnut: firebase.firestore.FieldValue.delete()}); } catch(e){ FS.update('samples', s.id, {chestnut: 0}); }
+          delete s.chestnut;
+        }
+      });
+    }
     DB.notifLog=notifLog; DB.signupRequests=signupRequests; DB.packSessions=packSessions;
     DB.users=users; DB.transfers=transfers; DB.productMovements=productMovements; DB.containerSessions=containerSessions; DB.preservationBatches=preservationBatches;
     DB.labBatches=labBatches; DB.blockDisposals=blockDisposals;
-    // Load EmailJS config from appConfig
-    try{
-      const cfgDoc=await fdb.collection('appConfig').doc('emailjs').get();
-      if(cfgDoc.exists){ Object.assign(DB.emailjs,cfgDoc.data()); }
-    }catch(e){ console.warn('EmailJS config not found'); }
-    // Load notification (auto-email) config from appConfig
-    try{
-      const nDoc=await fdb.collection('appConfig').doc('notify').get();
-      if(nDoc.exists){ Object.assign(DB.notify,nDoc.data()); }
-    }catch(e){ console.warn('notify config not found'); }
-    // Load active facilities config from appConfig
-    try{
-      const facDoc=await fdb.collection('appConfig').doc('facilities').get();
-      if(facDoc.exists&&facDoc.data().active){ DB.facilities=facDoc.data().active; }
-    }catch(e){ console.warn('Facilities config not found — using defaults'); }
-    // Load container active/inactive overrides from appConfig
-    try{
-      const conDoc=await fdb.collection('appConfig').doc('containers').get();
-      if(conDoc.exists){ DB.containerOverrides=conDoc.data()||{}; }
-    }catch(e){ console.warn('Container overrides not found — using defaults'); }
-    // Load custom varieties (added on the fly) from appConfig and merge into VARIETIES
-    try{
-      const vDoc=await fdb.collection('appConfig').doc('varieties').get();
-      if(vDoc.exists){
-        customVarieties = (vDoc.data().custom||[]).filter(Boolean);
-        customVarieties.forEach(n=>{
-          if(!VARIETIES.some(v=>v.toLowerCase()===n.toLowerCase())) VARIETIES.push(n);
-          if(!VARIETY_TURNAROUND[n]) VARIETY_TURNAROUND[n]={min:7,max:14,yieldPct:0.18};
-        });
-      }
-    }catch(e){ console.warn('Custom varieties not found — using built-in list'); }
-    // Load admin-defined variety merges (aliases) and layer them onto the built-in alias map
-    try{
-      const aDoc=await fdb.collection('appConfig').doc('variety-aliases').get();
-      if(aDoc.exists) applyStoredVarietyAliases(aDoc.data().map||{});
-    }catch(e){ /* no custom merges yet */ }
-    // Load dead/excluded-lot list (yield average) from appConfig
-    try{
-      const yDoc=await fdb.collection('appConfig').doc('yield-excludes').get();
-      if(yDoc.exists && typeof applyStoredYieldExcludes==='function') applyStoredYieldExcludes(yDoc.data());
-    }catch(e){ /* none yet */ }
-    // Load custom suppliers (added on the fly) from appConfig
-    try{
-      const sDoc=await fdb.collection('appConfig').doc('suppliers').get();
-      if(sDoc.exists){ customSuppliers=(sDoc.data().custom||[]).filter(Boolean); }
-    }catch(e){ console.warn('Custom suppliers not found — using defaults'); }
-    // Init EmailJS if configured
-    if(DB.emailjs.publicKey){ emailjs.init({publicKey:DB.emailjs.publicKey}); }
+    // ── appConfig docs in ONE parallel batch (was 8 sequential round-trips — brutal on slow networks) ──
+    const _t1=Date.now();
+    const cfg={};
+    (await Promise.all(['emailjs','notify','facilities','containers','varieties','variety-aliases','yield-excludes','suppliers'].map(dget)))
+      .forEach(([id,d])=>{ cfg[id]=d; });
+    if(cfg.emailjs) Object.assign(DB.emailjs,cfg.emailjs);
+    if(cfg.notify) Object.assign(DB.notify,cfg.notify);
+    if(cfg.facilities&&cfg.facilities.active) DB.facilities=cfg.facilities.active;
+    if(cfg.containers) DB.containerOverrides=cfg.containers||{};
+    if(cfg.varieties){
+      customVarieties=(cfg.varieties.custom||[]).filter(Boolean);
+      customVarieties.forEach(n=>{
+        if(!VARIETIES.some(v=>v.toLowerCase()===n.toLowerCase())) VARIETIES.push(n);
+        if(!VARIETY_TURNAROUND[n]) VARIETY_TURNAROUND[n]={min:7,max:14,yieldPct:0.18};
+      });
+    }
+    if(cfg['variety-aliases']) applyStoredVarietyAliases(cfg['variety-aliases'].map||{});
+    if(cfg['yield-excludes'] && typeof applyStoredYieldExcludes==='function') applyStoredYieldExcludes(cfg['yield-excludes']);
+    if(cfg.suppliers) customSuppliers=(cfg.suppliers.custom||[]).filter(Boolean);
+    if(DB.emailjs.publicKey){ try{ emailjs.init({publicKey:DB.emailjs.publicKey}); }catch(e){} }
+    try{ window.__loadMs={src:src||'server', col:_tCol, cfg:Date.now()-_t1}; }catch(e){}
+    console.log('[loadDB]',(src||'server'),'— collections',_tCol+'ms, appConfig',(Date.now()-_t1)+'ms');
   } catch(e){ console.error('Firestore load error:',e); throw e; }
 }
+// True if the local cache already holds enough to paint the app without waiting on the network.
+function _haveCachedData(uid){ return !!(DB.users&&DB.users.find(u=>u.uid===uid)&&(DB.harvests.length||DB.orders.length||DB.fruitings.length)); }
 
 
 
@@ -916,8 +870,8 @@ const PRODUCTS = [
   {code:'CH01', name:'Chestnut #1',      desc:'TOP GRADE intact veil — youngest harvest',                                      priceLb:10.00, unitLb:3, dataKey:'chestnut1',  varieties:['Chestnut']},
   {code:'CH02', name:'Chestnut #2',      desc:'HIGH GRADE open veil — younger harvest',                                        priceLb:9.00,  unitLb:3, dataKey:'chestnut2',  varieties:['Chestnut']},
   {code:'WD01', name:'Wild Mix',         desc:'Wild, Local, Bioregional specialty (Lynx Paw, Coral Tooth, Golden Needle, White Winter, ToT Oyster)', priceLb:9.50, unitLb:3, dataKey:'wildMix', varieties:['Lynx Paw','Coral Tooth','Gold Enoki','White Enoki','Blue Oyster','Snow Oyster','Italian Oyster','Black Pearl']},
-  {code:'MO6',  name:'Oyster Mix 10# Tote', desc:'Oyster Mix 10 lb tote (Blue, White, Italian, Black Pearl, ToT)', priceLb:8.00,  unitLb:10, dataKey:'oyster10',  restrict:'Opryland', varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Cumberland Oyster','Black Pearl']},
-  {code:'SHT10',name:'Shiitake 10# Tote',  desc:'Shiitake 10 lb tote',                                           priceLb:10.00, unitLb:10, dataKey:'shiitake10', restrict:'Opryland', varieties:['Shiitake']},
+  {code:'MO6',  name:'Oyster Mix 10# Tote', desc:'Oyster Mix 10 lb tote (Blue, White, Italian, Black Pearl, ToT)', priceLb:8.00,  unitLb:10, dataKey:'oyster10',  varieties:['Blue Oyster','Snow Oyster','Italian Oyster','Gold Oyster','Cumberland Oyster','Black Pearl']},
+  {code:'SHT10',name:'Shiitake 10# Tote',  desc:'Shiitake 10 lb tote',                                           priceLb:10.00, unitLb:10, dataKey:'shiitake10', varieties:['Shiitake']},
 ];
 const RETAIL_PACKS = [
   {code:'LRP', name:"Lion's Mane ¼lb Pack", desc:"Lion's Mane retail pack", priceLb:8.00, unitLb:0.25, dataKey:'lionsPack', varieties:["Lion's Mane"]},
@@ -1748,7 +1702,7 @@ function checkResetParam(){
       window.history.replaceState({},'',window.location.pathname);
       auth.sendPasswordResetEmail(resetFor).then(()=>{
         document.getElementById('lerr').style.display='none';
-        const ok=document.getElementById('su-ok');
+        const ok=document.getElementById('lok');
         if(ok){ ok.textContent='✓ Password reset email sent to '+resetFor+'. Check your inbox.'; ok.style.display='block'; }
         else{ alert('✓ Password reset email sent to '+resetFor+'. Check your inbox.'); }
       }).catch(e=>{ alert('Could not send reset: '+e.message); });
@@ -1792,7 +1746,6 @@ const SESSION_TIMEOUT=2*60*60*1000; // 2 hours inactivity
 
 
 document.getElementById('pw').addEventListener('keydown',e=>{ if(e.key==='Enter') login() });
-document.getElementById('fl-sn').addEventListener('change',function(){ document.getElementById('fl-sf').style.display=this.checked?'block':'none' });
 
 // ── CLIENT PASSWORD HASHING (PBKDF2-SHA256, client-side) ──
 // App-wide salt: NOT a secret. Its job is to defeat precomputed rainbow tables,
@@ -1811,77 +1764,57 @@ async function pwFields(pw){
   return { pwHash: await derivePwHash(pw), pw: firebase.firestore.FieldValue.delete() };
 }
 
-function gTab(name, btn){
-  document.querySelectorAll('.gpane').forEach(p=>p.classList.remove('a'));
-  const pane=document.getElementById('gp-'+name); if(pane) pane.classList.add('a');
-  document.querySelectorAll('.gmt').forEach(b=>b.classList.remove('a'));
-  if(btn) btn.classList.add('a');
+// Set the session, log the login (fire-and-forget), and enter the app.
+function _enterSession(uid,email,userDoc){
+  const _isNewDev=!isDeviceTrusted(uid);
+  S={role:userDoc.role,clientId:null,uid,email,name:userDoc.name||'',
+     permissions:userDoc.permissions||DEFAULT_PERMS[userDoc.role]||DEFAULT_PERMS.staff,
+     newDevice:_isNewDev};
+  try{ logLogin(uid,email,userDoc.role,userDoc.name||'',_isNewDev); }catch(e){}
+  _loginBusy=false;
+  launch();
+  if(S.newDevice) showNewDeviceBanner(uid);
 }
-
+let _loginBusy=false;
 async function login(){
+  if(_loginBusy) return;                       // guard: autofill + Enter + click can fire this 2–3× → concurrent loadDB() wedges it
   const email=document.getElementById('login-email').value.trim();
   const pw=document.getElementById('pw').value.trim();
-
-  // ── FIREBASE AUTH (email-based, internal users) ──
-  if(email && pw){
-    try{
-      const cred=await auth.signInWithEmailAndPassword(email,pw);
-      const uid=cred.user.uid;
-      // Load data now that we're authenticated (security lockdown — no pre-login reads).
-      await loadDB();
-      await autoGenerateStandingOrders();
-      const userDoc=DB.users.find(u=>u.uid===uid);
-      if(userDoc&&userDoc.active!==false){
-        const _isNewDev=!isDeviceTrusted(uid);
-        S={role:userDoc.role,clientId:null,uid,email,name:userDoc.name||'',
-           permissions:userDoc.permissions||DEFAULT_PERMS[userDoc.role]||DEFAULT_PERMS.staff,
-           newDevice:_isNewDev};
-        await logLogin(uid,email,userDoc.role,userDoc.name||'',_isNewDev);
-        launch();
-        if(S.newDevice) showNewDeviceBanner(uid);
-        return;
-      } else {
-        // No user doc — not a recognized internal account
-        await auth.signOut();
-        showLoginErr('Account not recognized. Contact admin.');
+  if(!email||!pw){ showLoginErr('Enter your email and password.'); return; }
+  const btn=document.getElementById('login-btn'); const _label=btn?btn.textContent:'';
+  _loginBusy=true; if(btn){ btn.disabled=true; btn.textContent='Signing in…'; }
+  const release=()=>{ _loginBusy=false; if(btn){ btn.disabled=false; btn.textContent=_label||'Enter'; } };
+  // Session persistence: only keep the login across app/browser restarts if the user opted in.
+  // Default = SESSION (clears when the app/browser closes) so an admin login never silently auto-enters later.
+  const _remember=!!document.getElementById('login-remember')?.checked;
+  try{ localStorage.setItem('tm-remember',_remember?'1':'0'); }catch(e){}
+  try{ await auth.setPersistence(_remember?firebase.auth.Auth.Persistence.LOCAL:firebase.auth.Auth.Persistence.SESSION); }catch(e){ console.warn('setPersistence',e); }
+  try{
+    const cred=await auth.signInWithEmailAndPassword(email,pw);
+    const uid=cred.user.uid;
+    // FAST PATH — if the offline cache already has data, enter instantly and refresh from the server in the background.
+    if(_fsPersist){
+      try{ await loadDB({source:'cache'}); }catch(e){}
+      const ud=DB.users.find(u=>u.uid===uid);
+      if(ud && ud.active!==false && _haveCachedData(uid)){
+        _enterSession(uid,email,ud);
+        loadDB().then(()=>{ const u2=DB.users.find(u=>u.uid===uid);
+          if(!u2||u2.active===false){ auth.signOut().then(()=>location.reload()); return; }
+          S.role=u2.role; S.permissions=u2.permissions||DEFAULT_PERMS[u2.role]||DEFAULT_PERMS.staff; S.name=u2.name||S.name;
+          buildNav(); renderC();
+        }).catch(err=>console.warn('bg refresh failed',err));
         return;
       }
-    }catch(e){
-      showLoginErr(e.message||'Sign-in failed. Check email and password.');
-      return;
     }
+    // NO usable cache — authoritative server load, then enter (security lockdown: no pre-login reads).
+    await loadDB();
+    const userDoc=DB.users.find(u=>u.uid===uid);
+    if(userDoc&&userDoc.active!==false){ _enterSession(uid,email,userDoc); return; }
+    else { await auth.signOut(); showLoginErr('Account not recognized. Contact admin.'); release(); return; }
+  }catch(e){
+    showLoginErr(e.message||'Sign-in failed. Check email and password.');
+    release(); return;
   }
-
-  // ── CLIENT LOGIN (hashed password; legacy plaintext accepted until migrated) ──
-  const cand=await derivePwHash(pw);
-  const c=DB.clients.find(x=>x.status==='approved' && (
-    (x.pwHash && x.pwHash===cand) || (!x.pwHash && x.pw && x.pw===pw)
-  ));
-  if(c){ S={role:'client',clientId:c.id,uid:null,email:null,name:c.name,permissions:null,newDevice:false}; launch(); return }
-  const fp=DB.clients.find(x=>x.firstLogin&&x.status==='approved'&&('tm-'+x.id)===pw.toLowerCase());
-  if(fp){ S={role:'client_pending',clientId:fp.id,uid:null,email:null,name:fp.name,permissions:null,newDevice:false}; document.querySelectorAll('.gpane').forEach(p=>p.classList.remove('a')); document.getElementById('gp-first').classList.add('a'); return }
-  showLoginErr('Incorrect credentials. Try again.');
-}
-
-async function finFirstLogin(){
-  const p1=document.getElementById('fl-p1').value, p2=document.getElementById('fl-p2').value;
-  const err=document.getElementById('fl-err');
-  if(!p1||p1.length<6||p1!==p2){ err.style.display='block'; setTimeout(()=>err.style.display='none',3000); return }
-  const c=DB.clients.find(x=>x.id===S.clientId);
-  if(c){ const pwH=await derivePwHash(p1); c.pwHash=pwH; delete c.pw; c.firstLogin=false; const en=document.getElementById('fl-en').checked, sn=document.getElementById('fl-sn').checked; c.notifPref=en&&sn?'both':en?'email':sn?'sms':'none'; c.notifEmail=document.getElementById('fl-ea').value.trim(); c.notifPhone=document.getElementById('fl-ph').value.trim();
-    FS.update('clients',S.clientId,{pwHash:pwH,pw:firebase.firestore.FieldValue.delete(),firstLogin:false,notifPref:c.notifPref,notifEmail:c.notifEmail,notifPhone:c.notifPhone}); }
-  S.role='client'; launch()
-}
-
-async function subSignup(){
-  const n=document.getElementById('su-n').value.trim(), c=document.getElementById('su-c').value.trim(), e=document.getElementById('su-e').value.trim();
-  if(!n||!c||!e){ document.getElementById('su-err').style.display='block'; setTimeout(()=>document.getElementById('su-err').style.display='none',3000); return }
-  const srData={venue:n,contact:c,email:e,phone:document.getElementById('su-p').value.trim(),day:document.getElementById('su-d').value,note:document.getElementById('su-note').value.trim(),submitted:tday(),status:'new'};
-  const srId = await FS.add('signupRequests', srData);
-  srData.id = srId;
-  DB.signupRequests.push(srData);
-  document.getElementById('su-ok').style.display='block';
-  ['su-n','su-c','su-e','su-p','su-note'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value='' })
 }
 
 window.addEventListener('DOMContentLoaded', async ()=>{
@@ -1896,10 +1829,49 @@ window.addEventListener('DOMContentLoaded', async ()=>{
   await new Promise(resolve=>{
     const unsub = auth.onAuthStateChanged(async (user)=>{
       unsub();
+      // Do NOT auto-enter unless the user chose "keep me signed in". This also clears any legacy
+      // always-persisted admin session (from before this rule) — it signs out and shows the gate.
+      let _remembered=false; try{ _remembered=localStorage.getItem('tm-remember')==='1'; }catch(e){}
+      if(user && !_remembered){
+        try{ await auth.signOut(); }catch(e){}
+        user=null;
+      }
       if(user){
+        const uid=user.uid;
+        const paintApp=(ud)=>{
+          S={role:ud.role,clientId:null,uid,email:user.email,name:ud.name||'',
+             permissions:ud.permissions||DEFAULT_PERMS[ud.role]||DEFAULT_PERMS.staff,
+             newDevice:!isDeviceTrusted(uid)};
+          bar.style.width='100%';
+          document.getElementById('app-loader').style.display='none';
+          document.getElementById('gate').style.display='none';
+          document.getElementById('app').style.display='block';
+          buildNav(); renderC(); resetSessionTimer();
+          if(!window._activityBound){
+            window._activityBound=true;
+            document.addEventListener('click',resetSessionTimer);
+            document.addEventListener('keydown',resetSessionTimer);
+            document.addEventListener('touchstart',resetSessionTimer);
+          }
+          if(S.newDevice) setTimeout(()=>showNewDeviceBanner(uid),500);
+        };
+        // FAST PATH — paint from the offline cache immediately, then refresh from the server in the background.
+        if(_fsPersist){
+          try{ await loadDB({source:'cache'}); }catch(e){}
+          const ud=DB.users.find(u=>u.uid===uid);
+          if(ud && ud.active!==false && _haveCachedData(uid)){
+            paintApp(ud); resolve();
+            loadDB().then(()=>{ const u2=DB.users.find(u=>u.uid===uid);
+              if(!u2||u2.active===false){ auth.signOut().then(()=>location.reload()); return; }
+              S.role=u2.role; S.permissions=u2.permissions||DEFAULT_PERMS[u2.role]||DEFAULT_PERMS.staff; S.name=u2.name||S.name;
+              buildNav(); renderC();
+            }).catch(err=>console.warn('bg refresh failed',err));
+            return;
+          }
+        }
+        // SERVER PATH — authoritative load (first-ever login, or empty cache).
         try {
           await loadDB();
-          await autoGenerateStandingOrders();
           bar.style.width='80%';
         } catch(e){
           console.error('Firestore load error:', e);
@@ -1909,26 +1881,9 @@ window.addEventListener('DOMContentLoaded', async ()=>{
           errEl.style.display='block';
           errEl.style.color='#c8a82a';
         }
-        const userDoc = DB.users.find(u=>u.uid===user.uid);
+        const userDoc = DB.users.find(u=>u.uid===uid);
         if(userDoc && userDoc.active!==false){
-          S={role:userDoc.role,clientId:null,uid:user.uid,email:user.email,
-             name:userDoc.name||'',
-             permissions:userDoc.permissions||DEFAULT_PERMS[userDoc.role]||DEFAULT_PERMS.staff,
-             newDevice:!isDeviceTrusted(user.uid)};
-          bar.style.width='100%';
-          await new Promise(r=>setTimeout(r,200));
-          document.getElementById('app-loader').style.display='none';
-          document.getElementById('gate').style.display='none';
-          document.getElementById('app').style.display='block';
-          buildNav(); renderC();
-          resetSessionTimer();
-          if(!window._activityBound){
-            window._activityBound=true;
-            document.addEventListener('click',resetSessionTimer);
-            document.addEventListener('keydown',resetSessionTimer);
-            document.addEventListener('touchstart',resetSessionTimer);
-          }
-          if(S.newDevice) setTimeout(()=>showNewDeviceBanner(user.uid),500);
+          paintApp(userDoc);
           resolve();
           return;
         } else {
@@ -1974,9 +1929,6 @@ function doLogout(){
 }
 
 // ── NAV ──
-const NAVS={
-  client:[{id:'c-order',l:'Place Order',c:'ct'},{id:'c-standing',l:'Standing Order',c:'ct'},{id:'c-history',l:'History',c:'ct'},{id:'c-settings',l:'Settings',c:'ct'}]
-};
 let cv=null;
 
 function toggleDrawer(){
@@ -1995,22 +1947,6 @@ function buildNav(){
   const nav=document.getElementById('drw-nav'), pill=document.getElementById('role-pill');
   nav.innerHTML='';
   const role=S.role;
-
-  // Client nav
-  if(role==='client'){
-    const cl=DB.clients.find(x=>x.id===S.clientId);
-    pill.textContent=(cl?cl.name.split(' ')[0]:'CLIENT').toUpperCase();
-    pill.className='rpill client';
-    const grp=document.createElement('div'); grp.className='drw-group';
-    grp.innerHTML='<div class="drw-grp-lbl">My Account</div>';
-    NAVS.client.forEach((item,i)=>{
-      const b=document.createElement('button');
-      b.className='drw-item'; b.textContent=item.l; b.dataset.view=item.id;
-      b.onclick=()=>sw(item.id); grp.appendChild(b); if(i===0) sw(item.id);
-    });
-    nav.appendChild(grp);
-    return;
-  }
 
   // Role pill
   if(role==='admin'){
@@ -2070,7 +2006,7 @@ function sw(id){
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTraceTab,'trace-doctor':rTraceDoctor,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rBilling,'orders-all':rOrdersAll,'c-order':rCOrd,'c-standing':rCStand,'c-history':rCHist,'c-settings':rCSet,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTraceTab,'trace-doctor':rTraceDoctor,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rBilling,'orders-all':rOrdersAll,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -2200,6 +2136,7 @@ function rToday(el){
       </tr>`).join('')}</tbody></table>
     </div>`:''}
     ${ap.length>0&&canEdit()?`<div class="sh"><span>Pending Approval</span><span class="bdg bp">${ap.length} waiting</span></div><div class="og" id="pg"></div>`:''}
+    ${canEdit()?buildSampleLogCard():''}
     ${todaySamps.length>0?`<div class="sh" style="margin-top:24px;"><span>Samples — Going Out Today</span><span class="bdg bdg-samp" style="margin-left:8px;">${todaySamps.length} pending</span></div><div id="samp-today-cards" class="samp-grid"></div>`:''}
   `;
   if(ap.length>0){ const pg=el.querySelector('#pg'); ap.forEach(o=>rOC(o,pg,true)) }
@@ -2268,8 +2205,8 @@ function toggleYieldDead(ev,k,wasDead){ try{ if(ev&&ev.stopPropagation) ev.stopP
   k=String(k); if(wasDead){ _yldExcluded.delete(k); _yldKept.add(k); } else { _yldKept.delete(k); _yldExcluded.add(k); } _persistYieldExcludes();
   const y=window.scrollY||window.pageYOffset||0;
   // patch ONLY the yield tables in place so the page doesn't re-render or jump the scroll
-  const yw=document.getElementById('dash-yield-wrap'); const aw=document.getElementById('dash-avg-wrap');
-  if(yw){ yw.innerHTML=buildYieldAnalysis(); if(aw && typeof buildYieldAverages==='function') aw.innerHTML=buildYieldAverages(); }
+  const yw=document.getElementById('dash-yield-wrap');
+  if(yw){ yw.innerHTML=buildYieldAnalysis(); }
   else if(typeof _reDash==='function'){ _reDash(); } else renderC();
   // hold the scroll exactly where it was, across layout settling
   requestAnimationFrame(()=>{ window.scrollTo(0,y); requestAnimationFrame(()=>window.scrollTo(0,y)); });
@@ -2435,6 +2372,7 @@ function rOC(o,container,showApprove){
     ${batchChk}
     <div class="oc-c">${o.client}<span class="bdg ${statusBadgeClass(o)}">${statusLabel(o)}</span></div>
     <div class="oc-m">${o.day.toUpperCase()} · ${o.week==='standing'?'STANDING TEMPLATE':('WEEK OF '+fDate(o.week))}</div>
+    ${(o.deliveredAt||o.packedAt)?`<div class="oc-ship" style="font-size:11px;color:var(--fern);font-weight:600;margin-bottom:2px;">🚚 Ship ${fDate(((o.deliveredAt||o.packedAt)+'').slice(0,10))}</div>`:''}
     ${o.orderRef?`<div style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--blue);letter-spacing:1px;margin-bottom:2px;">${o.orderRef}</div>`:''}
     ${pipelineHTML}
     ${items||'<div class="oci"><span style="color:var(--text3)">See notes</span></div>'}
@@ -2813,25 +2751,25 @@ function buildPackOrderCard(){
     <div class="card" style="margin-bottom:24px;border:2px solid var(--gold);">
       <div class="card-t">📦 Pack → Log Order (from SO#)</div>
       <div style="background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.3);border-radius:6px;padding:12px 14px;margin-bottom:14px;">
-        <div style="font-size:12px;font-weight:600;color:var(--fern);margin-bottom:8px;">📸 Snap / Upload the <b>signed packing slip</b> — AI fills client, SO, items &amp; lots</div>
-        <label class="btn b-g" style="cursor:pointer;display:inline-block;">📷 Choose photo / file
-          <input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="snapSlip(this)">
-        </label>
-        <label class="btn b-lg" style="cursor:pointer;display:inline-block;margin-left:8px;background:rgba(46,109,164,.1);color:var(--blue);border:1px solid rgba(46,109,164,.3);">📚 Batch PDF (multiple slips)
+        <div style="font-size:12px;font-weight:600;color:var(--fern);margin-bottom:8px;">📸 Upload the <b>signed packing slip(s)</b> — AI reads client, SO, items &amp; lots into a full review page (one slip or many) with the gold/green auto-fill checks</div>
+        <label class="btn b-m b-lg" style="cursor:pointer;display:inline-block;">📚 Upload Packing Slip(s)
           <input type="file" accept="application/pdf,.pdf" style="display:none;" onchange="snapSlipBatch(this)">
         </label>
         <div id="po-snap-status" style="display:none;margin-top:10px;font-size:12px;padding:8px 12px;background:var(--white);border:1px solid var(--border);border-radius:5px;line-height:1.5;"></div>
       </div>
-      <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Or enter manually: the <strong>S.O. number from the packing slip</strong>, the client, what you packed, and <strong>check the lots that went into this pack</strong>. Generates the order (marked <strong>packed</strong>) with those lots tied for traceability.</div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:14px;line-height:1.6;">Upload the slip above and it fills the <strong>S.O., client, items &amp; lots</strong> — then just review and <strong>Generate Packed Order</strong>. Everything below is editable if you need to tweak it; the lot selection is tucked under “Manual lot selection” (you won’t usually need it).</div>
       <div class="fg2">
         <div class="fgl"><label>S.O. # <span style="color:var(--text3);font-size:11px;">optional — add later</span></label><input class="fi" id="po-so" placeholder="from Accounting's slip (or blank)"></div>
-        <div class="fgl"><label>Client <span style="color:var(--rust);">*</span></label><input class="fi" id="po-client" list="po-clientl" placeholder="Type or pick client…" autocomplete="off"><datalist id="po-clientl">${clientNames.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('')}</datalist></div>
+        <div class="fgl"><label>Client <span style="color:var(--rust);">*</span></label><input class="fi" id="po-client" list="po-clientl" placeholder="Type or pick client…" ${NOFILL('po_client')}><datalist id="po-clientl">${clientNames.map(n=>`<option value="${n.replace(/"/g,'&quot;')}">`).join('')}</datalist></div>
         <div class="fgl"><label>Delivery Day</label><select class="fs" id="po-day">${days.map(d=>`<option value="${d}"${d===todayWd?' selected':''}>${d}</option>`).join('')}</select></div>
         <div class="fgl"><label>Date Delivered</label><input class="fi" type="date" id="po-delivered" value="${tday()}"></div>
       </div>
       <div style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);letter-spacing:1px;margin:14px 0 8px;">CASES / UNITS PACKED (by code)</div>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px;">${prodInputs}</div>
       <div class="fgl" style="margin-bottom:12px;"><label>Notes</label><input class="fi" id="po-notes" placeholder="Optional"></div>
+      <details class="po-manual" style="margin:6px 0 12px;border:1px solid var(--border);border-radius:6px;background:var(--paper);">
+      <summary style="cursor:pointer;padding:9px 12px;font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text2);">🔧 MANUAL LOT SELECTION &amp; PULLS <span style="text-transform:none;letter-spacing:0;color:var(--text3);">— optional; the uploaded slip fills &amp; ties these automatically</span></summary>
+      <div style="padding:4px 12px 12px;">
       <div style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);letter-spacing:1px;margin:6px 0 8px;">LOTS THAT WENT INTO THIS PACK <span style="text-transform:none;letter-spacing:0;">— check the lots used, then set how much to pull from each</span></div>
       <div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:8px;background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.2);border-radius:5px;padding:8px 11px;">📦 <b>You control the draw-down.</b> Check a lot, then type how many <b>lb to pull</b> from it — or hit <b>🔥 toast</b> to use it up entirely. <b>Suggest pulls</b> pre-fills from the order (Chef's Mix = ⅓ oyster · ⅓ shiitake · ⅓ chestnut); adjust from there. Only what you enter is deducted — nothing arbitrary. Session-pulled lots are skipped.</div>
       <div style="margin-bottom:8px;"><button type="button" class="btn b-g b-sm" onclick="poSuggestPulls()">✨ Suggest pulls from order</button> <button type="button" class="btn b-g b-sm" onclick="poClearPulls()">clear pulls</button> <span id="po-pull-total" style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-left:6px;"></span></div>
@@ -2842,13 +2780,14 @@ function buildPackOrderCard(){
       <div style="border:1px dashed var(--border);border-radius:6px;padding:10px 12px;margin-bottom:16px;background:rgba(184,130,10,.03);">
         <div style="font-size:11px;color:var(--text3);margin-bottom:8px;line-height:1.5;">🔎 <b>Lot not listed above?</b> If a lot you used was toasted or removed early, add it from the sheet — it'll be tied to this order and <b>back-filled into traceability</b>.</div>
         <div class="fg2" style="align-items:end;">
-          <div class="fgl"><label>Lot #</label><input class="fi" id="po-ml-lot" list="po-known-lots" autocomplete="off" placeholder="e.g. WS1776" oninput="onPoManualLot()"></div>
-          <div class="fgl"><label>Variety</label><input class="fi" id="po-ml-var" list="po-varieties-dl" autocomplete="off" placeholder="Variety"></div>
-          <div class="fgl"><label>Container</label><input class="fi" id="po-ml-con" list="po-containers-dl" autocomplete="off" placeholder="GH-…"></div>
+          <div class="fgl"><label>Lot #</label><input class="fi" id="po-ml-lot" list="po-known-lots" ${NOFILL('po_ml_lot')} placeholder="e.g. WS1776" oninput="onPoManualLot()" onchange="onLotResolve(this,onPoManualLot)"></div>
+          <div class="fgl"><label>Variety</label><input class="fi" id="po-ml-var" list="po-varieties-dl" ${NOFILL('po_ml_var')} placeholder="Variety" onchange="onVarietyResolve(this)"></div>
+          <div class="fgl"><label>Container</label><input class="fi" id="po-ml-con" list="po-containers-dl" ${NOFILL('po_ml_con')} placeholder="GH-…"></div>
         </div>
         <button type="button" class="btn b-g b-sm" onclick="poAddManualLot()" style="margin-top:8px;">+ Add lot to this order</button>
         <div id="po-manual-lots" style="margin-top:8px;"></div>
       </div>
+      </div></details>
       <div class="form-acts">
         <button class="btn b-m b-lg" onclick="savePackOrder()">Generate Packed Order</button>
         <button class="btn b-g" onclick="clrPackOrder()">Clear</button>
@@ -2865,6 +2804,9 @@ function buildPackOrderCard(){
 function computeOrderDeductions(qtys, checked){
   const today=tday();
   const inSession=(hid)=>DB.packSessions.some(s=>s.date===today && (s.pulled||[]).some(p=>p.harvestId===hid));
+  // Match a catalog variety to a harvest variety by CANONICAL key (alias-safe), so catalog
+  // drift like 'Gold Enoki' vs stored 'Golden Enoki' still matches instead of silently filling 0.
+  const _vk=s=>varietyKey(canonicalVariety(s||''));
   const targetByLot={}; const unmatched=[];
   ALL_PRODS.forEach(p=>{ const N=parseInt(qtys[p.dataKey])||0; if(N<=0) return;
     const total=N*(p.unitLb||3);
@@ -2872,7 +2814,8 @@ function computeOrderDeductions(qtys, checked){
     const groups=(p.composition&&p.composition.length)?p.composition:[{label:'',share:1,varieties:p.varieties||[]}];
     groups.forEach(grp=>{
       const grpLbs=total*(grp.share||1);
-      const relLots=checked.filter(l=>(grp.varieties||[]).includes(l.variety)); // lots checked that fall in this category
+      const grpKeys=new Set((grp.varieties||[]).map(_vk));
+      const relLots=checked.filter(l=>grpKeys.has(_vk(l.variety))); // lots checked that fall in this category (canonical-key match)
       if(!relLots.length){ unmatched.push({code:p.code,name:p.name+(grp.label?' — '+grp.label:''),qty:N,lb:Math.round(grpLbs*100)/100}); return; }
       const perLot=grpLbs/relLots.length; // split this category's share evenly across its checked lots
       relLots.forEach(l=>{ targetByLot[l.harvestId]=(targetByLot[l.harvestId]||0)+perLot; });
@@ -3100,6 +3043,7 @@ function openEditOrder(id){
     ${o.custom?`<div class="fgl" style="margin-top:14px;"><label>Custom / Wholesale Varieties</label><input class="fi" id="eo-cuv" value="${(o.customVarieties||'').replace(/"/g,'&quot;')}"></div>
       <div class="fgl" style="margin-top:10px;"><label>Custom Price ($, overrides catalog)</label><input class="fi" type="number" min="0" step="0.01" id="eo-cup" value="${o.price||''}"></div>`:''}
     <div class="fg2" style="margin-top:14px;">
+      <div class="fgl"><label>Ship / Delivery Date <span style="color:var(--text3);font-size:11px;">drives which week this counts in</span></label><input class="fi" type="date" id="eo-delivered" value="${((o.deliveredAt||o.packedAt||'')+'').slice(0,10)}"></div>
       <div class="fgl"><label>Delivery Day</label><select class="fs" id="eo-day">${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=>`<option ${o.day===d?'selected':''}>${d}</option>`).join('')}</select></div>
       <div class="fgl"><label>PO / Order Ref</label><input class="fi" id="eo-ref" value="${(o.orderRef||'').replace(/"/g,'&quot;')}"></div>
       <div class="fgl"><label>S.O. # <span style="color:var(--text3);font-size:11px;">from Accounting slip</span></label><input class="fi" id="eo-so" value="${(o.soNum||'').toString().replace(/"/g,'&quot;')}" placeholder="add when you get it"></div>
@@ -3119,6 +3063,7 @@ async function saveOrderEdits(id, send){
   const upd={};
   ALL_PRODS.forEach(p=>{ const v=Math.max(0,parseInt(document.getElementById('eo-'+p.dataKey)?.value)||0); o[p.dataKey]=v; upd[p.dataKey]=v; });
   const day=document.getElementById('eo-day')?.value; if(day){ o.day=day; upd.day=day; }
+  const delv=document.getElementById('eo-delivered')?.value; if(delv){ o.deliveredAt=delv; upd.deliveredAt=delv; const wk=_mondayOf(delv); o.week=wk; upd.week=wk; }
   const ref=document.getElementById('eo-ref')?.value.trim(); o.orderRef=ref; upd.orderRef=ref;
   const soEl=document.getElementById('eo-so'); if(soEl){ const so=soEl.value.trim(); o.soNum=so; upd.soNum=so; }
   const notes=document.getElementById('eo-notes')?.value.trim(); o.notes=notes; upd.notes=notes;
@@ -3418,7 +3363,7 @@ function closeSlip(){
 document.getElementById('slip-modal').addEventListener('click',function(e){ if(e.target===this) closeSlip() });
 
 // ── NEW ORDER / REQUEST ──
-// #3 — show client-restricted items (e.g. 10# totes → Opryland only) only when the
+// #3 — show client-restricted items (e.g. 10# totes → Freshpoint, the middle-man for Opryland) only when the
 // typed client matches the restriction; zero them out otherwise so they never land on
 // another client's order.
 function onOrderClientChange(){
@@ -3450,7 +3395,6 @@ function rNewOrd(el){
           <label>Request Type</label>
           <select class="fs" id="no-rt" onchange="switchReqType(this.value)">
             <option value="standard">Standard Order</option>
-            <option value="sample">Sample</option>
             ${isA?'<option value="wholesale">Wholesale</option><option value="custom">Custom Request</option>':''}
           </select>
         </div>
@@ -3586,20 +3530,7 @@ async function subNewOrd(){
     return qtys;
   };
 
-  // ── SAMPLE ──
-  if(rt==='sample'){
-    const date=document.getElementById('no-sd').value;
-    if(!date){ alert('Sample date is required.'); return }
-    const qtys=readCatalogQtys('no-');
-    const anyQty=Object.values(qtys).some(v=>v>0);
-    if(!anyQty){ alert('Add at least one item to the sample.'); return }
-    const sData={date,week:wkStart(),recipient:client,recipientType:document.getElementById('no-stype')?.value||'Other',contact:document.getElementById('no-scontact')?.value.trim()||'',...qtys,notes:document.getElementById('no-n').value.trim(),status:'pending'};
-    const sId=await FS.add('samples',sData);
-    DB.samples.push({id:sId,...sData});
-    const toastEl=document.getElementById('no-t');
-    if(toastEl){toastEl.textContent='✓ Sample logged';toastEl.style.background='rgba(90,42,130,.07)';toastEl.style.borderColor='rgba(90,42,130,.2)';toastEl.style.color='#6a3a9a';}
-    toast('no-t'); clrNewOrd(); return;
-  }
+  // Samples are logged on the Today page (🎁 Log a Sample), not here.
 
   // ── ORDER (Standard / Wholesale / Custom) ──
   const day=document.getElementById('no-d').value;
@@ -3685,13 +3616,29 @@ let VARIETY_ALIASES = {
   'lynxpawllevis'        : 'Lynx Paw',
   'llevislynxpaw'        : 'Lynx Paw',
   'lynxpawllevis2'       : 'Lynx Paw',
+  // Black Pearl King is the same variety as Black Pearl
+  'blackpearlking'       : 'Black Pearl',
   // Gold / Golden Oyster are the same
   'goldenoyster'         : 'Gold Oyster',
   // Enoki: Gold Enoki / Golden Needle / golden needle enoki are all the same → Golden Enoki
   'goldenoki'            : 'Golden Enoki',
   'goldenneedle'         : 'Golden Enoki',
   'goldenneedleenoki'    : 'Golden Enoki',
-  'goldneedle'           : 'Golden Enoki'
+  'goldneedle'           : 'Golden Enoki',
+  // ── common field shorthand (what staff actually type) → canonical, so they resolve instantly ──
+  'blueoy'    : 'Blue Oyster',   'blueoyster':'Blue Oyster',  'bluoyster':'Blue Oyster', 'blue':'Blue Oyster',
+  'snowoy'    : 'Snow Oyster',   'snowoyster':'Snow Oyster',  'snow':'Snow Oyster',
+  'italianoy' : 'Italian Oyster','italoy':'Italian Oyster',   'italian':'Italian Oyster',
+  'goldoy'    : 'Gold Oyster',   'goldoyster':'Gold Oyster',
+  'tot'       : 'Trail of Tears Oyster (ToT)', 'totoy':'Trail of Tears Oyster (ToT)',
+  'bp'        : 'Black Pearl',   'blkpearl':'Black Pearl', 'blackpearl':'Black Pearl',
+  'lm'        : "Lion's Mane",   'lions':"Lion's Mane", 'lionsmane':"Lion's Mane", 'lion':"Lion's Mane",
+  'shi'       : 'Shiitake',      'shitake':'Shiitake', 'shiitakes':'Shiitake',
+  'chest'     : 'Chestnut',      'chestnuts':'Chestnut',
+  'lynx'      : 'Lynx Paw',      'lynxpaw':'Lynx Paw',
+  'coral'     : 'Coral Tooth',   'coraltooth':'Coral Tooth',
+  'pio'       : 'Pioppino',      'piopinno':'Pioppino', 'pioppini':'Pioppino',
+  'enoki'     : 'Golden Enoki',  'goldenoki2':'Golden Enoki'
 };
 // Admin-defined merges persist here (appConfig doc 'variety-aliases') and layer on top of the built-ins.
 function applyStoredVarietyAliases(map){ if(!map||typeof map!=='object') return; Object.entries(map).forEach(([k,v])=>{ if(k&&v) VARIETY_ALIASES[varietyKey(k)]=v; }); }
@@ -3717,10 +3664,31 @@ async function mergeVariety(fromName, toName){
 function canonicalVariety(name){
   const k=varietyKey(name); if(!k) return (name||'').trim();
   if(VARIETY_ALIASES[k]) return VARIETY_ALIASES[k];
-  const m=VARIETIES.find(v=>varietyKey(v)===k);
-  return m || titleCaseVariety(name);
+  const m=VARIETIES.find(v=>varietyKey(v)===k); if(m) return m;
+  const loose=_looseVarietyMatch(name); if(loose) return loose;   // typo/abbrev → known variety (e.g. "blu oyster" → Blue Oyster)
+  return titleCaseVariety(name);
 }
-function isNewVariety(name){ const k=varietyKey(name); if(VARIETY_ALIASES[k]) return false; return !!k && !VARIETIES.some(v=>varietyKey(v)===k); }
+// Confidence-tagged resolve, for the auto-fill color bar: exact/alias → GOLD lock, fuzzy → GREEN (verify), new → as typed.
+function resolveVarietyConf(raw){
+  const k=varietyKey(raw); if(!k) return {value:(raw||'').trim(),conf:'new'};
+  const exact=VARIETIES.find(v=>varietyKey(v)===k); if(exact) return {value:exact,conf:'exact'};
+  if(VARIETY_ALIASES[k]) return {value:VARIETY_ALIASES[k],conf:'alias'};
+  const loose=_looseVarietyMatch(raw); if(loose) return {value:loose,conf:'fuzzy'};
+  return {value:titleCaseVariety(raw),conf:'new'};
+}
+// Conservative fuzzy matcher — expands common shorthand words then requires a UNIQUE variety hit (never guesses between two).
+function _looseVarietyMatch(raw){
+  const t=(raw||'').toString().trim().toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); if(!t) return '';
+  const EXP={oy:'oyster',oys:'oyster',ost:'oyster',shi:'shiitake',shit:'shiitake',lm:'lionsmane',bp:'blackpearl',tot:'trailoftears',pio:'pioppino',chest:'chestnut'};
+  const words=t.split(' ').map(w=>EXP[w]||w).filter(Boolean); if(!words.length) return '';
+  const pre=(a,b)=>{ const n=Math.min(4,a.length,b.length); return n>=3 && (a.slice(0,n)===b.slice(0,n)); };
+  const cand=VARIETIES.filter(v=>{
+    const vwords=v.toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(Boolean);
+    return words.every(w=> vwords.some(x=> pre(x,w)) );
+  });
+  return cand.length===1 ? cand[0] : '';
+}
+function isNewVariety(name){ const k=varietyKey(name); if(VARIETY_ALIASES[k]) return false; if(VARIETIES.some(v=>varietyKey(v)===k)) return false; return !!k && !_looseVarietyMatch(name); }
 // Normalize each row's .variety to canonical; warn+confirm on genuinely new ones.
 // Returns false if the user cancels (so the caller aborts the save).
 function normalizeRowVarieties(rows){
@@ -3980,6 +3948,20 @@ async function drawDownReceivings(lotNumber, blockCount, preferId){
     const upd={placedCount:rec.placedCount}; if(receivingOnHand(rec)<=0 && rec.status==='on-hand'){ rec.status='placed'; upd.status='placed'; }
     try{ await FS.update('receivings',rec.id,upd); }catch(e){ console.warn('drawDownReceivings',e); } }
   return {drawn,ids,shortfall:remaining};
+}
+// GIVE BACK a placement to on-hand receivings (reverse of drawDownReceivings) — used when a fruiting
+// placement is edited (lot/count changed) or removed, so the receiving inventory re-syncs. Prefers the
+// originally-linked receiving, else matches by lot key; restores 'on-hand' status if it re-opens.
+async function reverseReceivingDraw(lotNumber, blockCount, preferId){
+  let give=parseInt(blockCount)||0; if(give<=0) return;
+  const k=_lotKey(lotNumber||'');
+  let cands=(DB.receivings||[]).filter(r=>(parseInt(r.placedCount)||0)>0 && ((preferId&&r.id===preferId) || (k&&_lotKey(r.lotNumber)===k)));
+  cands.sort((a,b)=>((b.id===preferId?1:0)-(a.id===preferId?1:0)) || (b.date||'').localeCompare(a.date||'')); // linked first, then newest
+  for(const rec of cands){ if(give<=0) break; const back=Math.min(parseInt(rec.placedCount)||0, give); if(back<=0) continue;
+    rec.placedCount=(parseInt(rec.placedCount)||0)-back; give-=back;
+    const u={placedCount:rec.placedCount}; if(rec.status==='placed' && receivingOnHand(rec)>0){ rec.status='on-hand'; u.status='on-hand'; }
+    try{ await FS.update('receivings',rec.id,u); }catch(e){ console.warn('reverseReceivingDraw',e); }
+  }
 }
 // ── SPAWN on-hand: a grain-spawn run makes bags for its strain-lots; block production consumes them via spawnSources ──
 function _spawnRunBagsByLot(s){ // {lotKey: producedBags} for one spawn run
@@ -4275,10 +4257,10 @@ function rReceiving(el){
         <div class="fgl"><label>S.O. # <span style="color:var(--rust);font-size:11px;">blank = OPEN receipt · requests SO from Katherine</span></label><input class="fi" id="rc-so" placeholder="from the slip (or leave blank)"></div>
         <div class="fgl"><label>Source</label><select class="fs" id="rc-source" onchange="onRecSourceChange()"><option value="vendor">Outside Vendor</option><option value="internal">Internal Production</option></select></div>
         <div class="fgl"><label>Producer / Vendor</label><input class="fi" id="rc-vendor" placeholder="Vendor or in-house production co." list="rc-vendl" autocomplete="off"><datalist id="rc-vendl"><option value="In-house Production">${allSuppliers().map(s=>`<option value="${s.replace(/"/g,'&quot;')}">`).join('')}</datalist></div>
-        <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="rc-variety" list="rc-variety-dl" placeholder="Type or pick variety…" autocomplete="off"><datalist id="rc-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+        <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="rc-variety" list="rc-variety-dl" placeholder="Type or pick variety…" autocomplete="off" onchange="onVarietyResolve(this)"><datalist id="rc-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Lot / Block #</label><input class="fi" id="rc-lot" placeholder="e.g. 10184 or WSY00Y" oninput="onRecvLot()"></div>
+        <div class="fgl"><label>Lot / Block #</label><input class="fi" id="rc-lot" placeholder="e.g. 10184 or WSY00Y" oninput="onRecvLot()" onchange="onLotResolve(this,onRecvLot)"></div>
         <div class="fgl"><label># of Blocks</label><input class="fi" type="number" min="1" id="rc-bc" placeholder="# blocks received"></div>
         <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="rc-bw" placeholder="e.g. 5.5"></div>
         <div class="fgl"><label>Received By</label><input class="fi" id="rc-by" value="${(S.name||'').replace(/"/g,'&quot;')}" ${NOFILL('tmrcby')}></div>
@@ -4669,7 +4651,7 @@ function rFruiting(el){
       </div>
       <div class="fgl">
         <label>Lot Number <span style="color:var(--text3);font-size:11px;">type to match blocks on hand</span></label>
-        <input class="fi" id="fr-lot" list="fr-lotl" placeholder="Type to search inventory… e.g. WSY00Y or 10162" autocomplete="off" oninput="onLotInput()">
+        <input class="fi" id="fr-lot" list="fr-lotl" placeholder="Type to search inventory… e.g. WSY00Y or 10162" autocomplete="off" oninput="onLotInput()" onchange="onLotResolve(this,onLotInput)">
         <datalist id="fr-lotl">${onHand.map(r=>`<option value="${(r.lotNumber||'').replace(/"/g,'&quot;')}">${r.variety} · ${receivingOnHand(r)} blocks on hand · ${r.vendor||(r.source==='internal'?'Internal':'Vendor')}</option>`).join('')}</datalist>
         <div id="fr-lot-hint" style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);margin-top:4px;letter-spacing:1px;">${onHand.length?onHand.length+' LOT(S) ON HAND · TYPE TO MATCH':'NO BLOCKS ON HAND — LOG A RECEIVING FIRST'}</div>
       </div>
@@ -4683,11 +4665,11 @@ function rFruiting(el){
     </div>
     <div class="fg2">
       <div class="fgl"><label>Supplier / Production Company <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="fr-vendor" placeholder="Supplier or in-house production co." list="fr-vendorl" autocomplete="off"><datalist id="fr-vendorl">${allSuppliers().map(s=>`<option value="${s.replace(/"/g,'&quot;')}">`).join('')}<option value="In-house Production"></datalist></div>
-      <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="fr-variety" list="fr-variety-dl" placeholder="Type or pick variety…" autocomplete="off" oninput="updateFruitingPreview()"><datalist id="fr-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+      <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="fr-variety" list="fr-variety-dl" placeholder="Type or pick variety…" autocomplete="off" oninput="updateFruitingPreview()" onchange="onVarietyResolve(this);updateFruitingPreview()"><datalist id="fr-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
       <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="1" id="fr-bc" placeholder="# of blocks" oninput="updateFruitingPreview()"></div>
       <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="fr-bw" placeholder="e.g. 5.5" oninput="updateFruitingPreview()"></div>
       <div class="fgl"><label>Forecast Rate <span style="color:var(--text3);font-size:11px;">lb / block</span></label><input class="fi" type="number" min="0" step="0.1" id="fr-rate" value="${LBSPERBLOCK}" oninput="updateFruitingPreview()"></div>
-      <div class="fgl"><label>Unusable Blocks <span style="color:var(--text3);font-size:11px;">→ waste stream</span></label><input class="fi" type="number" min="0" id="fr-unusable" placeholder="0"></div>
+      <div class="fgl"><label>Spoiled / Unusable Blocks <span style="color:var(--text3);font-size:11px;">→ spoilage report (manufacturer credit)</span></label><input class="fi" type="number" min="0" id="fr-unusable" placeholder="0"></div>
     </div>
     <div id="fr-preview" style="display:none;background:rgba(58,96,48,.07);border:1px solid rgba(58,96,48,.2);border-radius:3px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:var(--text2);line-height:1.6;"></div>
     <div class="fgl" style="margin-bottom:16px;"><label>Notes</label><textarea class="fta" id="fr-notes" placeholder="Block source, substrate mix, any observations…"></textarea></div>
@@ -4886,7 +4868,7 @@ function renderFruitingQueue(){
         <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="1" value="${r.blockCount}" onchange="updateFruitingRow(${i},'blockCount',this.value)" placeholder="# of blocks"></div>
         <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" value="${r.blockWeightLb||''}" placeholder="e.g. 5.5" onchange="updateFruitingRow(${i},'blockWeightLb',this.value)"></div>
         <div class="fgl"><label>Forecast Rate <span style="color:var(--text3);font-size:11px;">lb / block</span></label><input class="fi" type="number" min="0" step="0.1" value="${r.rateLbPerBlock||LBSPERBLOCK}" onchange="updateFruitingRow(${i},'rateLbPerBlock',this.value)"></div>
-        <div class="fgl"><label>Unusable Blocks <span style="color:var(--text3);font-size:11px;">→ waste stream</span></label><input class="fi" type="number" min="0" value="${r.unusable||''}" placeholder="0" onchange="updateFruitingRow(${i},'unusable',this.value)"></div>
+        <div class="fgl"><label>Spoiled / Unusable Blocks <span style="color:var(--text3);font-size:11px;">→ spoilage report (manufacturer credit)</span></label><input class="fi" type="number" min="0" value="${r.unusable||''}" placeholder="0" onchange="updateFruitingRow(${i},'unusable',this.value)"></div>
       </div>
       <div class="fgl" style="margin-top:8px;"><label>Notes</label><input class="fi" value="${attrEsc(r.notes||'')}" onchange="updateFruitingRow(${i},'notes',this.value)" placeholder="Block source, substrate mix, observations…"></div>
     </div>`;}).join('') : '';
@@ -4899,6 +4881,17 @@ function renderFruitingQueue(){
 // Fruiting blocks should come from LIVE INVENTORY (received-blocks pool). If a typed lot
 // isn't there, demand an explanation (saved to the record) — soft gate for the beta phase.
 function validateFruitingLots(rows){
+  // ── QUANTITY GATE ── can't place more blocks of a lot than the received-blocks pool holds.
+  // (A lot with 0 on hand is handled by the "not in inventory" explanation below; this catches shortfalls.)
+  const req={}; // lotKey -> {lot, blocks}
+  rows.forEach(r=>{ if(!r.lotNumber||r.receivingId) return; const k=_lotKey(r.lotNumber); if(!k) return; (req[k]=req[k]||{lot:r.lotNumber,blocks:0}); req[k].blocks+=parseInt(r.blockCount)||0; });
+  for(const k of Object.keys(req)){
+    const avail=(DB.receivings||[]).filter(rc=>_lotKey(rc.lotNumber)===k).reduce((s,rc)=>s+receivingOnHand(rc),0);
+    if(avail>0.001 && req[k].blocks>avail+0.001){
+      alert('⛔ Can’t finish this session.\n\nYou’re placing '+req[k].blocks+' blocks of lot “'+req[k].lot+'”, but the received-blocks pool only shows '+Math.round(avail)+' on hand.\n\nFix the receiving first, then try again:\n• If the lot # was mistyped it won’t match — correct it, or\n• Adjust the received block count in the receiving session, or\n• Reduce the blocks you’re placing here.');
+      return false;
+    }
+  }
   for(const r of rows){
     if(!r.lotNumber) continue;
     if(r.receivingId) continue; // placed from a received batch = already in inventory
@@ -4940,9 +4933,9 @@ async function _doFruitingCommit(rows, crew){
     DB.fruitings.push({id:fId,...fData}); _frCreatedIds.push(fId);
     // Unusable blocks → waste stream (same blockDisposals stream as harvest)
     if(r.unusable>0){
-      const dData={date:r.date,stage:'pre-fruiting',container:r.containerID,cookLot:'',labBatchId:'',variety:r.variety,source:r.source,supplier:r.vendor,blockCount:r.unusable,reason:'unusable',notes:`Unusable at fruiting — lot ${r.lotNumber}${r.notes?(' · '+r.notes):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+      const dData={date:r.date,stage:'pre-fruiting',container:r.containerID,cookLot:'',labBatchId:'',lotNumber:r.lotNumber||'',variety:r.variety,source:r.source,supplier:r.vendor,blockCount:r.unusable,reason:'spoiled',notes:`Spoiled/unusable at fruiting — lot ${r.lotNumber}${r.notes?(' · '+r.notes):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
       const dId=await FS.add('blockDisposals',dData); dData.id=dId; DB.blockDisposals.push(dData);
-      logAudit('blocks_removed',`${r.unusable} unusable blocks at fruiting — lot ${r.lotNumber} — ${r.containerID}`);
+      logAudit('blocks_removed',`${r.unusable} spoiled/unusable blocks at fruiting — lot ${r.lotNumber} — ${r.containerID}`);
     }
     n++;
   }
@@ -5009,9 +5002,10 @@ async function kickAllStale(){
   renderC();
 }
 
-function delFruiting(id){
+async function delFruiting(id){
   const f=DB.fruitings.find(x=>x.id===id);
   if(!confirm(`Delete this fruiting record${f?` (Lot ${f.lotNumber||''} · ${f.variety||''} · ${f.blockCount||0} blocks)`:''}?`)) return;
+  if(f){ try{ await reverseReceivingDraw(f.lotNumber, parseInt(f.blockCount)||0, f.receivingId); }catch(e){ console.warn('delFruiting giveback',e); } } // give the blocks back to receiving inventory
   DB.fruitings=DB.fruitings.filter(x=>x.id!==id);
   FS.del('fruitings',id);
   if(f) logAudit('fruiting_deleted',`Deleted fruiting Lot ${f.lotNumber||''} — ${f.variety||''} (${f.blockCount||0} blocks)`);
@@ -5053,6 +5047,7 @@ function openEditFruiting(id){
 }
 async function saveFruitingEdit(id){
   const f=DB.fruitings.find(x=>x.id===id); if(!f) return;
+  const oldLot=f.lotNumber, oldBC=parseInt(f.blockCount)||0, oldRecvId=f.receivingId; // for receiving re-sync
   const val=i=>(document.getElementById(i)?.value||'').trim();
   const bc=parseInt(document.getElementById('ef-bc')?.value)||0;
   if(!val('ef-lot')){ alert('Lot number is required.'); return; }
@@ -5069,6 +5064,14 @@ async function saveFruitingEdit(id){
   if(upd.source==='supplier' && upd.vendor) addSupplier(upd.vendor);
   Object.assign(f,upd);
   try{ await FS.update('fruitings',id,upd); }catch(e){ alert('Save failed: '+(e.message||e)); return; }
+  // Re-sync receiving draw-down when the lot or block count changed: give back the old placement, draw the new.
+  if(_lotKey(oldLot||'')!==_lotKey(upd.lotNumber||'') || oldBC!==bc){
+    try{
+      await reverseReceivingDraw(oldLot, oldBC, oldRecvId);
+      const dd=await drawDownReceivings(upd.lotNumber, bc);
+      f.receivingId=dd.ids[0]||''; await FS.update('fruitings',id,{receivingId:f.receivingId});
+    }catch(e){ console.warn('fruiting edit redraw',e); }
+  }
   logAudit('fruiting_edited',`Edited fruiting Lot ${upd.lotNumber} — ${upd.variety} (${bc} blocks, ${upd.status})`);
   toast('ef-t','✓ Fruiting updated');
   setTimeout(()=>{ closeModal(); rFruiting(document.getElementById('main-views')); },800);
@@ -5163,13 +5166,57 @@ function wireConLotVar(elOrId, lotSel, varSel){
   if(vEl && link.variety && !vEl.value.trim()){ vEl.value=link.variety; markAF(vEl); }
 }
 // highlight a field the app auto-filled (variety looked up from a lot, etc.) so it's obvious it wasn't typed; clears when the user edits it
-function markAF(el){ if(!el) return; el.classList.add('af'); el.title='Auto-filled by the app — edit to override';
+// markAF(el)            → GOLD "AUTO" bar: confidently auto-locked (lot decode, exact/alias match).
+// markAF(el,'verify')   → GREEN "CHECK" bar: auto-filled best-guess the user should double-check.
+function markAF(el, mode){ if(!el) return; clearAF(el);
+  const verify=(mode===true||mode==='verify');
+  const cls=verify?'afg':'af', tcls=verify?'afg-tag':'af-tag', label=verify?'CHECK':'AUTO';
+  el.classList.add(cls); el.title=verify?'Auto-filled best guess — please double-check':'Auto-locked by the app — edit to override';
   const p=el.parentElement;
-  if(p && !p.querySelector(':scope > .af-tag')){ p.classList.add('af-wrap'); const tag=document.createElement('span'); tag.className='af-tag'; tag.textContent='AUTO'; p.appendChild(tag); }
-  const clear=()=>{ clearAF(el); el.removeEventListener('input',clear); el.removeEventListener('change',clear); };
-  el.addEventListener('input',clear); el.addEventListener('change',clear);
+  if(p){ p.classList.add('af-wrap'); if(!p.querySelector(':scope > .'+tcls)){ const tag=document.createElement('span'); tag.className=tcls; tag.textContent=label; p.appendChild(tag); } }
+  const clr=()=>{ clearAF(el); el.removeEventListener('input',clr); el.removeEventListener('change',clr); };
+  el.addEventListener('input',clr); el.addEventListener('change',clr);
 }
-function clearAF(el){ if(!el) return; el.classList.remove('af'); const p=el.parentElement; if(p){ const t=p.querySelector(':scope > .af-tag'); if(t) t.remove(); p.classList.remove('af-wrap'); } }
+function clearAF(el){ if(!el) return; el.classList.remove('af','afg'); const p=el.parentElement; if(p){ p.querySelectorAll(':scope > .af-tag, :scope > .afg-tag').forEach(t=>t.remove()); p.classList.remove('af-wrap'); } }
+// Shared variety-field handler: snap a typed variety to canonical and flag it — GOLD if confident, GREEN if a fuzzy guess.
+function onVarietyResolve(el){ if(!el) return; const raw=(el.value||'').trim(); if(!raw){ clearAF(el); return; }
+  const r=resolveVarietyConf(raw);
+  if(r.conf==='new'){ clearAF(el); return; }          // genuinely new — leave it; save-time confirm handles it
+  if(r.value && r.value!==raw) el.value=r.value;        // snap to the canonical spelling
+  markAF(el, r.conf==='fuzzy');                         // fuzzy → green CHECK, exact/alias → gold AUTO
+}
+// ── LOT-NUMBER resolver — references every lot the app knows; exact = GOLD (recognized), near-miss typo = GREEN (snapped, verify) ──
+function knownLotMap(){
+  const m={}; const add=l=>{ l=(l||'').trim(); if(!l) return; const k=_lotKey(l); if(k&&!m[k]) m[k]=l; };
+  (DB.harvests||[]).forEach(h=>add(h.lotNumber));
+  (DB.fruitings||[]).forEach(f=>add(f.lotNumber));
+  (DB.receivings||[]).forEach(r=>add(r.lotNumber));
+  (DB.labBatches||[]).forEach(b=>{ add(b.lotCode); (Array.isArray(b.varieties)?b.varieties:[]).forEach(v=>add(v.lot)); });
+  return m;
+}
+function _editDist(a,b,max){ a=a||''; b=b||''; if(Math.abs(a.length-b.length)>max) return max+1;
+  let dp=Array(b.length+1).fill(0).map((_,i)=>i);
+  for(let i=1;i<=a.length;i++){ let prev=dp[0]; dp[0]=i; let best=dp[0];
+    for(let j=1;j<=b.length;j++){ const tmp=dp[j]; dp[j]=Math.min(dp[j]+1,dp[j-1]+1,prev+(a[i-1]===b[j-1]?0:1)); prev=tmp; if(dp[j]<best)best=dp[j]; }
+    if(best>max) return max+1; }
+  return dp[b.length];
+}
+function resolveLotConf(raw){
+  const disp=canonLot(raw); const k=_lotKey(disp); if(!k) return {value:disp,conf:'new'};
+  const known=knownLotMap();
+  if(known[k]) return {value:known[k],conf:'known'};                    // recognized lot (ignoring punctuation/case)
+  let hit=null, hits=0;                                                  // near-miss: exactly one known lot one edit away
+  for(const kk in known){ if(Math.abs(kk.length-k.length)>1) continue; if(_editDist(kk,k,1)<=1){ hits++; hit=known[kk]; if(hits>1) break; } }
+  if(hits===1 && k.length>=4) return {value:hit,conf:'fuzzy'};          // guard: only for lots ≥4 chars so tiny codes don't false-snap
+  return {value:disp,conf:'new'};
+}
+// Resolve a lot field on change: known → gold, typo snapped → green, new → cleared. Optional cb runs after (e.g. re-decode variety/container).
+function onLotResolve(el, cb){ if(!el) return; const raw=(el.value||'').trim(); if(!raw){ clearAF(el); if(cb)cb(); return; }
+  const r=resolveLotConf(raw);
+  if(r.value && r.value!==raw) el.value=r.value;
+  if(r.conf==='new') clearAF(el); else markAF(el, r.conf==='fuzzy');
+  if(cb) cb();
+}
 // Best variety guess for a lot: decode Wild Spore species from the lot code FIRST (works on a brand-new receipt), then fall back to prior records. Mirrors what Fruiting does.
 // Decode the Wild Spore species from anywhere in a WS lot code (standard: WS + MMDDYY + species code), e.g. WS042623YOOY, WS-042623-1776
 function _wsSpeciesFromLot(lot){ const u=(lot||'').toUpperCase().replace(/[\s-]/g,'');
@@ -5336,8 +5383,8 @@ function hbResolveVariety(raw){
 function hbLearnOption(dlId,val){ val=(val||'').trim(); if(!val) return; const dl=document.getElementById(dlId); if(!dl) return; if([...dl.options].some(o=>o.value===val)) return; const o=document.createElement('option'); o.value=val; dl.appendChild(o); }
 function hbLotRow(r){ r=r||{};
   return `<div class="hb-lotrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
-    <input class="fi hb-lot" list="hb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:104px;" autocomplete="off" oninput="hbLotVariety(this)" onchange="hbLearnOption('hb-lot-dl',this.value)">
-    <input class="fi hb-var" list="hb-var-dl" value="${attrEsc(hbResolveVariety(r.strain||r.variety||''))}" placeholder="Variety" style="flex:1;min-width:118px;" autocomplete="off" onchange="this.value=hbResolveVariety(this.value);hbLearnOption('hb-var-dl',this.value)">
+    <input class="fi hb-lot" list="hb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:104px;" autocomplete="off" oninput="hbLotVariety(this)" onchange="onLotResolve(this,()=>hbLotVariety(this));hbLearnOption('hb-lot-dl',this.value)">
+    <input class="fi hb-var" list="hb-var-dl" value="${attrEsc(hbResolveVariety(r.strain||r.variety||''))}" placeholder="Variety" style="flex:1;min-width:118px;" autocomplete="off" onchange="onVarietyResolve(this);hbLearnOption('hb-var-dl',this.value)">
     <select class="fs hb-grade" style="max-width:64px;"><option value="A" ${(r.grade||'A')==='A'?'selected':''}>A</option><option value="B" ${r.grade==='B'?'selected':''}>B</option></select>
     <input class="fi hb-wt" type="number" step="0.01" min="0" value="${r.harvested!=null&&r.harvested!==''?r.harvested:''}" placeholder="lb" style="max-width:86px;">
     <button type="button" class="btn b-r b-sm" title="Remove lot" onclick="this.closest('.hb-lotrow').remove()">✕</button>
@@ -5407,14 +5454,27 @@ async function snapBlockBatch(input){
   }catch(e){ show('⚠ '+e.message); }
   finally{ input.value=''; }
 }
+function bbSpawnRow(ss){ ss=ss||{};
+  return `<div class="bb-srow" style="display:flex;gap:5px;align-items:center;margin-bottom:3px;">
+    <input class="fi bb-slot" list="lab-lotcode-l" value="${attrEsc(ss.lot||'')}" placeholder="spawn lot #" style="flex:1 1 130px;min-width:100px;" autocomplete="off">
+    <input class="fi bb-sbags" type="number" min="0" step="1" value="${(ss.bags!=null&&ss.bags!=='')?ss.bags:''}" placeholder="bags" style="max-width:72px;"><span style="font-size:10px;color:var(--text3);">bags</span>
+    <button type="button" class="btn b-r b-sm" title="Remove spawn lot" onclick="this.closest('.bb-srow').remove()">✕</button>
+  </div>`;
+}
+function bbAddSpawn(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('bb-srows')) w.insertAdjacentHTML('beforeend',bbSpawnRow({})); }
 function bbStrainRow(r){ r=r||{};
-  return `<div class="bb-strainrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
+  const srcs=(Array.isArray(r.spawnSources)&&r.spawnSources.length)?r.spawnSources:(r.spawnLot?parseSpawnSrcText(r.spawnLot):[{}]);
+  return `<div class="bb-strainrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start;margin-bottom:8px;padding-bottom:8px;border-bottom:1px dashed var(--border);">
     <input class="fi bb-suffix" value="${attrEsc(r.suffix||'')}" placeholder="suffix (A)" style="max-width:90px;">
     <input class="fi bb-var" list="bb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Strain" style="flex:1;min-width:120px;" autocomplete="off" onchange="if(typeof hbResolveVariety==='function'){this.value=hbResolveVariety(this.value);}">
     <input class="fi bb-gen" value="${attrEsc(r.generation||'')}" placeholder="Gen" style="max-width:64px;">
     <input class="fi bb-bc" type="number" min="0" value="${(r.blockCount!=null&&r.blockCount!=='')?r.blockCount:''}" placeholder="blocks" style="max-width:84px;">
-    <input class="fi bb-slot" list="lab-lotcode-l" value="${attrEsc((Array.isArray(r.spawnSources)&&r.spawnSources.length)?fmtSpawnSrc(r.spawnSources):(r.spawnLot||''))}" placeholder="spawn lots: 070326-7 ×7, 070926-8 ×8" title="Combined spawn lots — one per lot as ‘lot ×bags’, comma-separated" style="flex:1;min-width:150px;" autocomplete="off">
-    <button type="button" class="btn b-r b-sm" onclick="this.closest('.bb-strainrow').remove()">✕</button>
+    <div class="bb-spawnwrap" style="flex:1 1 100%;padding:7px 9px;background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.18);border-radius:5px;">
+      <div style="font-size:10px;color:var(--text3);margin-bottom:4px;font-family:'Syne Mono',monospace;letter-spacing:.5px;">SPAWN LOTS &mdash; one row per lot (draws each from the pool)</div>
+      <div class="bb-srows">${srcs.map(bbSpawnRow).join('')}</div>
+      <button type="button" class="btn b-g b-sm" onclick="bbAddSpawn(this)">+ spawn lot</button>
+    </div>
+    <button type="button" class="btn b-r b-sm" onclick="this.closest('.bb-strainrow').remove()">✕ strain</button>
   </div>`;
 }
 function bbAddStrain(btn){ const w=btn.previousElementSibling; if(w&&w.classList.contains('bb-strains')) w.insertAdjacentHTML('beforeend',bbStrainRow({})); }
@@ -5423,11 +5483,14 @@ function _readBlockBatchFromDOM(){
   const out=[];
   document.querySelectorAll('.bb-sheet').forEach(el=>{
     const si=parseInt(el.getAttribute('data-si')); const orig=(_blockBatch[si])||{};
-    const rows=[...el.querySelectorAll('.bb-strainrow')].map(row=>({
-      suffix:(row.querySelector('.bb-suffix')?.value||'').trim(), strain:(row.querySelector('.bb-var')?.value||'').trim(),
-      generation:(row.querySelector('.bb-gen')?.value||'').trim(), blockCount:parseInt(row.querySelector('.bb-bc')?.value)||0,
-      spawnLot:(row.querySelector('.bb-slot')?.value||'').trim(), spawnSources:parseSpawnSrcText(row.querySelector('.bb-slot')?.value)
-    })).filter(r=>r.suffix||r.strain||r.blockCount);
+    const rows=[...el.querySelectorAll('.bb-strainrow')].map(row=>{
+      const ss=[...row.querySelectorAll('.bb-srow')].map(sr=>({lot:(sr.querySelector('.bb-slot')?.value||'').trim(),bags:parseInt(sr.querySelector('.bb-sbags')?.value)||0})).filter(s=>s.lot||s.bags);
+      return {
+        suffix:(row.querySelector('.bb-suffix')?.value||'').trim(), strain:(row.querySelector('.bb-var')?.value||'').trim(),
+        generation:(row.querySelector('.bb-gen')?.value||'').trim(), blockCount:parseInt(row.querySelector('.bb-bc')?.value)||0,
+        spawnSources:ss, spawnLot:ss.map(s=>s.lot).filter(Boolean).join(', ')
+      };
+    }).filter(r=>r.suffix||r.strain||r.blockCount);
     const g=id=>(el.querySelector('.'+id)?.value||'').trim();
     out.push({...orig, productionDate:el.querySelector('.bb-pdate')?.value||orig.productionDate||'', lotCode:g('bb-lot'),
       substrateBatch:g('bb-sbatch'), order:g('bb-order'), batch:g('bb-batch'), blocksProduced:parseInt(el.querySelector('.bb-produced')?.value)||0, rows });
@@ -5709,8 +5772,8 @@ function slbItemRow(it){ it=it||{};
 }
 function slbLotRow(l){ l=l||{};
   return `<div class="slb-lotrow" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
-    <input class="fi slb-lot" list="slb-lot-dl" value="${attrEsc(l.lot||'')}" placeholder="Lot #" style="flex:1;min-width:100px;" autocomplete="off" oninput="wireLotVarCon(this,'.slb-var','.slb-con')">
-    <input class="fi slb-var" list="slb-var-dl" value="${attrEsc(l.variety||'')}" placeholder="Variety" style="flex:1;min-width:104px;" autocomplete="off">
+    <input class="fi slb-lot" list="slb-lot-dl" value="${attrEsc(l.lot||'')}" placeholder="Lot #" style="flex:1;min-width:100px;" autocomplete="off" oninput="wireLotVarCon(this,'.slb-var','.slb-con')" onchange="onLotResolve(this,()=>wireLotVarCon(this,'.slb-var','.slb-con'))">
+    <input class="fi slb-var" list="slb-var-dl" value="${attrEsc(l.variety||'')}" placeholder="Variety" style="flex:1;min-width:104px;" autocomplete="off" onchange="onVarietyResolve(this)">
     <input class="fi slb-con" list="slb-con-dl" value="${attrEsc(l.container||'')}" placeholder="GH-…" style="flex:1;min-width:120px;" autocomplete="off" oninput="wireConLotVar(this,'.slb-lot','.slb-var')">
     <button type="button" class="btn b-r b-sm" onclick="this.closest('.slb-lotrow').remove()">✕</button>
   </div>`;
@@ -5769,8 +5832,15 @@ function reviewSlipBatch(){
       </div>
     </div>`;
   try{ window.scrollTo(0,0); }catch(e){}
-  // lock variety/container off each already-filled lot (parsed rows never fired oninput) so the golden auto-fill bars show on load
-  try{ document.querySelectorAll('#main-views .slb-lotrow .slb-lot').forEach(el=>{ if((el.value||'').trim()) wireLotVarCon(el,'.slb-var','.slb-con'); }); }catch(e){}
+  // Resolve + color every AI-prefilled value on load (parsed rows never fire input): lots → gold/green, varieties → canonical + gold/green, product codes → real catalog code.
+  try{
+    document.querySelectorAll('#main-views .slb-lotrow').forEach(row=>{
+      const lot=row.querySelector('.slb-lot'), vr=row.querySelector('.slb-var');
+      if(lot&&(lot.value||'').trim()){ onLotResolve(lot); wireLotVarCon(lot,'.slb-var','.slb-con'); }
+      if(vr&&(vr.value||'').trim()) onVarietyResolve(vr);
+    });
+    document.querySelectorAll('#main-views .slb-itemrow .slb-code').forEach(cEl=>{ const raw=(cEl.value||'').trim(); if(!raw) return; const p=_prodFromSlipItem({code:raw}); if(p && p.code.toUpperCase()!==raw.toUpperCase()){ cEl.value=p.code; markAF(cEl); } });
+  }catch(e){}
 }
 async function commitSlipBatch(btn){
   _slipBatch=_readSlipBatchFromDOM();
@@ -5782,7 +5852,7 @@ async function commitSlipBatch(btn){
     const iso=_toISO(s.shipDate||s.date)||tday();
     const day=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(iso+'T12:00:00').getDay()]||'';
     const qtys={}; let anyQty=false;
-    (s.items||[]).forEach(it=>{ const prod=ALL_PRODS.find(p=>p.code.toUpperCase()===(it.code||'').trim().toUpperCase()); const q=parseInt(it.shipped)||0; if(prod&&q>0){ qtys[prod.dataKey]=(qtys[prod.dataKey]||0)+q; anyQty=true; } });
+    (s.items||[]).forEach(it=>{ const prod=_prodFromSlipItem(it); const q=parseInt(it.shipped)||parseInt(it.ordered)||0; if(prod&&q>0){ qtys[prod.dataKey]=(qtys[prod.dataKey]||0)+q; anyQty=true; } });
     if(!anyQty) continue;
     const cr=DB.clients.find(c=>(c.name||'').toLowerCase()===client.toLowerCase());
     const lots=(s.lots||[]).map(l=>({lot:(l.lot||'').trim(),variety:canonicalVariety((l.variety||'').trim()),container:(l.container||'').trim()})).filter(l=>l.lot);
@@ -5909,19 +5979,31 @@ function reviewHarvestBatch(){
       </div>
     </div>`;
   try{ window.scrollTo(0,0); }catch(e){}
+  // Resolve + color the AI-prefilled rows on load: lots → gold/green (+fill variety), varieties → canonical + gold/green.
+  try{ document.querySelectorAll('#main-views .hb-lotrow').forEach(row=>{
+    const lot=row.querySelector('.hb-lot'), vr=row.querySelector('.hb-var');
+    if(lot&&(lot.value||'').trim()){ onLotResolve(lot); hbLotVariety(lot); }
+    if(vr&&(vr.value||'').trim()) onVarietyResolve(vr);
+  }); }catch(e){}
 }
 function cancelHarvestBatch(){ _harvestBatch=[]; rHarvest(document.getElementById('main-views')); }
 async function commitHarvestBatch(btn){
   _harvestBatch=_readHarvestBatchFromDOM(); // capture all edits from the review form first
   const sheets=_harvestBatch; if(!sheets.length) return;
-  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
-  const prepared=[];
+  const groups=[]; const allRows=[];
   for(const s of sheets){
     const iso=_toISO(s.date)||tday(); const con=(s.container||'').trim(); const fac=_sheetFacility(con);
     const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.strain||x.harvested))
       .map(r=>({date:iso,container:con,facility:fac,lotNumber:(r.lot||'').trim(),variety:(r.strain||'').trim(),grade:(r.grade||'A'),weight:parseFloat(r.harvested)||0,notes:'batch scan'}));
     if(!rows.length) continue;
-    try{ normalizeRowVarieties(rows); }catch(e){}
+    groups.push({s,iso,con,fac,rows}); rows.forEach(r=>allRows.push(r));
+  }
+  if(!groups.length) return;
+  if(!normalizeRowVarieties(allRows)) return; // one report of all new varieties; Cancel aborts, nothing submitted
+  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
+  const prepared=[];
+  for(const g of groups){
+    const {s,iso,con,fac,rows}=g;
     const createdIds=[];
     for(const r of rows){ if(r.variety) addVariety(r.variety);
       const hData={date:r.date,container:r.container,facility:r.facility,lotNumber:r.lotNumber,variety:r.variety,grade:r.grade,weight:r.weight,usedWeight:0,sampleWeight:0,preservedWeight:0,notes:r.notes,scanUrl:s.pageUrl||'',createdAt:new Date().toISOString()};
@@ -6002,8 +6084,8 @@ async function snapFruitingBatch(input){
 }
 function fbLotRow(r){ r=r||{};
   return `<div class="fb-lotrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
-    <input class="fi fb-lot" list="fb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:110px;" autocomplete="off" oninput="fbFillVar(this)" onchange="fbLearnLot(this)">
-    <input class="fi fb-var" list="fb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Variety" style="flex:1;min-width:120px;" autocomplete="off" onchange="if(typeof hbResolveVariety==='function'){this.value=hbResolveVariety(this.value);}">
+    <input class="fi fb-lot" list="fb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:110px;" autocomplete="off" oninput="fbFillVar(this)" onchange="onLotResolve(this,()=>{fbFillVar(this);fbLearnLot(this);})">
+    <input class="fi fb-var" list="fb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Variety" style="flex:1;min-width:120px;" autocomplete="off" onchange="onVarietyResolve(this)">
     <input class="fi fb-bc" type="number" min="0" value="${(r.blocksUsed!=null&&r.blocksUsed!=='')?r.blocksUsed:((r.blockCount!=null&&r.blockCount!=='')?r.blockCount:'')}" placeholder="blocks" style="max-width:96px;">
     <button type="button" class="btn b-r b-sm" title="Remove lot" onclick="this.closest('.fb-lotrow').remove()">✕</button>
   </div>`;
@@ -6088,18 +6170,30 @@ function reviewFruitBatch(){
       </div>
     </div>`;
   try{ window.scrollTo(0,0); }catch(e){}
+  // Resolve + color the AI-prefilled rows on load (parsed rows never fire input): lots → gold/green (+fill variety), varieties → canonical + gold/green.
+  try{ document.querySelectorAll('#main-views .fb-lotrow').forEach(row=>{
+    const lot=row.querySelector('.fb-lot'), vr=row.querySelector('.fb-var');
+    if(lot&&(lot.value||'').trim()){ onLotResolve(lot); fbFillVar(lot); }
+    if(vr&&(vr.value||'').trim()) onVarietyResolve(vr);
+  }); }catch(e){}
 }
 async function commitFruitBatch(btn){
   _fruitBatch=_readFruitBatchFromDOM();
   const sheets=_fruitBatch; if(!sheets.length) return;
-  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
-  const prepared=[];
+  const groups=[]; const allRows=[];
   for(const s of sheets){
     const iso=_toISO(s.date)||tday(); const con=(s.container||'').trim(); const fac=_sheetFacility(con);
     const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.strain||x.blocksUsed))
       .map(r=>({date:iso,container:con,facility:fac,lotNumber:(r.lot||'').trim(),variety:(r.strain||'').trim(),blockCount:parseInt(r.blocksUsed)||0}));
     if(!rows.length) continue;
-    try{ normalizeRowVarieties(rows); }catch(e){}
+    groups.push({s,iso,con,fac,rows}); rows.forEach(r=>allRows.push(r));
+  }
+  if(!groups.length) return;
+  if(!normalizeRowVarieties(allRows)) return; // one report of all new varieties; Cancel aborts, nothing submitted
+  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
+  const prepared=[];
+  for(const g of groups){
+    const {s,iso,con,fac,rows}=g;
     const sess='frs-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
     for(const r of rows){ if(r.variety) addVariety(r.variety);
       const rec=(DB.receivings||[]).find(x=>_lotKey(x.lotNumber)===_lotKey(r.lotNumber) && receivingOnHand(x)>0.001)
@@ -6282,9 +6376,8 @@ function reviewRecvBatch(){
 async function commitRecvBatch(btn){
   _recvBatch=_readRecvBatchFromDOM();
   const sheets=_recvBatch; if(!sheets.length) return;
-  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
-  const receivedBy=S.name||S.role||'';
-  const prepared=[];
+  // Phase 1: build every sheet's rows, then run ONE consolidated new-variety check across the whole batch.
+  const groups=[]; const allRows=[];
   for(const s of sheets){
     const iso=_toISO(s.date)||tday(); const source=(s.source==='internal')?'internal':'vendor';
     const vendor=(s.vendor||'').trim()||(source==='internal'?'In-house Production':'');
@@ -6292,7 +6385,17 @@ async function commitRecvBatch(btn){
     const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.variety||x.blockCount))
       .map(r=>({variety:(r.variety||'').trim(),lotNumber:(r.lot||'').trim(),blockCount:parseInt(r.blockCount)||0,blockWeightLb:parseFloat(r.blockWeightLb)||0}));
     if(!rows.length) continue;
-    try{ normalizeRowVarieties(rows); }catch(e){}
+    groups.push({s,iso,source,vendor,soNum,receiptStatus,rows}); rows.forEach(r=>allRows.push(r));
+  }
+  if(!groups.length) return;
+  // ONE report of every new variety in the batch; Cancel = go back and fix, nothing is submitted.
+  if(!normalizeRowVarieties(allRows)) return;
+  // Phase 2: submit.
+  if(btn){ btn.disabled=true; btn.textContent='Logging…'; }
+  const receivedBy=S.name||S.role||'';
+  const prepared=[];
+  for(const g of groups){
+    const {s,iso,source,vendor,soNum,receiptStatus,rows}=g;
     rows.forEach(r=>{ if(r.variety) addVariety(r.variety); });
     if(source!=='internal' && vendor) addSupplier(vendor);
     const createdIds=[];
@@ -6446,7 +6549,9 @@ const NOTIFY_TO = {
   block:    ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
   shipment: ['orders@totallymushrooms.com','joel@totallymushrooms.com','Mat@totallymushrooms.com','Allen@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
   waste:    ['orders@totallymushrooms.com','Allen@totallymushrooms.com','Mat@totallymushrooms.com','ashley.anderson@totallymushrooms.com'],
-  relocation:['orders@totallymushrooms.com','Allen@totallymushrooms.com']
+  spoilage: ['Allen@totallymushrooms.com','Mat@totallymushrooms.com','orders@totallymushrooms.com'],
+  relocation:['orders@totallymushrooms.com','Allen@totallymushrooms.com'],
+  execReport:['Allen@totallymushrooms.com','Mat@totallymushrooms.com','Rowan@totallymushrooms.com','Terry@totallymushrooms.com','Kitty@totallymushrooms.com']
 };
 function notifyRecips(kind){ return (DB.notify.to&&DB.notify.to[kind]&&DB.notify.to[kind].length)?DB.notify.to[kind]:(NOTIFY_TO[kind]||[]); }
 // Optional recipients — offered on every report form but DEFAULT UNCHECKED (only sometimes needed).
@@ -6629,6 +6734,15 @@ function _downscaleImage(file, maxBytes){
 }
 // ── DOCUMENT SCANNER: illumination-flatten + high contrast + PDF (no library) ──
 function _loadImg(file){ return new Promise((res,rej)=>{ const img=new Image(); const u=URL.createObjectURL(file); img.onload=()=>{ URL.revokeObjectURL(u); res(img); }; img.onerror=()=>{ URL.revokeObjectURL(u); rej(new Error('Could not read image')); }; img.src=u; }); }
+// plain resize → canvas (NO document-scanner enhancement). For real photos (truck / temp gauge),
+// where _enhanceDoc's divide-by-blur would wreck the image. Re-encoding via canvas also converts HEIC→JPEG.
+function _photoCanvas(img, maxDim){
+  let w=img.width||0, h=img.height||0; const m=maxDim||1600;
+  if(!w||!h) throw new Error('Could not read image — if it is a HEIC from an iPhone, try again (iOS should convert it).');
+  if(w>m||h>m){ const s=m/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  c.getContext('2d').drawImage(img,0,0,w,h); return c;
+}
 // flatten uneven lighting (divide by a blurred background) + grayscale + contrast → clean scan
 function _enhanceDoc(img, maxDim){
   let w=img.width, h=img.height; const m=maxDim||1600;
@@ -6709,8 +6823,12 @@ async function processScan(file, kind){
 }
 // store a photo/PDF (temp log, invoice) WITHOUT parsing → returns permanent link
 async function storePhoto(file, tag){
+  // Receiving temp-gauge / truck-cleanliness shots are real PHOTOS, not paper documents —
+  // skip _enhanceDoc (its divide-by-blur turns a photo into an edge-detected sketch).
+  const isPhoto=/^receiving-(temp2?|truck)$/.test(tag||'');
   let b64, mime;
   if((file.type==='application/pdf')||/\.pdf$/i.test(file.name||'')){ b64=await _fileToB64(file); mime='application/pdf'; }
+  else if(isPhoto){ const img=await _loadImg(file); const ph=_canvasToJpeg(_photoCanvas(img,1600),600000); b64=_jpegToPdfB64(ph.b64,ph.w,ph.h); mime='application/pdf'; }
   else { const img=await _loadImg(file); const enh=_canvasToJpeg(_enhanceDoc(img),300000); b64=_jpegToPdfB64(enh.b64,enh.w,enh.h); mime='application/pdf'; }
   const user=firebase.auth().currentUser; if(!user) throw new Error('Not signed in — reload and log in.');
   const tok=await user.getIdToken();
@@ -7016,10 +7134,16 @@ async function saveFruitSession(send){
   const keptIds=new Set(); let firstId=null;
   for(const r of rows){
     const flds={date,containerID:container,source,vendor,lotNumber:r.lotNumber,variety:r.variety,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,sessionId,...(newScan?{scanUrl:newScan}:{})};
-    if(r.id){ const f=DB.fruitings.find(x=>x.id===r.id); if(f){ Object.assign(f,flds); try{ await FS.update('fruitings',r.id,flds); }catch(e){ console.warn('fse upd',e); } keptIds.add(r.id); firstId=firstId||r.id; } }
-    else { const fData={...flds,rateLbPerBlock:LBSPERBLOCK,notes:'added on session edit',scanUrl:newScan||S0.scanUrl||'',status:'fruiting',createdAt:new Date().toISOString()}; const nid=await FS.add('fruitings',fData); DB.fruitings.push({id:nid,...fData}); keptIds.add(nid); firstId=firstId||nid; try{ await drawDownReceivings(fData.lotNumber, fData.blockCount); }catch(e){} }
+    if(r.id){ const f=DB.fruitings.find(x=>x.id===r.id); if(f){
+        const _oL=f.lotNumber, _oBC=parseInt(f.blockCount)||0, _oRid=f.receivingId;
+        Object.assign(f,flds); try{ await FS.update('fruitings',r.id,flds); }catch(e){ console.warn('fse upd',e); } keptIds.add(r.id); firstId=firstId||r.id;
+        if(_lotKey(_oL||'')!==_lotKey(r.lotNumber||'') || _oBC!==(parseInt(r.blockCount)||0)){
+          try{ await reverseReceivingDraw(_oL,_oBC,_oRid); const dd=await drawDownReceivings(r.lotNumber,r.blockCount); f.receivingId=dd.ids[0]||''; await FS.update('fruitings',r.id,{receivingId:f.receivingId}); }catch(e){ console.warn('fse redraw',e); }
+        }
+      } }
+    else { const fData={...flds,rateLbPerBlock:LBSPERBLOCK,notes:'added on session edit',scanUrl:newScan||S0.scanUrl||'',status:'fruiting',createdAt:new Date().toISOString()}; const nid=await FS.add('fruitings',fData); DB.fruitings.push({id:nid,...fData}); keptIds.add(nid); firstId=firstId||nid; try{ const dd=await drawDownReceivings(fData.lotNumber, fData.blockCount); if(dd.ids.length){ fData.receivingId=dd.ids[0]; await FS.update('fruitings',nid,{receivingId:dd.ids[0]}); const nf=DB.fruitings.find(x=>x.id===nid); if(nf) nf.receivingId=dd.ids[0]; } }catch(e){} }
   }
-  for(const id of S0.ids){ if(!keptIds.has(id)){ DB.fruitings=DB.fruitings.filter(x=>x.id!==id); try{ await FS.del('fruitings',id); }catch(e){ console.warn('fse del',e); } } }
+  for(const id of S0.ids){ if(!keptIds.has(id)){ const _rm=DB.fruitings.find(x=>x.id===id); if(_rm){ try{ await reverseReceivingDraw(_rm.lotNumber, parseInt(_rm.blockCount)||0, _rm.receivingId); }catch(e){ console.warn('fse del giveback',e); } } DB.fruitings=DB.fruitings.filter(x=>x.id!==id); try{ await FS.del('fruitings',id); }catch(e){ console.warn('fse del',e); } } }
   logAudit('fruiting_edited',`Edited fruiting session ${container} ${_mmddyy(date)} — ${rows.length} lot(s)`);
   _fruitSessEdit=null;
   if(send && firstId){ resendFruiting(firstId, true); }
@@ -7221,6 +7345,27 @@ function uploadSignedSlip(id){
 }
 
 // ── PACKING SLIP snap → parse → prefill the Pack→Order form ──
+// Resolve a parsed slip/sheet line to a catalog product. Exact code first, then name/description
+// keywords — so a slip that writes "Shiitake 10 lb" / "Organic Shiitake 10lb box" still maps to SHT10
+// (the 10# tote), not the oyster tote or the 3-lb shiitake box. Distributor slips name items their own way.
+function _prodFromSlipItem(it){
+  it=it||{};
+  const codeRaw=(it.code||'').trim(), code=codeRaw.toUpperCase();
+  let p=ALL_PRODS.find(x=>x.code.toUpperCase()===code); if(p) return p;                 // exact code (e.g. MO6)
+  const ck=code.replace(/[^A-Z0-9]/g,''); if(ck){ p=ALL_PRODS.find(x=>x.code.toUpperCase().replace(/[^A-Z0-9]/g,'')===ck); if(p) return p; }
+  const txt=(codeRaw+' '+(it.name||'')+' '+(it.description||it.desc||'')).toLowerCase();
+  if(!/[a-z]/.test(txt)) return null;
+  const tenlb=/10\s*(?:#|lb|lbs|pounds?)/.test(txt)||txt.includes('10lb')||txt.includes('tote');
+  const quarter=/1\/4|¼|quarter|\.25|retail\s*pack/.test(txt);
+  if(txt.includes('shiitake'))   return ALL_PRODS.find(x=>x.code===(tenlb?'SHT10':'CB09'))||null;
+  if(txt.includes('oyster'))     return ALL_PRODS.find(x=>x.code===(tenlb?'MO6':'MO8'))||null;
+  if(txt.includes('lion'))       return ALL_PRODS.find(x=>x.code===(quarter?'LRP':'CB08'))||null;
+  if(txt.includes('chef'))       return ALL_PRODS.find(x=>x.code===(quarter?'CRP':'CM5'))||null;
+  if(txt.includes('black pearl'))return ALL_PRODS.find(x=>x.code==='CB07')||null;
+  if(txt.includes('chestnut'))   return ALL_PRODS.find(x=>x.code==='CH01')||null;         // defaults to grade #1
+  if(txt.includes('wild'))       return ALL_PRODS.find(x=>x.code==='WD01')||null;
+  p=ALL_PRODS.find(x=>x.name&&txt.includes(x.name.toLowerCase())); return p||null;        // last resort: full product name
+}
 async function snapSlip(input){
   const file=input.files&&input.files[0]; if(!file) return;
   const st=document.getElementById('po-snap-status');
@@ -7237,10 +7382,9 @@ async function snapSlip(input){
     // map slip item codes → product qty inputs
     let matched=0, unmatched=[];
     (d.items||[]).forEach(it=>{
-      const code=(it.code||'').trim().toUpperCase();
       const qty=parseInt(it.shipped)||parseInt(it.ordered)||0; if(!qty) return;
-      const prod=ALL_PRODS.find(p=>p.code.toUpperCase()===code);
-      if(prod){ set('po-'+prod.dataKey,qty); matched++; } else unmatched.push(`${it.code||'?'}×${qty}`);
+      const prod=_prodFromSlipItem(it);
+      if(prod){ set('po-'+prod.dataKey,qty); matched++; } else unmatched.push(`${it.code||it.name||'?'}×${qty}`);
     });
     // pre-check lots that match on-hand lot checkboxes
     const slipLots=(d.lots||[]).map(l=>(l.lot||'').trim()).filter(Boolean);
@@ -7304,12 +7448,12 @@ function rHarvest(el){
     <div id="hl-farm-info" style="display:none;background:rgba(184,130,10,.05);border:1px solid rgba(184,130,10,.2);border-radius:3px;padding:12px 16px;margin-bottom:18px;"></div>
     <div class="fg2">
       <div class="fgl"><label>Lot Number</label>
-        <input class="fi" id="hl-lot" placeholder="e.g. LOT-001" list="hl-lotl" oninput="onHarvestLot()">
+        <input class="fi" id="hl-lot" placeholder="e.g. LOT-001" list="hl-lotl" oninput="onHarvestLot()" onchange="onLotResolve(this,onHarvestLot)">
         <datalist id="hl-lotl">${knownLots.map(l=>`<option value="${l}">`).join('')}</datalist>
         <div id="hl-lot-hint" style="display:none;font-family:'Syne Mono',monospace;font-size:11px;color:var(--fern);margin-top:4px;letter-spacing:.5px;"></div>
       </div>
       <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label>
-        <input class="fi" id="hl-v" list="hl-v-dl" placeholder="Type or pick variety…" autocomplete="off">
+        <input class="fi" id="hl-v" list="hl-v-dl" placeholder="Type or pick variety…" autocomplete="off" onchange="onVarietyResolve(this)">
         <datalist id="hl-v-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist>
       </div>
       <div class="fgl"><label>Grade</label>
@@ -7408,6 +7552,7 @@ function rHarvest(el){
         </div>
         <div class="fgl"><label>Supplier / Production Company</label><input class="fi" id="sb-supplier" placeholder="e.g. Wild Spore, In-house" list="sb-supplier-list"></div>
       </div>
+      <div class="fgl" style="margin-top:4px;"><label>Supplier Lot # <span style="color:var(--text3);font-size:11px;">for manufacturer credit (external blocks)</span></label><input class="fi" id="sb-lotnum" placeholder="e.g. WS-$56$-260910-04" autocomplete="off"></div>
       <div class="fgl" style="margin-top:4px;">
         <label>Notes</label>
         <input class="fi" id="sb-notes" placeholder="Flush count reached, signs of contamination, etc.">
@@ -7458,6 +7603,8 @@ function rHarvest(el){
         </tr>`).join('')}</tbody>
       </table></div>`:''}`;
     })()}
+
+    ${buildSpoilageReportHTML()}
 
     <!-- ── BLOCK REMOVAL HISTORY ── -->
     ${(()=>{
@@ -7762,7 +7909,8 @@ async function logSpentBlocks(){
     if(!container){ alert('Select the container the blocks came from.'); return; }
   }
   if(!date||!blockCount){ alert('Date and block count are required.'); return; }
-  const data={date,stage,container,cookLot,labBatchId,variety,source,supplier,blockCount,reason,notes,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+  const lotNumber=(document.getElementById('sb-lotnum')?.value||'').trim();
+  const data={date,stage,container,cookLot,labBatchId,lotNumber,variety,source,supplier,blockCount,reason,notes,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
   if(!DB._isDemoMode){
     const id=await FS.add('blockDisposals',data);
     data.id=id;
@@ -8202,11 +8350,20 @@ function buildFacilityInventory(){
   (DB.blockDisposals||[]).filter(d=>d.stage==='pre-fruiting').forEach(d=>{ const n=cvv(d.variety||'—'); cartByRaw[n]=(cartByRaw[n]||0)-(parseInt(d.blockCount)||0); });
   const cartBy={}; Object.entries(cartByRaw).forEach(([k,v])=>{ if(v>0&&k!=='—') cartBy[k]=v; });
   // Hydes NOT-PLACED blocks by source + variety (from on-hand receivings)
-  const inh={}, ws={};
-  (DB.receivings||[]).forEach(r=>{ const oh=receivingOnHand(r); if(oh<=0) return; const v=cvv(r.variety||'—'); if(isWSrec(r)) ws[v]=(ws[v]||0)+oh; else inh[v]=(inh[v]||0)+oh; });
+  const inh={}, ws={}, inhLots={}, wsLots={};
+  (DB.receivings||[]).forEach(r=>{ const oh=receivingOnHand(r); if(oh<=0) return; const v=cvv(r.variety||'—'); const lot=r.lotNumber||'—';
+    if(isWSrec(r)){ ws[v]=(ws[v]||0)+oh; (wsLots[v]=wsLots[v]||{}); wsLots[v][lot]=(wsLots[v][lot]||0)+oh; }
+    else { inh[v]=(inh[v]||0)+oh; (inhLots[v]=inhLots[v]||{}); inhLots[v][lot]=(inhLots[v][lot]||0)+oh; } });
   const sum=o=>Object.values(o).reduce((a,b)=>a+b,0);
   const vtbl=(o,unit)=>{ const rows=Object.entries(o).sort((a,b)=>b[1]-a[1]).filter(x=>x[1]>0); if(!rows.length) return '<div style="color:var(--text3);font-size:12px;padding:6px 0;">none on hand</div>';
     return `<table style="width:100%;border-collapse:collapse;">${rows.map(([v,n])=>`<tr><td style="padding:4px 0;font-size:13px;">${v}</td><td style="padding:4px 0;text-align:right;font-family:'Syne Mono',monospace;font-weight:700;">${Math.round(n)} ${unit}</td></tr>`).join('')}</table>`; };
+  // variety table WITH per-lot drill-down (click a variety → its lots + on-hand). `detail` = {variety:{lot:count}}, `key` scopes the row ids.
+  const vtblD=(o,unit,detail,key)=>{ const rows=Object.entries(o).sort((a,b)=>b[1]-a[1]).filter(x=>x[1]>0); if(!rows.length) return '<div style="color:var(--text3);font-size:12px;padding:6px 0;">none on hand</div>';
+    return `<table style="width:100%;border-collapse:collapse;">${rows.map(([v,n])=>{ const vid=key+'-'+v.replace(/[^a-z0-9]/gi,'').toLowerCase();
+      const dl=(detail&&detail[v])?Object.entries(detail[v]).sort((a,b)=>b[1]-a[1]).filter(x=>x[1]>0.0001):[];
+      const head=`<tr ${dl.length?`style="cursor:pointer;" onclick="toggleInvLot('${vid}')"`:''}><td style="padding:4px 0;font-size:13px;">${dl.length?`<span id="ia-${vid}" style="font-family:'Syne Mono',monospace;font-size:9px;color:var(--text3);margin-right:5px;">▶</span>`:''}${v}${dl.length?`<span style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-left:6px;">${dl.length} lot${dl.length!==1?'s':''}</span>`:''}</td><td style="padding:4px 0;text-align:right;font-family:'Syne Mono',monospace;font-weight:700;">${Math.round(n)} ${unit}</td></tr>`;
+      const sub=dl.map(([lot,c])=>`<tr class="il-${vid}" style="display:none;"><td style="padding:2px 0 2px 18px;font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:var(--gold);">${lot}</td><td style="padding:2px 0;text-align:right;font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2);">${Math.round(c)} ${unit}</td></tr>`).join('');
+      return head+sub; }).join('')}</table>`; };
   const card=(border,title,big,unit,body,note)=>`<div class="cc" style="flex:1;min-width:230px;border-top:3px solid ${border};">
     <div class="cc-l">${title}</div>
     <div style="font-family:'Cormorant Garamond',serif;font-size:40px;font-weight:700;line-height:1;color:${border};margin:2px 0 8px;">${big}<span style="font-size:15px;font-weight:400;"> ${unit}</span></div>
@@ -8219,9 +8376,14 @@ function buildFacilityInventory(){
     </div>
     <div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text3);margin:6px 0 4px;">HYDES FERRY — in cooler, not yet placed</div>
     <div class="cr" style="gap:14px;margin-bottom:20px;">
-      ${card('var(--fern)','In-house Blocks',Math.round(sum(inh)),'blk',vtbl(inh,'blk'),'Received from Carthage, awaiting placement into fruiting.')}
-      ${card('#7a4a86','Wild Spore Blocks',Math.round(sum(ws)),'blk',vtbl(ws,'blk'),'Received from Wild Spore, awaiting placement. Draws down now when you place a session.')}
+      ${card('var(--fern)','In-house Blocks',Math.round(sum(inh)),'blk',vtblD(inh,'blk',inhLots,'inh'),'Received from Carthage, awaiting placement into fruiting. Tap a variety for its lots.')}
+      ${card('#7a4a86','Wild Spore Blocks',Math.round(sum(ws)),'blk',vtblD(ws,'blk',wsLots,'ws'),'Received from Wild Spore, awaiting placement. Tap a variety for its lots.')}
     </div>`;
+}
+// Expand/collapse a variety's per-lot rows in the block-inventory cards.
+function toggleInvLot(vid){
+  document.querySelectorAll('.il-'+vid).forEach(r=>{ r.style.display=(r.style.display==='none'||!r.style.display)?'table-row':'none'; });
+  const a=document.getElementById('ia-'+vid); if(a) a.textContent=(a.textContent.trim()==='▶')?'▼':'▶';
 }
 function rInventory(el){
   const PRESERVE_METHODS=['Fresh Frozen','Freeze Dried','Dehydrated','Waste / Compost'];
@@ -9509,7 +9671,7 @@ function rDashboard(el){
   const r=_dashRange(_dashPeriod), pr=_dashPrevRange(_dashPeriod);
   // ── build lot index: blocks placed (lifetime), harvest (period/prev/lifetime), on-hand (current), waste (period) ──
   const lots={};
-  const getLot=num=>{ const k=_lotKey(num); return lots[k]||(lots[k]={lot:num,variety:'',blocksPlaced:0,harvP:0,harvPrev:0,harvAll:0,harvMatched:0,onHand:0,waste:0,placedCons:{},recvBlocks:0,estBlocks:0,suspect:false}); };
+  const getLot=num=>{ const k=_lotKey(num); return lots[k]||(lots[k]={lot:num,variety:'',blocksPlaced:0,harvP:0,harvPrev:0,harvAll:0,harvMatched:0,onHand:0,waste:0,wasteAll:0,placedCons:{},recvBlocks:0,estBlocks:0,suspect:false}); };
   DB.fruitings.forEach(f=>{ if(!f.lotNumber) return; const li=getLot(f.lotNumber); if(!li.variety&&f.variety) li.variety=cvv(f.variety); const b=parseInt(f.blockCount)||0; li.blocksPlaced+=b; if(b>0){ const con=f.containerID||'—'; li.placedCons[con]=(li.placedCons[con]||0)+b; } const fd=(''+(f.date||'')).slice(0,10); if(fd && (!li.lastPlaced||fd>li.lastPlaced)) li.lastPlaced=fd; });
   (DB.receivings||[]).forEach(x=>{ if(!x.lotNumber) return; const li=getLot(x.lotNumber); if(!li.variety&&x.variety) li.variety=cvv(x.variety); li.recvBlocks+=parseInt(x.blockCount)||0; });
   DB.harvests.forEach(h=>{ if(!h.lotNumber) return; const li=getLot(h.lotNumber); if(h.variety) li.variety=cvv(h.variety); const w=h.weight||0;
@@ -9532,7 +9694,7 @@ function rDashboard(el){
     const _tvto=(typeof VARIETY_TURNAROUND!=='undefined'&&VARIETY_TURNAROUND[li.variety])||{min:7,max:14}; const _matDays=(_tvto.max||14);
     li.matured = li.lastPlaced ? (((Date.now()-new Date(li.lastPlaced+'T12:00:00').getTime())/86400000) >= _matDays) : true;
   });
-  (DB.blockDisposals||[]).forEach(d=>{ if(!d.cookLot) return; const li=lots[_lotKey(d.cookLot)]; if(li&&_inRange(d.date,r)) li.waste+=parseInt(d.blockCount)||0; });
+  (DB.blockDisposals||[]).forEach(d=>{ if(!d.cookLot) return; const li=lots[_lotKey(d.cookLot)]; if(!li) return; const n=parseInt(d.blockCount)||0; li.wasteAll+=n; if(_inRange(d.date,r)) li.waste+=n; });
   // ── group by variety ──
   const byVar={};
   Object.values(lots).forEach(li=>{ if(li.harvAll<=0.01 && li.onHand<=0.01 && li.blocksPlaced<=0) return; const v=li.variety||'—'; (byVar[v]=byVar[v]||[]).push(li); });
@@ -9588,32 +9750,58 @@ function rDashboard(el){
       ${tile('m','Pounds Sold',soldP.toFixed(0)+' lb', (pr?('vs prev '+dstr(pctDelta(soldP,soldPrev))):('sold '+perLbl)))}
       ${tile('m','Revenue','$'+revP.toFixed(0), (pr?('vs prev '+dstr(pctDelta(revP,revPrev))):('billed '+perLbl)))}
     </div>`;
-  // ── main table: by variety → lot ──
+  // ── main tables: by variety → lot ── (1) lots active in the selected window, (2) all-time below
+  // lb/block is always a lot's TO-DATE yield (all its harvest ÷ its blocks) — a window-only ratio would understate lots still fruiting.
+  // Variety Blocks + Harvest-to-date use the SAME lots as its lb/block (produced, not ⚠, not dead) so the row checks out: harvest ÷ blocks = lb/block.
   const genColor=ypb=>ypb>=1.0?'var(--fern)':ypb>=0.8?'var(--moss)':ypb>=0.6?'var(--amber)':ypb>0?'var(--rust)':'var(--text3)';
-  const rowsHTML=vList.map(x=>{
-    const exp=_dashVarExp[x.v]; const vEsc=x.v.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-    const ypb=x.yBlocks>0?x.yHarv/x.yBlocks:0;
-    let out=`<tr style="cursor:pointer;border-top:1px solid var(--border);background:rgba(0,0,0,.015);" onclick="toggleDashVar('${vEsc}')">
-      <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${exp?'▾':'▸'}</span> ${x.v} <span style="color:var(--text3);font-weight:400;font-size:11px;">${x.lots.length} lot${x.lots.length!==1?'s':''}</span>${x.nSus?` <span class="bdg bp" style="font-size:9px;" title="${x.nSus} lot(s) with impossible lb/block excluded from yield — check data">⚠ ${x.nSus}</span>`:''}</td>
-      <td class="mn">${x.blocksPlaced||'—'}</td>
-      <td class="mn" style="font-weight:700;color:var(--fern);">${x.harvP>0?x.harvP.toFixed(1):'—'}</td>
-      <td class="mn" style="font-weight:700;color:${genColor(ypb)};">${ypb>0?ypb.toFixed(2):'—'}</td>
-      <td class="mn" style="font-weight:700;color:var(--gold);">${x.onHand>0?x.onHand.toFixed(1):'—'}</td>
-      <td class="mn" style="color:${x.waste>0?'var(--rust)':'var(--text3)'};">${x.waste||'—'}</td></tr>`;
-    if(exp){ out+=x.lots.slice().sort((a,b)=>b.harvP-a.harvP||b.harvAll-a.harvAll).map(l=>{
-      const bench=(typeof lotBench==='function')?lotBench(l.lot):{label:'',target:1.25}; const lypb=l.lypb||0;
-      const col=l.suspect?'var(--rust)':((typeof yieldColor==='function'&&l.yBlocks>0)?yieldColor(lypb,bench):genColor(lypb));
-      const lotEsc=(l.lot||'').replace(/'/g,"\\'");
-      return `<tr style="background:${l.suspect?'rgba(184,76,32,.06)':'rgba(0,0,0,.02)'};font-size:12px;cursor:pointer;"${l.suspect?' title="Impossible lb/block — harvest recorded in a container this lot was never placed in, or more than the placed blocks can yield. Excluded from yield."':''} onclick="onAnaLotSelect('${lotEsc}');document.getElementById('dash-lot-lookup')&&document.getElementById('dash-lot-lookup').scrollIntoView({behavior:'smooth',block:'center'});">
-        <td style="padding-left:26px;font-family:'Syne Mono',monospace;color:var(--text2);">${l.lot}${bench.label?` <span class="bdg ${bench.label==='Wild Spore'?'bp':'bc'}" style="font-size:9px;">${bench.label}</span>`:''}${l.est?' <span class="bdg bcu" style="font-size:9px;" title="Blocks estimated from receiving count — no placement logged">EST</span>':''}${l.suspect?' <span class="bdg bp" style="font-size:9px;">⚠</span>':''}</td>
-        <td class="mn">${l.blocksPlaced||(l.est?l.estBlocks+'*':'—')}</td>
-        <td class="mn" style="color:var(--fern);">${l.harvP>0?l.harvP.toFixed(1):'—'}</td>
-        <td class="mn" style="font-weight:700;color:${col};">${l.suspect?'⚠':(lypb>0?lypb.toFixed(2):'—')}</td>
-        <td class="mn" style="color:var(--gold);">${l.onHand>0?l.onHand.toFixed(1):'—'}</td>
-        <td class="mn" style="color:${l.waste>0?'var(--rust)':'var(--text3)'};">${l.waste||'—'}</td></tr>`;
-    }).join(''); }
-    return out;
-  }).join('');
+  const _varRows=(ls)=>{
+    const byV={}; ls.forEach(li=>{ const v=li.variety||'—'; (byV[v]=byV[v]||[]).push(li); });
+    return Object.keys(byV).map(v=>{ const vl=byV[v]; const sum=(a,k)=>a.reduce((s,l)=>s+(l[k]||0),0);
+      const good=vl.filter(l=>!l.suspect && !l.dead && l.yHarv>0);
+      return {v, lots:vl, harvP:sum(vl,'harvP'), onHand:sum(vl,'onHand'), waste:sum(vl,'waste'), wasteAll:sum(vl,'wasteAll'),
+        yBlocks:sum(good,'yBlocks'), yHarv:sum(good,'yHarv'), nSus:vl.filter(l=>l.suspect).length, nDead:vl.filter(l=>l.dead&&!l.suspect).length,
+        exclHarv:vl.filter(l=>l.suspect||l.dead).reduce((s,l)=>s+(l.harvAll||0),0)};
+    });
+  };
+  const _dashTable=(mode)=>{
+    const isP=mode==='P';
+    const ls=Object.values(lots).filter(li=> isP ? (li.harvP>0.01 || li.waste>0) : (li.harvAll>0.01 || li.onHand>0.01 || li.blocksPlaced>0 || li.wasteAll>0));
+    const vr=_varRows(ls).sort(isP?((a,b)=>b.harvP-a.harvP||b.yHarv-a.yHarv||a.v.localeCompare(b.v)):((a,b)=>b.yHarv-a.yHarv||b.onHand-a.onHand||a.v.localeCompare(b.v)));
+    const ncol=isP?7:6;
+    const rows=vr.map(x=>{
+      const key=mode+'|'+x.v; const exp=_dashVarExp[key]; const kEsc=key.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const ypb=x.yBlocks>0?x.yHarv/x.yBlocks:0; const wst=isP?x.waste:x.wasteAll;
+      const nEx=x.nSus+x.nDead;
+      let out=`<tr style="cursor:pointer;border-top:1px solid var(--border);background:rgba(0,0,0,.015);" onclick="toggleDashVar('${kEsc}')">
+        <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${exp?'▾':'▸'}</span> ${x.v} <span style="color:var(--text3);font-weight:400;font-size:11px;">${x.lots.length} lot${x.lots.length!==1?'s':''}</span>${nEx?` <span class="bdg bp" style="font-size:9px;" title="${nEx} lot(s) left out of this variety's blocks / harvest / lb/block (${x.nSus?x.nSus+' impossible >3 lb/block':''}${x.nSus&&x.nDead?', ':''}${x.nDead?x.nDead+' dead/excluded':''}) — ${x.exclHarv.toFixed(1)} lb not counted">${nEx} excl</span>`:''}</td>
+        ${isP?`<td class="mn" style="font-weight:700;color:var(--fern);">${x.harvP>0?x.harvP.toFixed(1):'—'}</td>`:''}
+        <td class="mn">${x.yBlocks||'—'}</td>
+        <td class="mn"${isP?'':' style="font-weight:700;color:var(--fern);"'}>${x.yHarv>0?x.yHarv.toFixed(1):'—'}</td>
+        <td class="mn" style="font-weight:700;color:${genColor(ypb)};">${ypb>0?ypb.toFixed(2):'—'}</td>
+        <td class="mn" style="font-weight:700;color:var(--gold);">${x.onHand>0?x.onHand.toFixed(1):'—'}</td>
+        <td class="mn" style="color:${wst>0?'var(--rust)':'var(--text3)'};">${wst||'—'}</td></tr>`;
+      if(exp){ out+=x.lots.slice().sort(isP?((a,b)=>b.harvP-a.harvP||b.harvAll-a.harvAll):((a,b)=>b.harvAll-a.harvAll||b.onHand-a.onHand)).map(l=>{
+        const bench=(typeof lotBench==='function')?lotBench(l.lot):{label:'',target:1.25}; const lypb=l.lypb||0;
+        const col=l.suspect?'var(--rust)':l.dead?'var(--text3)':((typeof yieldColor==='function'&&l.yBlocks>0)?yieldColor(lypb,bench):genColor(lypb));
+        const lotEsc=(l.lot||'').replace(/'/g,"\\'"); const lw=isP?l.waste:l.wasteAll;
+        const blk=l.yBlocks>0?(l.est?l.yBlocks+'*':l.yBlocks):(l.blocksPlaced||'—');
+        return `<tr style="background:${l.suspect?'rgba(184,76,32,.06)':'rgba(0,0,0,.02)'};font-size:12px;cursor:pointer;${l.dead&&!l.suspect?'opacity:.6;':''}"${l.suspect?' title="Impossible lb/block (over 3) — check lot labels on harvests/placements. Excluded from yield."':(l.dead?' title="Dead / excluded lot — not counted in the variety totals or averages."':'')} onclick="onAnaLotSelect('${lotEsc}');document.getElementById('dash-lot-lookup')&&document.getElementById('dash-lot-lookup').scrollIntoView({behavior:'smooth',block:'center'});">
+          <td style="padding-left:26px;font-family:'Syne Mono',monospace;color:var(--text2);">${l.lot}${bench.label?` <span class="bdg ${bench.label==='Wild Spore'?'bp':'bc'}" style="font-size:9px;">${bench.label}</span>`:''}${l.est?' <span class="bdg bcu" style="font-size:9px;" title="Blocks estimated from receiving count — no placement logged">EST</span>':''}${l.suspect?' <span class="bdg bp" style="font-size:9px;">⚠</span>':''}${l.dead&&!l.suspect?' <span class="bdg" style="font-size:9px;">excl</span>':''}</td>
+          ${isP?`<td class="mn" style="color:var(--fern);">${l.harvP>0?l.harvP.toFixed(1):'—'}</td>`:''}
+          <td class="mn">${blk}</td>
+          <td class="mn"${isP?'':' style="color:var(--fern);"'}>${l.harvAll>0?l.harvAll.toFixed(1):'—'}</td>
+          <td class="mn" style="font-weight:700;color:${col};">${l.suspect?'⚠':(lypb>0?lypb.toFixed(2):'—')}</td>
+          <td class="mn" style="color:var(--gold);">${l.onHand>0?l.onHand.toFixed(1):'—'}</td>
+          <td class="mn" style="color:${lw>0?'var(--rust)':'var(--text3)'};">${lw||'—'}</td></tr>`;
+      }).join(''); }
+      return out;
+    }).join('');
+    const head=isP
+      ? `<th>Variety / Lot</th><th>Harvest (${perLbl})</th><th>Blocks</th><th>Harvest to date</th><th>lb/block (to date)</th><th>On Hand</th><th>Waste (${perLbl})</th>`
+      : `<th>Variety / Lot</th><th>Blocks</th><th>Harvest (all time)</th><th>lb/block</th><th>On Hand</th><th>Waste (all time)</th>`;
+    const empty=isP?'Nothing harvested or disposed in this period — try a wider period.':'No production data yet.';
+    return `<div class="tw" style="margin-bottom:8px;overflow-x:auto;"><table><thead><tr>${head}</tr></thead><tbody>${rows||`<tr><td colspan="${ncol}" class="empty">${empty}</td></tr>`}</tbody></table></div>`;
+  };
   const per=[['week','This Week'],['lastweek','Last Week'],['month','This Month'],['year','This Year'],['all','All Time']];
   const selHTML=per.map(([k,l])=>`<button class="btn ${_dashPeriod===k?'b-m':'b-g'} b-sm" onclick="setDashPeriod('${k}')" style="margin:0 4px 4px 0;">${l}</button>`).join('')
     +`<button class="btn ${_dashPeriod==='custom'?'b-m':'b-g'} b-sm" onclick="document.getElementById('dash-cust-wrap').style.display=(document.getElementById('dash-cust-wrap').style.display==='none'?'flex':'none');" style="margin:0 4px 4px 0;">📅 Custom${_dashPeriod==='custom'?' ✓':''}</button>`;
@@ -9628,16 +9816,18 @@ function rDashboard(el){
     <div class="ph"><div class="ph-t">📊 Production Dashboard</div><div class="ph-s">Yield &amp; block flow by variety → lot · ${rTxt}</div></div>
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:8px;">
       <span style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);">PERIOD:</span> ${selHTML}
+      ${S.role==='admin'?`<button class="btn b-gold b-sm" onclick="emailExecReport()" style="margin-left:auto;" title="Email the executive summary for the period selected above (${_erPeriodTitle()}) to the exec list">✉ Email Exec Report · ${_erPeriodTitle()}</button>`:''}
     </div>
     ${custHTML}
     ${tiles}
+    ${buildDistroBreakdown(r,pr,perLbl)}
     ${buildPoundsSoldWoW()}
-    <div class="sh" style="margin-top:18px;"><span>Harvest &amp; Yield — by Variety → Lot</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">TAP A VARIETY FOR ITS LOTS · TAP A LOT FOR FULL BREAKDOWN</span></div>
-    <div class="tw" style="margin-bottom:8px;overflow-x:auto;"><table>
-      <thead><tr><th>Variety / Lot</th><th>Blocks</th><th>Harvest (${_dashPeriod==='all'?'all':perLbl})</th><th>lb/block</th><th>On Hand</th><th>Waste</th></tr></thead>
-      <tbody>${rowsHTML||'<tr><td colspan="6" class="empty">No production data in this period — try a wider period.</td></tr>'}</tbody>
-    </table></div>
-    <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-bottom:24px;">lb/block color: <span style="color:var(--fern);">■</span> ≥1.0 &nbsp; <span style="color:var(--moss);">■</span> ≥0.8 &nbsp; <span style="color:var(--amber);">■</span> ≥0.6 &nbsp; <span style="color:var(--rust);">■</span> below · WS target 0.8 · internal 1.0–1.25 lb/block<br><span style="color:var(--gold);">EST</span> = blocks estimated from receiving (no placement logged) · <span style="color:var(--rust);">⚠</span> = harvest can't be matched to placed blocks (check data) — excluded from averages · yield counts harvest only from the container a lot was placed in</div>
+    ${_dashPeriod!=='all'?`
+    <div class="sh" style="margin-top:18px;"><span>Harvest &amp; Yield — ${perLbl} · by Variety → Lot</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">${rTxt.toUpperCase()} · LOTS HARVESTED OR DISPOSED IN WINDOW</span></div>
+    ${_dashTable('P')}`:''}
+    <div class="sh" style="margin-top:18px;"><span>Harvest &amp; Yield — All Time · by Variety → Lot</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">TAP A VARIETY FOR ITS LOTS · TAP A LOT FOR FULL BREAKDOWN</span></div>
+    ${_dashTable('A')}
+    <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-bottom:24px;">lb/block color: <span style="color:var(--fern);">■</span> ≥1.0 &nbsp; <span style="color:var(--moss);">■</span> ≥0.8 &nbsp; <span style="color:var(--amber);">■</span> ≥0.6 &nbsp; <span style="color:var(--rust);">■</span> below · WS target 0.8 · internal 1.0–1.25 lb/block<br>lb/block = a lot's total harvest to date ÷ its blocks placed (so lots still fruiting read low until they finish) · variety Blocks / Harvest / lb/block count the same lots, so harvest ÷ blocks = lb/block<br><span style="color:var(--gold);">EST</span> / * = blocks estimated from receiving (no placement logged) · <span style="color:var(--rust);">⚠</span> = over 3 lb/block, impossible — check lot labels · <b>excl</b> = ⚠ or dead/excluded lots, left out of variety totals &amp; averages</div>
 
     <!-- 2 · TRUSTWORTHY lot-level performance vs target (the deep view) -->
     <details ${_dashOpen.yield?'open':''} ontoggle="_dashOpen.yield=this.open" style="margin-top:6px;"><summary style="cursor:pointer;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text2);padding:8px 0;">🎯 SUPPLIER &amp; INTERNAL YIELD PERFORMANCE (drill by species → lot → container)</summary>
@@ -9652,322 +9842,171 @@ function rDashboard(el){
       <datalist id="ana-lotl">${anaKnownLots().map(l=>`<option value="${(l||'').replace(/"/g,'&quot;')}">`).join('')}</datalist>
       <div id="ana-lot-panel" style="margin-top:16px;">${_anaLot?lotBreakdownHTML(_anaLot):'<div class="empty" style="padding:16px;">Pick a lot above to see its breakdown.</div>'}</div>
     </div>
-
-    <!-- 4 · Secondary container-level cross-check (kept last, collapsed) -->
-    <details ${_dashOpen.avg?'open':''} ontoggle="_dashOpen.avg=this.open" style="margin-top:18px;"><summary style="cursor:pointer;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text3);padding:8px 0;">📐 CONTAINER-LEVEL CROSS-CHECK <span style="text-transform:none;letter-spacing:0;font-size:11px;">— secondary; period harvest ÷ container blocks. Trust the lot-level views above.</span></summary>
-      <div id="dash-avg-wrap" style="margin-top:10px;">${(typeof buildYieldAverages==='function')?buildYieldAverages():''}</div>
-    </details>
   `;
   if(_dashNoScroll){ _dashNoScroll=false; } else { try{ window.scrollTo(0,0); }catch(e){} }
 }
 
 
-function buildYieldAverages(){
-  // ── Period filter ──
-  const {from, to} = yieldDateRange();
-
-  // Harvests in period
-  const periodHarvests = DB.harvests.filter(h => h.date >= from && h.date <= to);
-
-  // ── Container → blocks map (total blocks loaded, from all fruitings) ──
-  // Also detect WS (Wild Spore) per container: WS- lot prefix or vendor containing "Wild Spore"/"WS"
-  const containerMeta = {}; // containerID → {blocks, isWS, facility, variety}
-  DB.fruitings.forEach(f => {
-    if(!f.containerID) return;
-    const c = f.containerID;
-    if(!containerMeta[c]) containerMeta[c] = {blocks:0, isWS:false, facility:f.facility||'—', variety:f.variety||''};
-    containerMeta[c].blocks += (parseInt(f.blockCount)||0);
-    // WS detection via the shared classifier (trusts the receiving source)
-    if(typeof lotBench==='function' && lotBench(f.lotNumber).label==='Wild Spore') containerMeta[c].isWS = true;
-    if(f.variety && !containerMeta[c].variety) containerMeta[c].variety = f.variety;
-    if(!containerMeta[c].lotKey && f.lotNumber && typeof _lotKey==='function') containerMeta[c].lotKey=_lotKey(f.lotNumber);
+// ── Distributor breakdown (Sales) — per-client codes bought, weight, revenue, WoW ──
+// Shared by the Dashboard Sales band and the weekly Executive Report email.
+function distroBreakdownData(r, pr){
+  const inR = o => o && !o.isStanding && _inRange(_orderSoldISO(o), r);
+  const ords = (DB.orders||[]).filter(inR);
+  const byC = {};
+  ords.forEach(o=>{ const c=(o.client||'—').trim()||'—'; const g=(byC[c]=byC[c]||{name:c,orders:0,lb:0,rev:0,codes:{}});
+    g.orders++; g.lb+=(typeof orderLbs==='function'?orderLbs(o):0); g.rev+=(typeof eRev==='function'?eRev(o):0);
+    ALL_PRODS.forEach(p=>{ const q=parseInt(o[p.dataKey])||0; if(q>0) g.codes[p.code]=(g.codes[p.code]||0)+q; });
   });
-
-  // ── Per-container period totals ──
-  const containerTotals = {}; // containerID → {lbs, harvestCount, isWS, facility, variety}
-  periodHarvests.forEach(h => {
-    const c = h.container;
-    if(!c) return;
-    if(!containerTotals[c]) {
-      const meta = containerMeta[c] || {blocks:0, isWS:false, facility:h.facility||'—', variety:h.variety||''};
-      containerTotals[c] = {lbs:0, harvestCount:0, blocks:meta.blocks, isWS:meta.isWS, facility:meta.facility, variety:meta.variety||h.variety||''};
-    }
-    containerTotals[c].lbs += (h.weight||0);
-    containerTotals[c].harvestCount++;
-  });
-
-  // ── Master stats ──
-  let masterLbs=0, masterBlocks=0, wsLbs=0, wsBlocks=0, hmLbs=0, hmBlocks=0, deadContainers=0;
-  Object.entries(containerTotals).forEach(([c,d]) => {
-    if(d.blocks > 0) {
-      const cyp=d.blocks>0?d.lbs/d.blocks:0; const lk=(containerMeta[c]||{}).lotKey||'';
-      if(_yieldDead(lk, cyp, d.lbs)){ deadContainers++; return; } // dead/excluded — keep it out of the per-block average, same as the species view
-      masterLbs += d.lbs; masterBlocks += d.blocks;
-      if(d.isWS){ wsLbs+=d.lbs; wsBlocks+=d.blocks; }
-      else { hmLbs+=d.lbs; hmBlocks+=d.blocks; }
-    } else {
-      masterLbs += d.lbs;
-    }
-  });
-  const masterPerBlock = masterBlocks>0 ? masterLbs/masterBlocks : 0;
-  const wsPerBlock     = wsBlocks>0     ? wsLbs/wsBlocks         : 0;
-  const hmPerBlock     = hmBlocks>0     ? hmLbs/hmBlocks         : 0;
-
-  // ── Color helpers ──
-  // WS benchmark: 0.8 lb/block; TM (house-made): 1.0–1.25 lb/block
-  function blockColor(val, isWS){
-    if(val <= 0) return 'var(--text3)';
-    const t = isWS ? 0.8 : 1.0;
-    if(val >= t) return 'var(--fern)';
-    if(val >= t*0.8) return 'var(--amber)';
-    return 'var(--rust)';
-  }
-  function blockBar(val, isWS){
-    const target = isWS ? 0.8 : 1.25;
-    const pct = Math.min(Math.round(val/target*100), 100);
-    const col = blockColor(val, isWS);
-    return `<div style="display:flex;align-items:center;gap:6px;">
-      <div style="flex:1;background:var(--border);border-radius:3px;height:6px;min-width:60px;">
-        <div style="background:${col};width:${pct}%;height:6px;border-radius:3px;"></div>
-      </div>
-      <span style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:${col};min-width:52px;">${val.toFixed(2)} lb/blk</span>
-    </div>`;
-  }
-  function benchBadge(isWS){
-    return isWS
-      ? `<span style="font-size:11px;background:rgba(234,179,8,0.15);color:var(--amber);border:1px solid var(--amber);border-radius:3px;padding:1px 5px;font-family:'Syne Mono',monospace;">WS · 0.8</span>`
-      : `<span style="font-size:11px;background:rgba(96,153,96,0.12);color:var(--fern);border:1px solid var(--fern);border-radius:3px;padding:1px 5px;font-family:'Syne Mono',monospace;">TM · 1.0–1.25</span>`;
-  }
-  function masterBadge(val, isWS){
-    const col = blockColor(val, isWS);
-    const size = '32px';
-    return `<div class="sc-v" style="font-size:${size};color:${col};">${val>0?val.toFixed(2):'—'}<span style="font-size:14px"> lb/blk</span></div>`;
-  }
-
-  // ── Period selector HTML ──
-  const periods = [['week','Week'],['month','Month'],['30d','30 Days'],['year','Year'],['custom','Custom']];
-  const periodBtns = periods.map(([k,l])=>`
-    <button onclick="setYieldPeriod('${k}')" style="padding:5px 12px;border-radius:5px;border:1px solid ${_yieldPeriod===k?'var(--gold)':'var(--border)'};background:${_yieldPeriod===k?'rgba(212,176,89,0.15)':'var(--bg2)'};color:${_yieldPeriod===k?'var(--gold)':'var(--text2)'};font-size:12px;font-family:'Syne Mono',monospace;cursor:pointer;">${l}</button>`).join('');
-  const customInputs = _yieldPeriod==='custom' ? `
-    <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
-      <input id="ya-from" type="date" value="${_yieldCustomFrom}" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);color:var(--text1);font-size:12px;">
-      <span style="color:var(--text3);">→</span>
-      <input id="ya-to" type="date" value="${_yieldCustomTo}" style="padding:4px 8px;border-radius:5px;border:1px solid var(--border);background:var(--bg2);color:var(--text1);font-size:12px;">
-      <button onclick="applyYieldCustom()" style="padding:4px 12px;border-radius:5px;border:1px solid var(--gold);background:rgba(212,176,89,0.15);color:var(--gold);font-size:12px;cursor:pointer;">Apply</button>
-    </div>` : '';
-  const periodLabel = {week:'This Week',month:'This Month','30d':'Last 30 Days',year:'This Year',custom:'Custom Range'}[_yieldPeriod]||'';
-
-  // ── By Variety ──
-  const byVariety = {};
-  periodHarvests.forEach(h => {
-    const v = h.variety||'Unknown';
-    if(!byVariety[v]) byVariety[v] = {lbs:0, harvestCount:0, containers:new Set()};
-    byVariety[v].lbs += (h.weight||0);
-    byVariety[v].harvestCount++;
-    if(h.container) byVariety[v].containers.add(h.container);
-  });
-  // Attach block counts per variety from containerTotals
-  Object.entries(containerTotals).forEach(([c,d]) => {
-    const v = d.variety||'Unknown';
-    if(!byVariety[v]) byVariety[v] = {lbs:0, harvestCount:0, containers:new Set(), blocks:0};
-    if(!byVariety[v].blocks) byVariety[v].blocks = 0;
-    byVariety[v].blocks += d.blocks;
-  });
-
-  const maxVarLbs = Math.max(...Object.values(byVariety).map(d=>d.lbs), 1);
-  const varietyRows = Object.entries(byVariety).sort((a,b)=>b[1].lbs-a[1].lbs).map(([v,d])=>{
-    const perBlock = (d.blocks||0)>0 ? d.lbs/d.blocks : 0;
-    const col = blockColor(perBlock, false);
-    return `<tr>
-      <td style="font-weight:600;">${v}</td>
-      <td class="mn">${d.containers.size}</td>
-      <td class="mn">${d.harvestCount}</td>
-      <td class="mn" style="color:var(--moss);font-weight:700;">${d.lbs.toFixed(1)} lb</td>
-      <td style="min-width:140px;">${perBlock>0?blockBar(perBlock,false):'<span style="color:var(--text3);font-size:11px;">no block data</span>'}</td>
-    </tr>`;
-  }).join('');
-
-  // ── By Container ──
-  const maxContainerLbs = Math.max(...Object.values(containerTotals).map(d=>d.lbs), 1);
-  const containerRows = Object.entries(containerTotals)
-    .sort((a,b)=>b[1].lbs-a[1].lbs)
-    .map(([c,d])=>{
-      const perBlock = d.blocks>0 ? d.lbs/d.blocks : 0;
-      const isWS = d.isWS;
-      return `<tr>
-        <td style="font-weight:600;">${c}</td>
-        <td class="mn" style="font-size:11px;color:var(--text3);">${d.facility}</td>
-        <td class="mn">${d.variety||'—'}</td>
-        <td class="mn">${d.blocks||'—'}</td>
-        <td class="mn">${benchBadge(isWS)}</td>
-        <td class="mn">${d.harvestCount}</td>
-        <td class="mn" style="color:var(--moss);font-weight:600;">${d.lbs.toFixed(1)} lb</td>
-        <td style="min-width:160px;">${d.blocks>0?blockBar(perBlock,isWS):'<span style="color:var(--text3);font-size:11px;">no block data</span>'}</td>
-      </tr>`;
-    }).join('');
-
-  // ── By Lot ──
-  const byLot = {};
-  DB.fruitings.forEach(f => {
-    if(!f.lotNumber) return;
-    const lot = f.lotNumber;
-    if(!byLot[lot]) byLot[lot] = {lbs:0, harvestCount:0, blocks:0, isWS:false, variety:f.variety||'', containers:new Set()};
-    byLot[lot].blocks += (parseInt(f.blockCount)||0);
-    if(typeof lotBench==='function' && lotBench(lot).label==='Wild Spore') byLot[lot].isWS = true;
-    byLot[lot].containers.add(f.containerID);
-    if(f.variety && !byLot[lot].variety) byLot[lot].variety = f.variety;
-  });
-  periodHarvests.forEach(h => {
-    if(!h.lotNumber) return;
-    if(!byLot[h.lotNumber]) byLot[h.lotNumber] = {lbs:0, harvestCount:0, blocks:0, isWS:false, variety:h.variety||'', containers:new Set()};
-    byLot[h.lotNumber].lbs += (h.weight||0);
-    byLot[h.lotNumber].harvestCount++;
-  });
-  const lotRows = Object.entries(byLot)
-    .filter(([,d])=>d.harvestCount>0||d.blocks>0)
-    .sort((a,b)=>b[1].lbs-a[1].lbs)
-    .map(([lot,d])=>{
-      const perBlock = d.blocks>0 ? d.lbs/d.blocks : 0;
-      return `<tr>
-        <td style="font-weight:600;color:var(--gold);font-family:'Syne Mono',monospace;">${lot}</td>
-        <td>${d.variety||'—'}</td>
-        <td class="mn">${benchBadge(d.isWS)}</td>
-        <td class="mn">${d.blocks||'—'}</td>
-        <td class="mn">${d.harvestCount}</td>
-        <td class="mn" style="color:var(--moss);font-weight:600;">${d.lbs.toFixed(1)} lb</td>
-        <td style="min-width:160px;">${d.blocks>0?blockBar(perBlock,d.isWS):'<span style="color:var(--text3);font-size:11px;">no block data</span>'}</td>
-      </tr>`;
-    }).join('');
-
-  // ── By Facility ──
-  const byFacility = {};
-  Object.entries(containerTotals).forEach(([c,d])=>{
-    const fac = d.facility||'Unknown';
-    if(!byFacility[fac]) byFacility[fac]={lbs:0, harvestCount:0, blocks:0, containers:new Set()};
-    byFacility[fac].lbs += d.lbs;
-    byFacility[fac].harvestCount += d.harvestCount;
-    byFacility[fac].blocks += d.blocks;
-    byFacility[fac].containers.add(c);
-  });
-  const facilityRows = Object.entries(byFacility).sort((a,b)=>b[1].lbs-a[1].lbs).map(([fac,d])=>{
-    const perBlock = d.blocks>0 ? d.lbs/d.blocks : 0;
-    return `<tr>
-      <td style="font-weight:600;">${fac}</td>
-      <td class="mn">${d.containers.size}</td>
-      <td class="mn">${d.blocks||'—'}</td>
-      <td class="mn">${d.harvestCount}</td>
-      <td class="mn" style="color:var(--moss);font-weight:600;">${d.lbs.toFixed(1)} lb</td>
-      <td style="min-width:160px;">${d.blocks>0?blockBar(perBlock,false):'<span style="color:var(--text3);font-size:11px;">no block data</span>'}</td>
-    </tr>`;
-  }).join('');
-
-  const totalHarvestCount = periodHarvests.length;
-
-  if(totalHarvestCount===0) return `
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px 24px;margin-bottom:8px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
-        <div>
-          <div style="font-size:11px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:.08em;margin-bottom:4px;">CONTAINER-LEVEL CROSS-CHECK</div>
-          <div style="font-size:18px;font-weight:700;color:var(--text1);">Yield Per Block</div>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">${periodBtns}</div>
-      </div>
-      ${customInputs}
-      <div class="empty" style="padding:16px 0;">No harvests recorded for ${periodLabel}.</div>
-    </div>`;
-
-  return `
-    <div style="background:var(--bg2);border:2px solid var(--border);border-radius:12px;padding:20px 24px;margin-bottom:8px;">
-
-      <!-- Header + period selector -->
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-        <div>
-          <div style="font-size:10px;font-family:'Syne Mono',monospace;color:var(--text3);letter-spacing:.1em;margin-bottom:3px;">CONTAINER-LEVEL CROSS-CHECK</div>
-          <div style="font-size:20px;font-weight:700;color:var(--text1);">Yield Per Block</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px;">${periodLabel} · ${totalHarvestCount} harvest event${totalHarvestCount!==1?'s':''} · ${masterLbs.toFixed(1)} lb total</div>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">${periodBtns}</div>
-      </div>
-      ${customInputs}
-
-      <!-- Master stats strip -->
-      <div class="stats" style="margin-bottom:20px;">
-        <div class="sc g">
-          <div class="sc-l">Overall lb / Block</div>
-          ${masterBadge(masterPerBlock, false)}
-          <div class="sc-n">${masterBlocks} total blocks · internal target ≥ 1.0</div>
-        </div>
-        <div class="sc" style="${wsBlocks===0?'opacity:.45':''}">
-          <div class="sc-l">Wild Spore lb / Block</div>
-          ${masterBadge(wsPerBlock, true)}
-          <div class="sc-n">${wsBlocks} WS blocks · bench 0.8</div>
-        </div>
-        <div class="sc m" style="${hmBlocks===0?'opacity:.45':''}">
-          <div class="sc-l">TM lb / Block</div>
-          ${masterBadge(hmPerBlock, false)}
-          <div class="sc-n">${hmBlocks} TM blocks · bench 1.0–1.25</div>
-        </div>
-      </div>
-
-      <!-- Legend -->
-      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:20px;">
-        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--fern);"></span> meets bench (on target)
-        </div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--amber);"></span> within 80% of bench (watch)
-        </div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--rust);"></span> below (underperforming)
-        </div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
-          ${benchBadge(true)} Wild Spore source
-        </div>
-        <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text3);">
-          ${benchBadge(false)} TM (house-made)
-        </div>
-      </div>
-
-      <!-- Row 1: Variety + Facility -->
-      <div class="cr" style="gap:20px;margin-bottom:20px;">
-        <div class="cc" style="flex:1;min-width:260px;">
-          <div class="cc-l">By Variety</div>
-          <div class="tw"><table>
-            <thead><tr><th>Variety</th><th>Containers</th><th>Harvests</th><th>Total lb</th><th style="min-width:160px;">lb / Block</th></tr></thead>
-            <tbody>${varietyRows||'<tr><td colspan="5" class="empty">No data</td></tr>'}</tbody>
-          </table></div>
-        </div>
-        <div class="cc" style="flex:1;min-width:260px;">
-          <div class="cc-l">By Facility</div>
-          <div class="tw"><table>
-            <thead><tr><th>Facility</th><th>Containers</th><th>Blocks</th><th>Harvests</th><th>Total lb</th><th style="min-width:160px;">lb / Block</th></tr></thead>
-            <tbody>${facilityRows||'<tr><td colspan="6" class="empty">No data</td></tr>'}</tbody>
-          </table></div>
-        </div>
-      </div>
-
-      <!-- By Container -->
-      <div class="cc" style="margin-bottom:20px;">
-        <div class="cc-l">By Container <span style="font-size:11px;font-family:'Syne Mono',monospace;color:var(--text3);margin-left:6px;">PERIOD HARVEST ÷ TOTAL BLOCKS LOADED</span></div>
-        <div class="tw"><table>
-          <thead><tr><th>Container</th><th>Facility</th><th>Variety</th><th>Blocks</th><th>Source</th><th>Harvests</th><th>Total lb</th><th style="min-width:170px;">lb / Block</th></tr></thead>
-          <tbody>${containerRows||'<tr><td colspan="8" class="empty">No containers with harvest data this period</td></tr>'}</tbody>
-        </table></div>
-      </div>
-
-      <!-- By Lot -->
-      <div class="cc">
-        <div class="cc-l">By Lot Number <span style="font-size:11px;font-family:'Syne Mono',monospace;color:var(--text3);margin-left:6px;">PERIOD HARVESTS ONLY</span></div>
-        <div class="tw"><table>
-          <thead><tr><th>Lot #</th><th>Variety</th><th>Source</th><th>Blocks</th><th>Harvests</th><th>Total lb</th><th style="min-width:170px;">lb / Block</th></tr></thead>
-          <tbody>${lotRows||'<tr><td colspan="7" class="empty">No lot data this period</td></tr>'}</tbody>
-        </table></div>
-      </div>
-
-    </div>
-  `;
+  const prevRev={}, prevLb={};
+  if(pr){ (DB.orders||[]).filter(o=>o&&!o.isStanding&&_inRange(_orderSoldISO(o),pr)).forEach(o=>{ const c=(o.client||'—').trim()||'—'; prevRev[c]=(prevRev[c]||0)+(typeof eRev==='function'?eRev(o):0); prevLb[c]=(prevLb[c]||0)+(typeof orderLbs==='function'?orderLbs(o):0); }); }
+  const rows=Object.values(byC).map(g=>({...g, prevRev:prevRev[g.name]||0, prevLb:prevLb[g.name]||0})).sort((a,b)=>b.rev-a.rev);
+  return {rows, totLb:rows.reduce((s,g)=>s+g.lb,0), totRev:rows.reduce((s,g)=>s+g.rev,0),
+          totPrevRev:Object.values(prevRev).reduce((s,v)=>s+v,0), totPrevLb:Object.values(prevLb).reduce((s,v)=>s+v,0)};
+}
+function _codeChips(codes){ return Object.entries(codes).sort((a,b)=>b[1]-a[1]).map(([c,q])=>`<span style="display:inline-block;font-family:'Syne Mono',monospace;font-size:10px;background:var(--paper);border:1px solid var(--border);border-radius:4px;padding:1px 5px;margin:0 3px 3px 0;white-space:nowrap;"><b style="color:var(--gold);">${c}</b>&#215;${q}</span>`).join(''); }
+function buildDistroBreakdown(r, pr, perLbl){
+  const D=distroBreakdownData(r, pr);
+  const bandLbl=`<div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin:16px 0 6px;">By Distributor</div>`;
+  if(!D.rows.length) return bandLbl+`<div class="empty" style="padding:14px;font-size:13px;">No distributor sales in this period.</div>`;
+  const dchip=d=>`<span style="color:${d.col};font-weight:700;white-space:nowrap;">${d.arrow} ${d.txt}</span>`;
+  const rows=D.rows.map(g=>`<tr style="border-top:1px solid var(--border);">
+      <td style="font-weight:700;">${g.name} <span style="color:var(--text3);font-weight:400;font-size:11px;">${g.orders} ord</span></td>
+      <td style="max-width:340px;line-height:1.7;">${_codeChips(g.codes)||'<span style="color:var(--text3);">—</span>'}</td>
+      <td class="mn">${g.lb.toFixed(0)}</td>
+      <td class="mn" style="font-weight:700;color:var(--fern);">$${g.rev.toFixed(0)}</td>
+      <td class="mn">${pr?dchip(pctDelta(g.rev,g.prevRev)):'<span style="color:var(--text3);">—</span>'}</td></tr>`).join('');
+  return bandLbl+`<div class="tw" style="margin-bottom:8px;overflow-x:auto;"><table>
+    <thead><tr><th>Distributor</th><th>Codes bought</th><th>Weight (lb)</th><th>Revenue</th><th>Rev vs prev</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr style="border-top:2px solid var(--border-strong,var(--border));font-weight:700;background:rgba(0,0,0,.02);">
+      <td>${D.rows.length} distributor${D.rows.length!==1?'s':''}</td><td></td>
+      <td class="mn">${D.totLb.toFixed(0)}</td>
+      <td class="mn" style="color:var(--fern);">$${D.totRev.toFixed(0)}</td>
+      <td class="mn">${pr?dchip(pctDelta(D.totRev,D.totPrevRev)):''}</td></tr></tfoot>
+  </table></div>`;
 }
 
+// ── Executive Report (manual send, plain-text body — EmailJS renders {{message}} as text) ──
+// Follows the DASHBOARD's currently-selected period, so the emailed report matches what's on screen.
+function _erPeriodTitle(){ return {week:'This Week',lastweek:'Last Week',month:'This Month',year:'This Year',all:'All Time',custom:'Selected Range'}[_dashPeriod]||'Selected Period'; }
+function execReportRanges(){
+  if(typeof _dashRange==='function'){
+    return {r:_dashRange(_dashPeriod), pr:(typeof _dashPrevRange==='function'?_dashPrevRange(_dashPeriod):null)};
+  }
+  // fallback: last full week
+  const now=new Date(); const curWk=_weekStart(now);
+  const s=new Date(curWk); s.setDate(curWk.getDate()-7); s.setHours(0,0,0,0);
+  const e=new Date(s); e.setDate(s.getDate()+6);
+  const ps=new Date(s); ps.setDate(s.getDate()-7); const pe=new Date(ps); pe.setDate(ps.getDate()+6);
+  return {r:{s,e}, pr:{s:ps,e:pe}};
+}
+function _erRangeLabel(r){ return r.s.toLocaleDateString('en-US',{month:'short',day:'numeric'})+' – '+r.e.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+function _erWoW(cur,prev){ const d=pctDelta(cur,prev); return d.arrow?(d.arrow+' '+d.txt):d.txt; }
+function execReportText(){
+  const {r,pr}=execReportRanges();
+  const D=distroBreakdownData(r,pr);
+  const harv=rg=>(DB.harvests||[]).reduce((s,h)=>s+(_inRange((h.date||''),rg)?(parseFloat(h.weight)||0):0),0);
+  const placed=rg=>(DB.fruitings||[]).reduce((s,f)=>s+(_inRange((f.date||''),rg)?(parseInt(f.blockCount)||0):0),0);
+  const pad=(s,n)=>{ s=''+s; return s.length>=n?s:s+' '.repeat(n-s.length); };
+  const padL=(s,n)=>{ s=''+s; return s.length>=n?s:' '.repeat(n-s.length)+s; };
+  const money=v=>'$'+Math.round(v).toLocaleString('en-US');
+  const wow=(cur,prev)=>pr?_erWoW(cur,prev):'';                    // no prior period (e.g. All Time) → no WoW column
+  const rangeTxt=_dashPeriod==='all'?'all records':_erRangeLabel(r);
+  const L=[];
+  L.push('TOTALLY MUSHROOMS — EXECUTIVE SUMMARY');
+  L.push(_erPeriodTitle()+' · '+rangeTxt+(pr?('   (vs '+_erRangeLabel(pr)+')'):''));
+  L.push('');
+  L.push('── HEADLINE ─────────────────────────────');
+  const kpi=(lbl,val,cur,prev)=>L.push(pad(lbl,16)+pad(val,11)+wow(cur,prev));
+  kpi('Revenue',      money(D.totRev),           D.totRev,         D.totPrevRev);
+  kpi('Pounds Sold',  D.totLb.toFixed(0)+' lb',  D.totLb,          D.totPrevLb);
+  kpi('Total Harvest',harv(r).toFixed(0)+' lb',  harv(r),          harv(pr));
+  kpi('Blocks Placed',placed(r)+' blk',          placed(r),        placed(pr));
+  L.push('');
+  L.push('── BY DISTRIBUTOR ───────────────────────');
+  if(!D.rows.length){ L.push('(no distributor sales this period)'); }
+  D.rows.forEach(g=>{
+    L.push(pad(g.name.slice(0,20),22)+padL(money(g.rev),9)+'  '+padL(g.lb.toFixed(0)+'lb',7)+'  '+wow(g.rev,g.prevRev));
+    const codes=Object.entries(g.codes).sort((a,b)=>b[1]-a[1]).map(([c,q])=>c+'×'+q).join(' · ');
+    if(codes) L.push('  '+codes);
+  });
+  L.push('  '+'─'.repeat(38));
+  L.push(pad('TOTAL',22)+padL(money(D.totRev),9)+'  '+padL(D.totLb.toFixed(0)+'lb',7)+'  '+wow(D.totRev,D.totPrevRev));
+  L.push('');
+  // product-code roll-up (units across all distributors)
+  const codeTot={}; D.rows.forEach(g=>Object.entries(g.codes).forEach(([c,q])=>codeTot[c]=(codeTot[c]||0)+q));
+  const codeRows=Object.entries(codeTot).sort((a,b)=>b[1]-a[1]);
+  if(codeRows.length){
+    L.push('── UNITS BY CODE ────────────────────────');
+    codeRows.forEach(([c,q])=>{ const p=ALL_PRODS.find(x=>x.code===c); L.push(pad(c,7)+padL(q,4)+'  '+(p?p.name:'')); });
+    L.push('');
+  }
+  L.push('Generated '+new Date().toLocaleString('en-US')+' · TM HQ');
+  return L.join('\n');
+}
+function emailExecReport(){
+  if(typeof openEmailDispatch!=='function'){ alert('Email dispatch unavailable.'); return; }
+  const {r}=execReportRanges();
+  const rangeTxt=_dashPeriod==='all'?'all records':_erRangeLabel(r);
+  const subj='TM Executive Summary — '+_erPeriodTitle()+' ('+rangeTxt+')';
+  openEmailDispatch('execReport', subj, {label:'Executive Summary · '+_erPeriodTitle(), report:execReportText()});
+}
+
+// ── BLOCK SPOILAGE REPORT (for manufacturer credit) ──
+// Supplier-received blocks that spoiled / failed (manufacturer's fault) — grouped by supplier → lot.
+const _SPOIL_REASONS=new Set(['spoiled','contaminated','unusable','failed-to-fruit','dead']);
+function _isInhouseSup(s){ return /in[-\s]?house|carthage|tm hfp|cheekee|^tm\b/i.test(s||''); }
+function spoilageItems(){
+  return (DB.blockDisposals||[]).filter(d=>_SPOIL_REASONS.has(d.reason) && d.source!=='internal' && !_isInhouseSup(d.supplier) && (parseInt(d.blockCount)||0)>0);
+}
+function _spoilLot(d){ const l=(d.lotNumber||d.cookLot||'').trim(); if(l) return l; const m=/lot\s+([^\s·,]+)/i.exec(d.notes||''); return m?m[1]:'—'; }
+function spoilageReportText(){
+  const items=spoilageItems();
+  const pad=(s,n)=>{s=''+s;return s.length>=n?s:s+' '.repeat(n-s.length);};
+  const padL=(s,n)=>{s=''+s;return s.length>=n?s:' '.repeat(n-s.length)+s;};
+  const L=['TOTALLY MUSHROOMS — BLOCK SPOILAGE REPORT','Generated '+new Date().toLocaleString('en-US'),'For manufacturer credit — supplier-received blocks that spoiled / failed.',''];
+  if(!items.length){ L.push('(no supplier spoilage on record)'); return L.join('\n'); }
+  const bySup={}; items.forEach(d=>{ const s=(d.supplier||'').trim()||'Unspecified supplier'; (bySup[s]=bySup[s]||[]).push(d); });
+  let grand=0;
+  Object.keys(bySup).sort().forEach(sup=>{
+    const rows=bySup[sup].sort((a,b)=>(a.date||'').localeCompare(b.date||'')); const tot=rows.reduce((s,d)=>s+(parseInt(d.blockCount)||0),0); grand+=tot;
+    L.push('── '+sup.toUpperCase()+' ─────────────────────');
+    L.push(pad('DATE',11)+pad('LOT',16)+pad('VARIETY',18)+padL('BLKS',5)+'  REASON');
+    rows.forEach(d=>L.push(pad(fDate(d.date),11)+pad(_spoilLot(d).slice(0,15),16)+pad((d.variety||'—').slice(0,17),18)+padL(parseInt(d.blockCount)||0,5)+'  '+(d.reason||'')));
+    L.push(pad('',50)+padL(tot+' blk',7)); L.push('');
+  });
+  L.push('════════════════════════════════════════'); L.push(pad('TOTAL SPOILED BLOCKS',50)+padL(grand+' blk',7)); L.push('');
+  L.push('Please issue credit for the blocks above. — Totally Mushrooms');
+  return L.join('\n');
+}
+function emailSpoilageReport(){
+  if(typeof openEmailDispatch!=='function'){ alert('Email dispatch unavailable.'); return; }
+  if(!spoilageItems().length){ alert('No supplier spoilage on record to report.'); return; }
+  openEmailDispatch('spoilage','TM Block Spoilage Report — manufacturer credit',{label:'Spoilage Report',report:spoilageReportText()});
+}
+function printSpoilageReport(){
+  const txt=spoilageReportText(); const w=window.open('','_blank'); if(!w){ alert('Allow pop-ups to print the report.'); return; }
+  w.document.write('<pre style="font-family:ui-monospace,Menlo,monospace;font-size:12px;white-space:pre-wrap;padding:28px;line-height:1.5;">'+txt.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+'</pre>');
+  w.document.close(); w.focus(); setTimeout(()=>{try{w.print();}catch(e){}},300);
+}
+function buildSpoilageReportHTML(){
+  const items=spoilageItems(); if(!items.length) return '';
+  const bySup={}; items.forEach(d=>{ const s=(d.supplier||'').trim()||'Unspecified'; (bySup[s]=bySup[s]||[]).push(d); });
+  const grand=items.reduce((s,d)=>s+(parseInt(d.blockCount)||0),0);
+  let body='';
+  Object.keys(bySup).sort().forEach(sup=>{
+    const rows=bySup[sup].sort((a,b)=>(a.date||'').localeCompare(b.date||'')); const tot=rows.reduce((s,d)=>s+(parseInt(d.blockCount)||0),0);
+    body+=`<tr style="background:rgba(154,42,42,.06);"><td colspan="5" style="font-weight:700;padding:7px 12px;">${sup} <span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">· ${tot} blocks</span></td></tr>`;
+    body+=rows.map(d=>`<tr><td class="mn">${fDate(d.date)}</td><td class="mn" style="color:var(--gold);font-weight:700;">${_spoilLot(d)}</td><td>${d.variety||'—'}</td><td class="mn" style="color:#9a2a2a;font-weight:700;">${parseInt(d.blockCount)||0}</td><td style="font-size:11px;color:var(--text3);">${d.reason||''}${d.container?' · '+d.container:''}</td></tr>`).join('');
+  });
+  return `<div class="sh" style="margin-top:28px;"><span>📋 Spoilage Report — Manufacturer Credit</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">${grand} BLOCKS · SUPPLIER-RECEIVED</span></div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.6;">Supplier blocks that spoiled or failed, by supplier &amp; lot — the basis for seeking credit from the manufacturer. Fed by the fruiting “Spoiled / Unusable Blocks” field and the spoilage form above.</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+      <button class="btn b-m b-sm" onclick="emailSpoilageReport()">✉ Email Spoilage Report</button>
+      <button class="btn b-g b-sm" onclick="printSpoilageReport()">🖨 Print</button>
+    </div>
+    <div class="tw"><table><thead><tr><th>Date</th><th>Lot</th><th>Variety</th><th>Blocks</th><th>Reason · Container</th></tr></thead><tbody>${body}</tbody></table></div>`;
+}
 
 // ── SAMPLES ──
 
@@ -10020,6 +10059,46 @@ function rSampCardHTML(s, showActions){
   </div>`;
 }
 
+// ── Easy sample logger (compact card on Today) — writes the SAME record shape as the old order-form path ──
+function buildSampleLogCard(){
+  const clientNames=[...new Set((DB.clients||[]).map(c=>c.name).filter(Boolean))].sort();
+  const qtyItem=p=>`<label style="display:flex;align-items:center;gap:6px;font-size:12px;background:var(--white);border:1px solid var(--border);border-radius:5px;padding:5px 8px;">
+      <span style="font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);">${p.code}</span>
+      <span style="color:var(--text2);">${p.name}</span>
+      <input class="fi" type="number" min="0" value="0" id="sl-${p.dataKey}" style="width:50px;padding:3px 5px;text-align:center;margin-left:auto;">
+      <span style="font-size:10px;color:var(--text3);">${p.unitLb>=10?'tote':p.unitLb===3?'box':'¼lb'}</span></label>`;
+  const boxes=PRODUCTS.filter(p=>!p.restrict).map(qtyItem).join('');
+  const packs=RETAIL_PACKS.map(qtyItem).join('');
+  return `<div class="card" style="margin-top:24px;border-left:3px solid #6a3a9a;">
+    <div class="card-t">🎁 Log a Sample</div>
+    <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Quick free-sample log — deducts from on-hand when you Pack &amp; Send it below.</div>
+    <div class="fg2" style="margin-bottom:12px;">
+      <div class="fgl"><label>Recipient / Venue <span style="color:var(--rust);">*</span></label><input class="fi" id="sl-rec" list="sl-recl" placeholder="Who's it going to?" ${NOFILL('sl_rec')}><datalist id="sl-recl">${clientNames.map(n=>`<option value="${attrEsc(n)}">`).join('')}</datalist></div>
+      <div class="fgl"><label>Date</label><input class="fi" type="date" id="sl-date" value="${tday()}"></div>
+      <div class="fgl"><label>Type</label><select class="fs" id="sl-type"><option>Restaurant</option><option>Distributor</option><option>Retail</option><option>Event</option><option>Other</option></select></div>
+      <div class="fgl"><label>Contact <span style="color:var(--text3);font-size:11px;">optional</span></label><input class="fi" id="sl-contact" placeholder="Chef, buyer…" ${NOFILL('sl_contact')}></div>
+    </div>
+    <div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--text3);margin-bottom:6px;">WHAT WENT OUT — 3 LB BOXES</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">${boxes}</div>
+    <div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1.5px;color:var(--text3);margin-bottom:6px;">¼ LB PACKS</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">${packs}</div>
+    <div class="fgl" style="margin-bottom:12px;"><label>Notes <span style="color:var(--text3);font-size:11px;">optional</span></label><input class="fi" id="sl-notes" placeholder="Anything to remember about this sample" ${NOFILL('sl_notes')}></div>
+    <button class="btn b-m b-lg" onclick="saveSampleLog()">Log Sample</button>
+    <div class="toast" id="sl-t">✓ Sample logged</div>
+  </div>`;
+}
+async function saveSampleLog(){
+  const recipient=(document.getElementById('sl-rec')?.value||'').trim();
+  if(!recipient){ alert('Recipient / venue is required.'); return; }
+  const date=document.getElementById('sl-date')?.value||tday();
+  const qtys={}; ALL_PRODS.forEach(p=>{ qtys[p.dataKey]=parseInt(document.getElementById('sl-'+p.dataKey)?.value)||0; });
+  if(!Object.values(qtys).some(v=>v>0)){ alert('Add at least one item to the sample.'); return; }
+  const sData={date, week:wkStart(), recipient, recipientType:document.getElementById('sl-type')?.value||'Other', contact:(document.getElementById('sl-contact')?.value||'').trim(), ...qtys, notes:(document.getElementById('sl-notes')?.value||'').trim(), status:'pending'};
+  const btn=event&&event.target; if(btn){ btn.disabled=true; }
+  try{ const sId=await FS.add('samples',sData); DB.samples.push({id:sId,...sData}); try{ logAudit('sample_logged', recipient+' · '+sampSum(sData)); }catch(e){} }
+  catch(e){ alert('Could not save sample: '+(e.message||e)); if(btn) btn.disabled=false; return; }
+  toast('sl-t'); renderC();
+}
 function markSampleSent(id){
   const s=DB.samples.find(x=>x.id===id); if(!s) return;
   if(!confirm('Mark this sample as sent? This will deduct the weight from harvest inventory.')) return;
@@ -10143,35 +10222,6 @@ function deductSampleInventory(sample){
 
 function delSample(id){ if(!confirm('Delete this sample record?')) return; DB.samples=DB.samples.filter(x=>x.id!==id); FS.del('samples',id); renderC() }
 
-
-async function subNewSample(){
-  const recipient=document.getElementById('ns-rec').value.trim();
-  const recipientType=document.getElementById('ns-type').value;
-  const contact=document.getElementById('ns-contact').value.trim();
-  const date=document.getElementById('ns-date').value;
-  if(!recipient||!date){ alert('Recipient and date are required.'); return }
-  const varieties={};
-  VARIETIES.forEach(v=>{
-    const el=document.getElementById('nsv-'+v.replace(/[^a-z0-9]/gi,'_'));
-    const val=parseFloat(el?.value)||0;
-    if(val>0) varieties[v]=val;
-  });
-  if(Object.keys(varieties).length===0){ alert('Enter at least one variety with a weight in oz.'); return }
-  const sData={date, week:wkStart(), recipient, recipientType:recipientType||'Other', contact,
-    varieties, notes:document.getElementById('ns-notes').value.trim(), status:'pending'};
-  const sId = await FS.add('samples', sData);
-  sData.id = sId;
-  DB.samples.push(sData);
-  toast('ns-t');
-  clrNewSample();
-}
-
-function clrNewSample(){
-  ['ns-rec','ns-contact','ns-notes'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
-  const dt=document.getElementById('ns-date');if(dt)dt.value=tday();
-  const tp=document.getElementById('ns-type');if(tp)tp.value='';
-  VARIETIES.forEach(v=>{const el=document.getElementById('nsv-'+v.replace(/[^a-z0-9]/gi,'_'));if(el)el.value='0'});
-}
 
 // ── QUICKBOOKS INTEGRATION ──
 
@@ -11311,7 +11361,16 @@ function matchSpawnByStrain(strain, spawnLots){
 }
 // Parse a comma-separated "lot ×bags, lot ×bags" string → [{lot,bags}]
 function parseSpawnSrcText(txt){ txt=(txt||'').trim(); if(!txt) return [];
-  return txt.split(',').map(t=>{ const m=t.trim().match(/^(.*?)\s*[×xX]\s*(\d+)\s*(?:bg|bags?)?$/); return m?{lot:m[1].trim(),bags:parseInt(m[2])||0}:{lot:t.trim(),bags:0}; }).filter(s=>s.lot||s.bags);
+  return txt.split(',').map(t=>{ t=t.trim();
+    // "LOT × N" / "LOT xN" / "LOT x N bags"
+    let m=t.match(/^(.*?)\s*[×xX]\s*(\d+)\s*(?:bg|bags?)?$/);
+    if(m) return {lot:m[1].trim(),bags:parseInt(m[2])||0};
+    // legacy sheet/AI format "LOT-N" where N is 1–2 digits = bag count (072026-7, 10218B-18, 071026A-1).
+    // Longer numeric tails stay part of the lot code (SPN-2026-020, IH-050826).
+    let d=t.match(/^(.+?)-(\d{1,2})$/);
+    if(d) return {lot:d[1].trim(),bags:parseInt(d[2])||0};
+    return {lot:t,bags:0};
+  }).filter(s=>s.lot||s.bags);
 }
 function fmtSpawnSrc(ss){ return (Array.isArray(ss)?ss:[]).filter(s=>s.lot||s.bags).map(s=>`${s.lot||''}${s.bags?' ×'+s.bags:''}`).join(', '); }
 function addPlSpawnSource(i){ const w=document.getElementById('plv-spawnsrc-'+i); if(w){ w.insertAdjacentHTML('beforeend',plSpawnSrcRow(i,{})); } }
@@ -11940,7 +11999,11 @@ function rLabCultures(el){
 let _spawnQ = '';
 const SPAWN_RUN_STATUSES = [['colonizing','Colonizing'],['ready','Ready'],['used','Used up'],['contaminated','Contaminated']];
 function nextSpawnLot(){ const yr=new Date().getFullYear(); const ex=(DB.spawnRuns||[]).filter(s=>s.spawnLot&&s.spawnLot.startsWith('SPN-'+yr+'-')).map(s=>parseInt(s.spawnLot.slice(-3))||0); return 'SPN-'+yr+'-'+String((ex.length?Math.max(...ex):0)+1).padStart(3,'0'); }
-function spawnOnHand(s){ return Math.max(0,(parseInt(s.bagCount)||0)-(parseInt(s.usedBags)||0)); }
+// Total bags drawn from a run — BOTH ledgers: usedBags (dropdown-pick draws via applySpawnDraw)
+// and usedByLot (typed/"Spawn Lots Combined" draws via drawDownSpawn). Historically the pool
+// display only counted usedBags, so manually-typed spawn lots never reduced on-hand. Count both.
+function spawnUsed(s){ return (parseInt(s&&s.usedBags)||0)+Object.values((s&&s.usedByLot)||{}).reduce((a,b)=>a+(parseInt(b)||0),0); }
+function spawnOnHand(s){ return Math.max(0,(parseInt(s.bagCount)||0)-spawnUsed(s)); }
 function onHandSpawn(){ return (DB.spawnRuns||[]).filter(s=>s.status!=='contaminated'&&s.status!=='used'&&spawnOnHand(s)>0).sort((a,b)=>(b.date||'').localeCompare(a.date||'')); }
 function spawnStatusBadge(s){ const m={colonizing:['Colonizing','var(--amber)'],ready:['Ready','var(--fern)'],used:['Used','var(--text3)'],contaminated:['Contam','var(--rust)']}; const [l,c]=m[s]||['—','var(--text3)']; return `<span style="font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:${c};background:${c}22;border:1px solid ${c}44;border-radius:3px;padding:2px 7px;">${l}</span>`; }
 function onSpawnCulture(){ const v=(document.getElementById('sp-culture')?.value||'').trim(); const c=(DB.cultures||[]).find(x=>x.cultureLot===v||x.id===v); if(c && c.strain){ const first=document.querySelector('#sp-strains .sp-srow .sp-sstrain'); if(first && !first.value){ first.value=c.strain; onSpawnStrainInput(0); } } }
@@ -12192,7 +12255,7 @@ function rLabSpawn(el){
     const st=strs[0];
     return `<tr>
       <td class="mn" style="color:var(--gold);font-weight:700;">${st&&st.lot?st.lot:spawnLabel(s)}</td><td style="font-weight:500;">${s.strain}</td><td>${s.grain||'—'}</td>
-      <td class="mn" style="font-size:10px;color:var(--text3);">${s.sourceCultureLot||s.cultureSource||'—'}</td><td class="mn">${s.bagCount||0}</td><td class="mn">${s.usedBags||0}</td>
+      <td class="mn" style="font-size:10px;color:var(--text3);">${s.sourceCultureLot||s.cultureSource||'—'}</td><td class="mn">${s.bagCount||0}</td><td class="mn">${spawnUsed(s)}</td>
       <td class="mn" style="color:var(--fern);font-weight:700;">${spawnOnHand(s)}</td><td>${spawnStatusBadge(s.status)}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="8" class="empty">No spawn on hand — log a grain spawn run below.</td></tr>`;
@@ -13142,7 +13205,7 @@ async function ensureAdminData(){
 }
 function rAdmin(el){
   if(!(DB._adminLoaded&&DB._adminLoaded.all)) ensureAdminData().then(()=>{ if(cv==='admin') rAdmin(document.getElementById('main-views')); }); // recent logins fill in when ready
-  const pend=DB.orders.filter(o=>o.status==='pending'&&!o.isStanding), cust=DB.orders.filter(o=>o.custom&&!o.isStanding), newSR=DB.signupRequests.filter(s=>s.status==='new');
+  const pend=DB.orders.filter(o=>o.status==='pending'&&!o.isStanding), cust=DB.orders.filter(o=>o.custom&&!o.isStanding);
   const staffUsers=DB.users.filter(u=>u.active!==false);
   const recentLogins=[...DB.loginHistory].sort((a,b)=>b.timestamp.localeCompare(a.timestamp)).slice(0,5);
 
@@ -13194,7 +13257,6 @@ function rAdmin(el){
       }).join('')}</div>`:''}
     </div>
 
-    ${newSR.length>0?`<div style="margin-bottom:28px;"><div class="sh"><span>New Signup Requests</span><span class="bdg bn">${newSR.length} new</span></div><div id="sr-list"></div></div>`:''}
     <div style="margin-bottom:28px;"><div class="sh"><span>Orders — Approve / Reject</span><span class="bdg bp">${pend.length} pending</span></div><div class="og" id="aa-g"></div></div>
     <div style="margin-bottom:28px;"><div class="sh"><span>Custom & Wholesale <span class="bdg bad">★</span></span></div><div class="og" id="ac-g"></div><div style="margin-top:14px;"><button class="btn b-a" onclick="sw('new-order')">+ New Custom / Wholesale Order</button></div></div>
     <div style="margin-bottom:28px;">
@@ -13303,45 +13365,10 @@ function rAdmin(el){
       </div>
     </div>`;
 
-  if(newSR.length>0){ const srl=el.querySelector('#sr-list'); newSR.forEach(sr=>rSR(sr,srl)) }
   const ag=el.querySelector('#aa-g'); const std=DB.orders.filter(o=>!o.custom&&!o.isStanding); if(std.length===0) ag.innerHTML='<div class="empty">No standard orders</div>'; else std.forEach(o=>rOC(o,ag,o.status==='pending'));
   const cg=el.querySelector('#ac-g'); if(cust.length===0) cg.innerHTML='<div class="empty">No custom or wholesale orders</div>'; else cust.forEach(o=>rOC(o,cg,o.status==='pending'));
 }
 
-function rSR(sr,container){
-  const div=document.createElement('div'); div.className='src';
-  div.innerHTML=`<div class="src-n">${sr.venue}</div><div class="src-m">CONTACT: ${sr.contact} · EMAIL: ${sr.email} · PHONE: ${sr.phone||'—'}<br>PREFERRED DAY: ${sr.day} · SUBMITTED: ${fDate(sr.submitted)}</div>${sr.note?`<div style="font-size:12px;color:var(--warm);line-height:1.6;margin-bottom:10px;">"${sr.note}"</div>`:''}<div class="src-acts"><button class="btn b-m" onclick="appSR('${sr.id}')">Approve & Create Account</button><button class="btn b-r" onclick="decSR('${sr.id}')">Decline</button></div>`;
-  container.appendChild(div)
-}
-
-function appSR(id){
-  const sr=DB.signupRequests.find(s=>s.id===id); if(!sr) return;
-  document.getElementById('em-title').textContent='Approve: '+sr.venue;
-  document.getElementById('em-body').innerHTML=`
-    <div style="font-size:12px;color:var(--sage);margin-bottom:18px;line-height:1.6;">Set this client's account details. They'll use a temp code to complete first login.</div>
-    <div class="fg2">
-      <div class="fgl"><label>Client Type</label><select class="fs" id="as-t"><option>Restaurant</option><option>Retail</option><option>Individual</option><option>Wholesale</option></select></div>
-      <div class="fgl"><label>Delivery Day</label><select class="fs" id="as-d">${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=>`<option ${sr.day===d?'selected':''}>${d}</option>`).join('')}</select></div>
-      <div class="fgl"><label>Notes</label><input class="fi" id="as-n" placeholder="Delivery notes..."></div>
-    </div>
-    <div class="form-acts"><button class="btn b-m b-lg" onclick="finSR('${id}')">Create Account</button><button class="btn b-g" onclick="closeModal()">Cancel</button></div>`;
-  document.getElementById('edit-modal').classList.add('open')
-}
-
-async function finSR(srId){
-  const sr=DB.signupRequests.find(s=>s.id===srId); if(!sr) return;
-  const cData={name:sr.venue,type:document.getElementById('as-t').value,contact:sr.contact,email:sr.email,phone:sr.phone,day:document.getElementById('as-d').value,notes:document.getElementById('as-n').value.trim(),pwHash:null,notifPref:'email',notifEmail:sr.email,notifPhone:sr.phone,firstLogin:true,status:'approved',isWholesale:document.getElementById('as-t').value==='Wholesale'};
-  const cid = await FS.add('clients', cData);
-  cData.id = cid;
-  DB.clients.push(cData);
-  sr.status='approved';
-  FS.update('signupRequests',srId,{status:'approved'});
-  closeModal();
-  alert(`✓ Account created for ${sr.venue}.\n\nTemp login code: tm-${cid}\n\nSend this to ${sr.email} so they can complete their first login and set their own password.`);
-  rAdmin(document.getElementById('main-views'))
-}
-
-function decSR(id){ if(!confirm('Decline this signup request?')) return; const sr=DB.signupRequests.find(s=>s.id===id); if(!sr) return; sr.status='declined'; FS.update('signupRequests',id,{status:'declined'}); rAdmin(document.getElementById('main-views')) }
 
 // ── ADD CLIENT MODAL ──
 function openAddClient(){
@@ -13653,118 +13680,6 @@ async function deactivateUser(docId){
 
 function closeModal(){ document.getElementById('edit-modal').classList.remove('open') }
 document.getElementById('edit-modal').addEventListener('click',function(e){ if(e.target===this) closeModal() });
-
-// ── CLIENT PORTAL ──
-function gC(){ return DB.clients.find(c=>c.id===S.clientId)||{} }
-
-function rCOrd(el){
-  const c=gC();
-  el.innerHTML=`
-    <div class="portal"><div class="p-hello">Hi, ${c.contact||c.name}.</div><div class="p-sub">${c.name} · ${c.day||'your delivery day'}</div>
-    <div class="card"><div class="card-t">Place This Week's Order</div>
-    <div class="fg2"><div class="fgl"><label>Delivery Day</label><select class="fs" id="co-d">${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=>`<option ${c.day===d?'selected':''}>${d}</option>`).join('')}</select></div></div>
-    <div style="margin:20px 0 10px;" class="sh">Wholesale Codes — 3 lb Boxes <span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">priced per lb · 3 lb box</span></div>
-    <div class="vg">${PRODUCTS.map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);margin-right:8px;">${p.code}</span>${p.name}</div><div class="vi-d">$${p.priceLb.toFixed(2)}/lb · 3 lb box = $${(p.unitLb*p.priceLb).toFixed(2)}</div><input class="qi" type="number" min="0" id="co-${p.dataKey}" value="0"><div class="qu">× 3 lb box</div></div>`).join('')}</div>
-    <div style="margin:16px 0 10px;" class="sh">Retail Packs — ¼ lb</div>
-    <div class="vg">${RETAIL_PACKS.map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);margin-right:8px;">${p.code}</span>${p.name}</div><div class="vi-d">$${p.priceLb.toFixed(2)}/lb · ¼ lb = $${(p.unitLb*p.priceLb).toFixed(2)} each</div><input class="qi" type="number" min="0" id="co-${p.dataKey}" value="0"><div class="qu">× ¼ lb pack</div></div>`).join('')}</div>
-    <div class="fgl" style="margin-bottom:18px;"><label>Notes</label><textarea class="fta" id="co-n" placeholder="Any notes for the farm..."></textarea></div>
-    <div style="background:rgba(200,150,42,.06);border:1px solid rgba(200,150,42,.15);border-radius:3px;padding:14px;margin-bottom:18px;font-size:12px;color:var(--warm);line-height:1.6;"><strong style="color:var(--amber);">Need something custom?</strong><br>Custom requests require a conversation first. Get in touch and we'll sort it out.</div>
-    <div class="form-acts"><button class="btn b-s b-lg" onclick="subCOrd()">Submit Order</button></div>
-    <div class="toast" id="co-t">✓ Order submitted — we'll confirm once approved</div></div></div>`;
-}
-
-async function subCOrd(){
-  const c=gC();
-  const qtys={};
-  ALL_PRODS.forEach(p=>{ qtys[p.dataKey]=parseInt(document.getElementById('co-'+p.dataKey)?.value)||0; });
-  if(!Object.values(qtys).some(v=>v>0)){ alert('Add at least one item.'); return }
-  const oData={clientId:S.clientId,client:c.name,day:document.getElementById('co-d').value,status:'pending',...qtys,notes:document.getElementById('co-n').value.trim(),week:wkStart(),custom:false,isStanding:false};
-  const oId = await FS.add('orders', oData);
-  oData.id = oId;
-  DB.orders.push(oData);
-  toast('co-t'); ALL_PRODS.forEach(p=>{ const el=document.getElementById('co-'+p.dataKey); if(el) el.value='0' });
-}
-
-function rCStand(el){
-  const c=gC();
-  const so=DB.orders.find(o=>o.clientId===S.clientId&&o.isStanding);
-  const thisWeek=DB.orders.find(o=>o.clientId===S.clientId&&!o.isStanding&&o.autoGenerated&&o.week===wkStart()&&o.sourceStandingId===so?.id);
-  el.innerHTML=`
-    <div class="portal"><div class="p-hello">Standing Order</div><div class="p-sub">Your default weekly order · auto-generated each week</div>
-    ${thisWeek?`<div class="card" style="border-left:3px solid var(--fern);margin-bottom:16px;">
-      <div class="card-t">This Week's Order <span class="bdg ${thisWeek.status==='confirmed'?'bc':thisWeek.status==='packed'||thisWeek.status==='invoiced'?'bpk':'bp'}">${thisWeek.status.toUpperCase()}</span></div>
-      <div style="font-size:12px;color:var(--text3);line-height:1.7;">${oSum(thisWeek)} · ${thisWeek.day} · Week of ${fDate(thisWeek.week)}</div>
-    </div>`:''}
-    ${so?`<div class="card"><div class="card-t">Standing Order Template</div>
-    <div style="background:rgba(255,255,255,.02);border:1px solid rgba(196,168,130,.1);border-radius:3px;padding:18px;margin-bottom:20px;">${[['Delivery Day',so.day], ...ALL_PRODS.filter(p=>(so[p.dataKey]||0)>0).map(p=>[p.code+' · '+p.name, (so[p.dataKey]||0)+'× '+(p.unitLb===3?'3lb box':'¼lb pack')]), so.notes?['Notes',so.notes]:null].filter(Boolean).map(([k,v])=>`<div class="so-row"><span class="so-l">${k}</span><span class="so-v">${v}</span></div>`).join('')}</div></div>
-    <div class="card"><div class="card-t">Request a Change</div><div style="font-size:12px;color:var(--spore);margin-bottom:18px;line-height:1.6;">Changes need farm approval and will take effect from next week.</div>
-    <div class="vg">${PRODUCTS.map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);margin-right:8px;">${p.code}</span>${p.name}</div><input class="qi" type="number" min="0" id="so-${p.dataKey}" value="${so[p.dataKey]||0}"><div class="qu">× 3 lb box</div></div>`).join('')}</div>
-    <div class="vg" style="margin-top:8px;">${RETAIL_PACKS.map(p=>`<div class="vi"><div class="vi-n"><span style="font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--gold);margin-right:8px;">${p.code}</span>${p.name}</div><input class="qi" type="number" min="0" id="so-${p.dataKey}" value="${so[p.dataKey]||0}"><div class="qu">× ¼ lb pack</div></div>`).join('')}</div>
-    <div class="fgl" style="margin-bottom:16px;margin-top:14px;"><label>Reason for Change</label><textarea class="fta" id="so-r" placeholder="Briefly let us know why you're adjusting..."></textarea></div>
-    <div class="form-acts"><button class="btn b-s b-lg" onclick="subSO('${so.id}')">Submit Change Request</button></div>
-    <div class="toast" id="so-t">✓ Change request submitted</div></div>`:`<div class="card"><div style="font-size:14px;color:var(--warm);line-height:1.7;margin-bottom:18px;">No standing order yet. Contact Totally Mushrooms to set one up, or place individual orders each week.</div><button class="btn b-s" onclick="sw('c-order')">→ Place a One-Time Order</button></div>`}
-    </div>`;
-}
-
-async function subSO(sid){
-  const r=document.getElementById('so-r')?.value?.trim();
-  if(!r){ alert('Please add a reason.'); return }
-  const updates={notes:'Standing order edit: '+r};
-  ALL_PRODS.forEach(p=>{ updates[p.dataKey]=parseInt(document.getElementById('so-'+p.dataKey)?.value)||0; });
-  await FS.update('orders',sid,updates);
-  const idx=DB.orders.findIndex(x=>x.id===sid);
-  if(idx>-1) Object.assign(DB.orders[idx],updates);
-  toast('so-t'); renderC();
-}
-
-function rCHist(el){
-  const c=gC(), h=[...DB.orders.filter(o=>o.clientId===S.clientId&&!o.isStanding)].sort((a,b)=>(b.week||'').localeCompare(a.week||''));
-  const weekLabel=w=>w==='standing'?'Standing Template':w?'Week of '+fDate(w):'—';
-  el.innerHTML=`<div class="portal"><div class="p-hello">Order History</div><div class="p-sub">${c.name} · all orders</div>${h.length===0?'<div class="empty" style="margin-top:40px;">No orders yet</div>':h.map(o=>`<div class="hitem"><div><div class="hi-dt">${weekLabel(o.week)} · ${o.day}</div><div class="hi-it">${oSum(o)}</div>${o.notes?`<div style="font-size:11px;color:var(--spore);margin-top:3px;">${o.notes}</div>`:''}</div><div><span class="bdg ${o.status==='confirmed'?'bc':'bp'}">${o.status}</span></div></div>`).join('')}</div>`;
-}
-
-function rCSet(el){
-  const c=gC();
-  el.innerHTML=`
-    <div class="portal"><div class="p-hello">Settings</div><div class="p-sub">Manage your account and notifications</div>
-    <div class="card"><div class="card-t">Account</div>
-    <div class="fg2">
-      <div class="fgl"><label>Venue</label><input class="fi" value="${c.name||''}" disabled style="opacity:.5;cursor:not-allowed;"></div>
-      <div class="fgl"><label>Contact Name</label><input class="fi" id="cs-cn" value="${c.contact||''}"></div>
-      <div class="fgl"><label>Email</label><input class="fi" type="email" id="cs-em" value="${c.notifEmail||c.email||''}"></div>
-      <div class="fgl"><label>Mobile (SMS)</label><input class="fi" type="tel" id="cs-ph" value="${c.notifPhone||c.phone||''}"></div>
-    </div>
-    <div style="margin-top:22px;margin-bottom:14px;" class="sh">Notification Preferences</div>
-    <div class="nb"><div class="nb-t">How would you like to be notified?</div>
-      <div class="tog"><label class="tsw"><input type="checkbox" id="cs-ne" ${c.notifPref==='email'||c.notifPref==='both'?'checked':''}><div class="ttr"></div></label><label for="cs-ne">Email notifications</label></div>
-      <div class="tog"><label class="tsw"><input type="checkbox" id="cs-ns" ${c.notifPref==='sms'||c.notifPref==='both'?'checked':''}><div class="ttr"></div></label><label for="cs-ns">SMS / Text notifications</label></div>
-      <div style="font-size:11px;color:var(--spore);margin-top:10px;line-height:1.6;">You'll be notified when: order confirmed · variety substituted · order needs attention.</div>
-    </div>
-    <div style="margin-top:22px;margin-bottom:14px;" class="sh">Change Password</div>
-    <div style="font-size:11px;color:var(--spore);margin-bottom:12px;">You control your own password. Admin can only reset it if you're locked out.</div>
-    <div class="fg2">
-      <div class="fgl"><label>New Password</label><input class="fi" type="password" id="cs-p1" placeholder="New password (min 6 chars)"></div>
-      <div class="fgl"><label>Confirm Password</label><input class="fi" type="password" id="cs-p2" placeholder="Confirm new password"></div>
-    </div>
-    <div style="font-size:11px;color:var(--spore);margin-top:8px;">Leave blank to keep your current password.</div>
-    <div class="form-acts"><button class="btn b-s b-lg" onclick="saveCSet()">Save Settings</button></div>
-    <div class="toast" id="cs-t">✓ Settings saved</div></div></div>`;
-}
-
-async function saveCSet(){
-  const c=DB.clients.find(x=>x.id===S.clientId); if(!c) return;
-  c.contact=document.getElementById('cs-cn').value.trim();
-  c.notifEmail=document.getElementById('cs-em').value.trim();
-  c.notifPhone=document.getElementById('cs-ph').value.trim();
-  const en=document.getElementById('cs-ne').checked, sn=document.getElementById('cs-ns').checked;
-  c.notifPref=en&&sn?'both':en?'email':sn?'sms':'none';
-  const p1=document.getElementById('cs-p1').value, p2=document.getElementById('cs-p2').value;
-  const upd={contact:c.contact,notifEmail:c.notifEmail,notifPhone:c.notifPhone,notifPref:c.notifPref};
-  if(p1){ if(p1.length<6){ alert('Password must be at least 6 characters.'); return } if(p1!==p2){ alert("Passwords don't match."); return }
-    const pwH=await derivePwHash(p1); c.pwHash=pwH; delete c.pw; upd.pwHash=pwH; upd.pw=firebase.firestore.FieldValue.delete(); }
-  FS.update('clients',S.clientId,upd);
-  toast('cs-t','✓ Settings saved')
-}
 
 // ── ORDERS ALL (Accountant) ──
 function rOrdersAll(el){
