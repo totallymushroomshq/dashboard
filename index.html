@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #163</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #164</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2372,6 +2372,7 @@ function rOC(o,container,showApprove){
     ${batchChk}
     <div class="oc-c">${o.client}<span class="bdg ${statusBadgeClass(o)}">${statusLabel(o)}</span></div>
     <div class="oc-m">${o.day.toUpperCase()} · ${o.week==='standing'?'STANDING TEMPLATE':('WEEK OF '+fDate(o.week))}</div>
+    ${(o.deliveredAt||o.packedAt)?`<div class="oc-ship" style="font-size:11px;color:var(--fern);font-weight:600;margin-bottom:2px;">🚚 Ship ${fDate(((o.deliveredAt||o.packedAt)+'').slice(0,10))}</div>`:''}
     ${o.orderRef?`<div style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--blue);letter-spacing:1px;margin-bottom:2px;">${o.orderRef}</div>`:''}
     ${pipelineHTML}
     ${items||'<div class="oci"><span style="color:var(--text3)">See notes</span></div>'}
@@ -3042,6 +3043,7 @@ function openEditOrder(id){
     ${o.custom?`<div class="fgl" style="margin-top:14px;"><label>Custom / Wholesale Varieties</label><input class="fi" id="eo-cuv" value="${(o.customVarieties||'').replace(/"/g,'&quot;')}"></div>
       <div class="fgl" style="margin-top:10px;"><label>Custom Price ($, overrides catalog)</label><input class="fi" type="number" min="0" step="0.01" id="eo-cup" value="${o.price||''}"></div>`:''}
     <div class="fg2" style="margin-top:14px;">
+      <div class="fgl"><label>Ship / Delivery Date <span style="color:var(--text3);font-size:11px;">drives which week this counts in</span></label><input class="fi" type="date" id="eo-delivered" value="${((o.deliveredAt||o.packedAt||'')+'').slice(0,10)}"></div>
       <div class="fgl"><label>Delivery Day</label><select class="fs" id="eo-day">${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(d=>`<option ${o.day===d?'selected':''}>${d}</option>`).join('')}</select></div>
       <div class="fgl"><label>PO / Order Ref</label><input class="fi" id="eo-ref" value="${(o.orderRef||'').replace(/"/g,'&quot;')}"></div>
       <div class="fgl"><label>S.O. # <span style="color:var(--text3);font-size:11px;">from Accounting slip</span></label><input class="fi" id="eo-so" value="${(o.soNum||'').toString().replace(/"/g,'&quot;')}" placeholder="add when you get it"></div>
@@ -3061,6 +3063,7 @@ async function saveOrderEdits(id, send){
   const upd={};
   ALL_PRODS.forEach(p=>{ const v=Math.max(0,parseInt(document.getElementById('eo-'+p.dataKey)?.value)||0); o[p.dataKey]=v; upd[p.dataKey]=v; });
   const day=document.getElementById('eo-day')?.value; if(day){ o.day=day; upd.day=day; }
+  const delv=document.getElementById('eo-delivered')?.value; if(delv){ o.deliveredAt=delv; upd.deliveredAt=delv; const wk=_mondayOf(delv); o.week=wk; upd.week=wk; }
   const ref=document.getElementById('eo-ref')?.value.trim(); o.orderRef=ref; upd.orderRef=ref;
   const soEl=document.getElementById('eo-so'); if(soEl){ const so=soEl.value.trim(); o.soNum=so; upd.soNum=so; }
   const notes=document.getElementById('eo-notes')?.value.trim(); o.notes=notes; upd.notes=notes;
