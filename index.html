@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #162</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #163</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5380,8 +5380,8 @@ function hbResolveVariety(raw){
 function hbLearnOption(dlId,val){ val=(val||'').trim(); if(!val) return; const dl=document.getElementById(dlId); if(!dl) return; if([...dl.options].some(o=>o.value===val)) return; const o=document.createElement('option'); o.value=val; dl.appendChild(o); }
 function hbLotRow(r){ r=r||{};
   return `<div class="hb-lotrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
-    <input class="fi hb-lot" list="hb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:104px;" autocomplete="off" oninput="hbLotVariety(this)" onchange="hbLearnOption('hb-lot-dl',this.value)">
-    <input class="fi hb-var" list="hb-var-dl" value="${attrEsc(hbResolveVariety(r.strain||r.variety||''))}" placeholder="Variety" style="flex:1;min-width:118px;" autocomplete="off" onchange="this.value=hbResolveVariety(this.value);hbLearnOption('hb-var-dl',this.value)">
+    <input class="fi hb-lot" list="hb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:104px;" autocomplete="off" oninput="hbLotVariety(this)" onchange="onLotResolve(this,()=>hbLotVariety(this));hbLearnOption('hb-lot-dl',this.value)">
+    <input class="fi hb-var" list="hb-var-dl" value="${attrEsc(hbResolveVariety(r.strain||r.variety||''))}" placeholder="Variety" style="flex:1;min-width:118px;" autocomplete="off" onchange="onVarietyResolve(this);hbLearnOption('hb-var-dl',this.value)">
     <select class="fs hb-grade" style="max-width:64px;"><option value="A" ${(r.grade||'A')==='A'?'selected':''}>A</option><option value="B" ${r.grade==='B'?'selected':''}>B</option></select>
     <input class="fi hb-wt" type="number" step="0.01" min="0" value="${r.harvested!=null&&r.harvested!==''?r.harvested:''}" placeholder="lb" style="max-width:86px;">
     <button type="button" class="btn b-r b-sm" title="Remove lot" onclick="this.closest('.hb-lotrow').remove()">✕</button>
@@ -5976,6 +5976,12 @@ function reviewHarvestBatch(){
       </div>
     </div>`;
   try{ window.scrollTo(0,0); }catch(e){}
+  // Resolve + color the AI-prefilled rows on load: lots → gold/green (+fill variety), varieties → canonical + gold/green.
+  try{ document.querySelectorAll('#main-views .hb-lotrow').forEach(row=>{
+    const lot=row.querySelector('.hb-lot'), vr=row.querySelector('.hb-var');
+    if(lot&&(lot.value||'').trim()){ onLotResolve(lot); hbLotVariety(lot); }
+    if(vr&&(vr.value||'').trim()) onVarietyResolve(vr);
+  }); }catch(e){}
 }
 function cancelHarvestBatch(){ _harvestBatch=[]; rHarvest(document.getElementById('main-views')); }
 async function commitHarvestBatch(btn){
@@ -6075,8 +6081,8 @@ async function snapFruitingBatch(input){
 }
 function fbLotRow(r){ r=r||{};
   return `<div class="fb-lotrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
-    <input class="fi fb-lot" list="fb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:110px;" autocomplete="off" oninput="fbFillVar(this)" onchange="fbLearnLot(this)">
-    <input class="fi fb-var" list="fb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Variety" style="flex:1;min-width:120px;" autocomplete="off" onchange="if(typeof hbResolveVariety==='function'){this.value=hbResolveVariety(this.value);}">
+    <input class="fi fb-lot" list="fb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:110px;" autocomplete="off" oninput="fbFillVar(this)" onchange="onLotResolve(this,()=>{fbFillVar(this);fbLearnLot(this);})">
+    <input class="fi fb-var" list="fb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Variety" style="flex:1;min-width:120px;" autocomplete="off" onchange="onVarietyResolve(this)">
     <input class="fi fb-bc" type="number" min="0" value="${(r.blocksUsed!=null&&r.blocksUsed!=='')?r.blocksUsed:((r.blockCount!=null&&r.blockCount!=='')?r.blockCount:'')}" placeholder="blocks" style="max-width:96px;">
     <button type="button" class="btn b-r b-sm" title="Remove lot" onclick="this.closest('.fb-lotrow').remove()">✕</button>
   </div>`;
@@ -6161,6 +6167,12 @@ function reviewFruitBatch(){
       </div>
     </div>`;
   try{ window.scrollTo(0,0); }catch(e){}
+  // Resolve + color the AI-prefilled rows on load (parsed rows never fire input): lots → gold/green (+fill variety), varieties → canonical + gold/green.
+  try{ document.querySelectorAll('#main-views .fb-lotrow').forEach(row=>{
+    const lot=row.querySelector('.fb-lot'), vr=row.querySelector('.fb-var');
+    if(lot&&(lot.value||'').trim()){ onLotResolve(lot); fbFillVar(lot); }
+    if(vr&&(vr.value||'').trim()) onVarietyResolve(vr);
+  }); }catch(e){}
 }
 async function commitFruitBatch(btn){
   _fruitBatch=_readFruitBatchFromDOM();
