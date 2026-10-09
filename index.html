@@ -26,6 +26,8 @@
   --white:#ffffff;
   --border:#e0d8c8;
   --border-gold:rgba(184,130,10,.25);
+  --fern-lt:#e6efdd;
+  --border-fern:rgba(58,96,48,.30);
   --text:#111008;
   --text2:#5a4e38;
   --text3:#665a3c;
@@ -61,6 +63,9 @@ body{font-family:'Syne',sans-serif;background:var(--paper);color:var(--text);min
 .fi.af,.fs.af,.fta.af{background:var(--gold-lt);border-color:var(--border-gold);box-shadow:inset 3px 0 0 var(--gold);font-weight:600}
 .af-wrap{position:relative}
 .af-tag{position:absolute;top:-8px;right:6px;background:var(--gold);color:#fff;font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.5px;padding:1px 6px;border-radius:8px;pointer-events:none;z-index:2}
+/* green = auto-filled but a best-guess that needs a human double-check (vs gold = confidently locked) */
+.fi.afg,.fs.afg,.fta.afg{background:var(--fern-lt);border-color:var(--border-fern);box-shadow:inset 3px 0 0 var(--fern);font-weight:600}
+.afg-tag{position:absolute;top:-8px;right:6px;background:var(--fern);color:#fff;font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;letter-spacing:.5px;padding:1px 6px;border-radius:8px;pointer-events:none;z-index:2}
 .fs option{background:var(--white)}
 .fta{resize:vertical;min-height:80px}
 .gbtn{width:100%;padding:14px;border:none;border-radius:3px;cursor:pointer;font-family:'Syne',sans-serif;font-size:11px;font-weight:600;letter-spacing:3px;text-transform:uppercase;transition:all .15s}
@@ -378,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #158</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #159</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2775,7 +2780,7 @@ function buildPackOrderCard(){
         <div style="font-size:11px;color:var(--text3);margin-bottom:8px;line-height:1.5;">🔎 <b>Lot not listed above?</b> If a lot you used was toasted or removed early, add it from the sheet — it'll be tied to this order and <b>back-filled into traceability</b>.</div>
         <div class="fg2" style="align-items:end;">
           <div class="fgl"><label>Lot #</label><input class="fi" id="po-ml-lot" list="po-known-lots" ${NOFILL('po_ml_lot')} placeholder="e.g. WS1776" oninput="onPoManualLot()"></div>
-          <div class="fgl"><label>Variety</label><input class="fi" id="po-ml-var" list="po-varieties-dl" ${NOFILL('po_ml_var')} placeholder="Variety"></div>
+          <div class="fgl"><label>Variety</label><input class="fi" id="po-ml-var" list="po-varieties-dl" ${NOFILL('po_ml_var')} placeholder="Variety" onchange="onVarietyResolve(this)"></div>
           <div class="fgl"><label>Container</label><input class="fi" id="po-ml-con" list="po-containers-dl" ${NOFILL('po_ml_con')} placeholder="GH-…"></div>
         </div>
         <button type="button" class="btn b-g b-sm" onclick="poAddManualLot()" style="margin-top:8px;">+ Add lot to this order</button>
@@ -3615,7 +3620,21 @@ let VARIETY_ALIASES = {
   'goldenoki'            : 'Golden Enoki',
   'goldenneedle'         : 'Golden Enoki',
   'goldenneedleenoki'    : 'Golden Enoki',
-  'goldneedle'           : 'Golden Enoki'
+  'goldneedle'           : 'Golden Enoki',
+  // ── common field shorthand (what staff actually type) → canonical, so they resolve instantly ──
+  'blueoy'    : 'Blue Oyster',   'blueoyster':'Blue Oyster',  'bluoyster':'Blue Oyster', 'blue':'Blue Oyster',
+  'snowoy'    : 'Snow Oyster',   'snowoyster':'Snow Oyster',  'snow':'Snow Oyster',
+  'italianoy' : 'Italian Oyster','italoy':'Italian Oyster',   'italian':'Italian Oyster',
+  'goldoy'    : 'Gold Oyster',   'goldoyster':'Gold Oyster',
+  'tot'       : 'Trail of Tears Oyster (ToT)', 'totoy':'Trail of Tears Oyster (ToT)',
+  'bp'        : 'Black Pearl',   'blkpearl':'Black Pearl', 'blackpearl':'Black Pearl',
+  'lm'        : "Lion's Mane",   'lions':"Lion's Mane", 'lionsmane':"Lion's Mane", 'lion':"Lion's Mane",
+  'shi'       : 'Shiitake',      'shitake':'Shiitake', 'shiitakes':'Shiitake',
+  'chest'     : 'Chestnut',      'chestnuts':'Chestnut',
+  'lynx'      : 'Lynx Paw',      'lynxpaw':'Lynx Paw',
+  'coral'     : 'Coral Tooth',   'coraltooth':'Coral Tooth',
+  'pio'       : 'Pioppino',      'piopinno':'Pioppino', 'pioppini':'Pioppino',
+  'enoki'     : 'Golden Enoki',  'goldenoki2':'Golden Enoki'
 };
 // Admin-defined merges persist here (appConfig doc 'variety-aliases') and layer on top of the built-ins.
 function applyStoredVarietyAliases(map){ if(!map||typeof map!=='object') return; Object.entries(map).forEach(([k,v])=>{ if(k&&v) VARIETY_ALIASES[varietyKey(k)]=v; }); }
@@ -3641,10 +3660,31 @@ async function mergeVariety(fromName, toName){
 function canonicalVariety(name){
   const k=varietyKey(name); if(!k) return (name||'').trim();
   if(VARIETY_ALIASES[k]) return VARIETY_ALIASES[k];
-  const m=VARIETIES.find(v=>varietyKey(v)===k);
-  return m || titleCaseVariety(name);
+  const m=VARIETIES.find(v=>varietyKey(v)===k); if(m) return m;
+  const loose=_looseVarietyMatch(name); if(loose) return loose;   // typo/abbrev → known variety (e.g. "blu oyster" → Blue Oyster)
+  return titleCaseVariety(name);
 }
-function isNewVariety(name){ const k=varietyKey(name); if(VARIETY_ALIASES[k]) return false; return !!k && !VARIETIES.some(v=>varietyKey(v)===k); }
+// Confidence-tagged resolve, for the auto-fill color bar: exact/alias → GOLD lock, fuzzy → GREEN (verify), new → as typed.
+function resolveVarietyConf(raw){
+  const k=varietyKey(raw); if(!k) return {value:(raw||'').trim(),conf:'new'};
+  const exact=VARIETIES.find(v=>varietyKey(v)===k); if(exact) return {value:exact,conf:'exact'};
+  if(VARIETY_ALIASES[k]) return {value:VARIETY_ALIASES[k],conf:'alias'};
+  const loose=_looseVarietyMatch(raw); if(loose) return {value:loose,conf:'fuzzy'};
+  return {value:titleCaseVariety(raw),conf:'new'};
+}
+// Conservative fuzzy matcher — expands common shorthand words then requires a UNIQUE variety hit (never guesses between two).
+function _looseVarietyMatch(raw){
+  const t=(raw||'').toString().trim().toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); if(!t) return '';
+  const EXP={oy:'oyster',oys:'oyster',ost:'oyster',shi:'shiitake',shit:'shiitake',lm:'lionsmane',bp:'blackpearl',tot:'trailoftears',pio:'pioppino',chest:'chestnut'};
+  const words=t.split(' ').map(w=>EXP[w]||w).filter(Boolean); if(!words.length) return '';
+  const pre=(a,b)=>{ const n=Math.min(4,a.length,b.length); return n>=3 && (a.slice(0,n)===b.slice(0,n)); };
+  const cand=VARIETIES.filter(v=>{
+    const vwords=v.toLowerCase().replace(/[^a-z0-9 ]/g,' ').split(/\s+/).filter(Boolean);
+    return words.every(w=> vwords.some(x=> pre(x,w)) );
+  });
+  return cand.length===1 ? cand[0] : '';
+}
+function isNewVariety(name){ const k=varietyKey(name); if(VARIETY_ALIASES[k]) return false; if(VARIETIES.some(v=>varietyKey(v)===k)) return false; return !!k && !_looseVarietyMatch(name); }
 // Normalize each row's .variety to canonical; warn+confirm on genuinely new ones.
 // Returns false if the user cancels (so the caller aborts the save).
 function normalizeRowVarieties(rows){
@@ -4213,7 +4253,7 @@ function rReceiving(el){
         <div class="fgl"><label>S.O. # <span style="color:var(--rust);font-size:11px;">blank = OPEN receipt · requests SO from Katherine</span></label><input class="fi" id="rc-so" placeholder="from the slip (or leave blank)"></div>
         <div class="fgl"><label>Source</label><select class="fs" id="rc-source" onchange="onRecSourceChange()"><option value="vendor">Outside Vendor</option><option value="internal">Internal Production</option></select></div>
         <div class="fgl"><label>Producer / Vendor</label><input class="fi" id="rc-vendor" placeholder="Vendor or in-house production co." list="rc-vendl" autocomplete="off"><datalist id="rc-vendl"><option value="In-house Production">${allSuppliers().map(s=>`<option value="${s.replace(/"/g,'&quot;')}">`).join('')}</datalist></div>
-        <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="rc-variety" list="rc-variety-dl" placeholder="Type or pick variety…" autocomplete="off"><datalist id="rc-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+        <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="rc-variety" list="rc-variety-dl" placeholder="Type or pick variety…" autocomplete="off" onchange="onVarietyResolve(this)"><datalist id="rc-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
       </div>
       <div class="fg2">
         <div class="fgl"><label>Lot / Block #</label><input class="fi" id="rc-lot" placeholder="e.g. 10184 or WSY00Y" oninput="onRecvLot()"></div>
@@ -4621,7 +4661,7 @@ function rFruiting(el){
     </div>
     <div class="fg2">
       <div class="fgl"><label>Supplier / Production Company <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="fr-vendor" placeholder="Supplier or in-house production co." list="fr-vendorl" autocomplete="off"><datalist id="fr-vendorl">${allSuppliers().map(s=>`<option value="${s.replace(/"/g,'&quot;')}">`).join('')}<option value="In-house Production"></datalist></div>
-      <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="fr-variety" list="fr-variety-dl" placeholder="Type or pick variety…" autocomplete="off" oninput="updateFruitingPreview()"><datalist id="fr-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
+      <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="fr-variety" list="fr-variety-dl" placeholder="Type or pick variety…" autocomplete="off" oninput="updateFruitingPreview()" onchange="onVarietyResolve(this);updateFruitingPreview()"><datalist id="fr-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
       <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="1" id="fr-bc" placeholder="# of blocks" oninput="updateFruitingPreview()"></div>
       <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="fr-bw" placeholder="e.g. 5.5" oninput="updateFruitingPreview()"></div>
       <div class="fgl"><label>Forecast Rate <span style="color:var(--text3);font-size:11px;">lb / block</span></label><input class="fi" type="number" min="0" step="0.1" id="fr-rate" value="${LBSPERBLOCK}" oninput="updateFruitingPreview()"></div>
@@ -5122,13 +5162,25 @@ function wireConLotVar(elOrId, lotSel, varSel){
   if(vEl && link.variety && !vEl.value.trim()){ vEl.value=link.variety; markAF(vEl); }
 }
 // highlight a field the app auto-filled (variety looked up from a lot, etc.) so it's obvious it wasn't typed; clears when the user edits it
-function markAF(el){ if(!el) return; el.classList.add('af'); el.title='Auto-filled by the app — edit to override';
+// markAF(el)            → GOLD "AUTO" bar: confidently auto-locked (lot decode, exact/alias match).
+// markAF(el,'verify')   → GREEN "CHECK" bar: auto-filled best-guess the user should double-check.
+function markAF(el, mode){ if(!el) return; clearAF(el);
+  const verify=(mode===true||mode==='verify');
+  const cls=verify?'afg':'af', tcls=verify?'afg-tag':'af-tag', label=verify?'CHECK':'AUTO';
+  el.classList.add(cls); el.title=verify?'Auto-filled best guess — please double-check':'Auto-locked by the app — edit to override';
   const p=el.parentElement;
-  if(p && !p.querySelector(':scope > .af-tag')){ p.classList.add('af-wrap'); const tag=document.createElement('span'); tag.className='af-tag'; tag.textContent='AUTO'; p.appendChild(tag); }
-  const clear=()=>{ clearAF(el); el.removeEventListener('input',clear); el.removeEventListener('change',clear); };
-  el.addEventListener('input',clear); el.addEventListener('change',clear);
+  if(p){ p.classList.add('af-wrap'); if(!p.querySelector(':scope > .'+tcls)){ const tag=document.createElement('span'); tag.className=tcls; tag.textContent=label; p.appendChild(tag); } }
+  const clr=()=>{ clearAF(el); el.removeEventListener('input',clr); el.removeEventListener('change',clr); };
+  el.addEventListener('input',clr); el.addEventListener('change',clr);
 }
-function clearAF(el){ if(!el) return; el.classList.remove('af'); const p=el.parentElement; if(p){ const t=p.querySelector(':scope > .af-tag'); if(t) t.remove(); p.classList.remove('af-wrap'); } }
+function clearAF(el){ if(!el) return; el.classList.remove('af','afg'); const p=el.parentElement; if(p){ p.querySelectorAll(':scope > .af-tag, :scope > .afg-tag').forEach(t=>t.remove()); p.classList.remove('af-wrap'); } }
+// Shared variety-field handler: snap a typed variety to canonical and flag it — GOLD if confident, GREEN if a fuzzy guess.
+function onVarietyResolve(el){ if(!el) return; const raw=(el.value||'').trim(); if(!raw){ clearAF(el); return; }
+  const r=resolveVarietyConf(raw);
+  if(r.conf==='new'){ clearAF(el); return; }          // genuinely new — leave it; save-time confirm handles it
+  if(r.value && r.value!==raw) el.value=r.value;        // snap to the canonical spelling
+  markAF(el, r.conf==='fuzzy');                         // fuzzy → green CHECK, exact/alias → gold AUTO
+}
 // Best variety guess for a lot: decode Wild Spore species from the lot code FIRST (works on a brand-new receipt), then fall back to prior records. Mirrors what Fruiting does.
 // Decode the Wild Spore species from anywhere in a WS lot code (standard: WS + MMDDYY + species code), e.g. WS042623YOOY, WS-042623-1776
 function _wsSpeciesFromLot(lot){ const u=(lot||'').toUpperCase().replace(/[\s-]/g,'');
@@ -7346,7 +7398,7 @@ function rHarvest(el){
         <div id="hl-lot-hint" style="display:none;font-family:'Syne Mono',monospace;font-size:11px;color:var(--fern);margin-top:4px;letter-spacing:.5px;"></div>
       </div>
       <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label>
-        <input class="fi" id="hl-v" list="hl-v-dl" placeholder="Type or pick variety…" autocomplete="off">
+        <input class="fi" id="hl-v" list="hl-v-dl" placeholder="Type or pick variety…" autocomplete="off" onchange="onVarietyResolve(this)">
         <datalist id="hl-v-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist>
       </div>
       <div class="fgl"><label>Grade</label>
