@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #159</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #160</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2779,7 +2779,7 @@ function buildPackOrderCard(){
       <div style="border:1px dashed var(--border);border-radius:6px;padding:10px 12px;margin-bottom:16px;background:rgba(184,130,10,.03);">
         <div style="font-size:11px;color:var(--text3);margin-bottom:8px;line-height:1.5;">🔎 <b>Lot not listed above?</b> If a lot you used was toasted or removed early, add it from the sheet — it'll be tied to this order and <b>back-filled into traceability</b>.</div>
         <div class="fg2" style="align-items:end;">
-          <div class="fgl"><label>Lot #</label><input class="fi" id="po-ml-lot" list="po-known-lots" ${NOFILL('po_ml_lot')} placeholder="e.g. WS1776" oninput="onPoManualLot()"></div>
+          <div class="fgl"><label>Lot #</label><input class="fi" id="po-ml-lot" list="po-known-lots" ${NOFILL('po_ml_lot')} placeholder="e.g. WS1776" oninput="onPoManualLot()" onchange="onLotResolve(this,onPoManualLot)"></div>
           <div class="fgl"><label>Variety</label><input class="fi" id="po-ml-var" list="po-varieties-dl" ${NOFILL('po_ml_var')} placeholder="Variety" onchange="onVarietyResolve(this)"></div>
           <div class="fgl"><label>Container</label><input class="fi" id="po-ml-con" list="po-containers-dl" ${NOFILL('po_ml_con')} placeholder="GH-…"></div>
         </div>
@@ -4256,7 +4256,7 @@ function rReceiving(el){
         <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="rc-variety" list="rc-variety-dl" placeholder="Type or pick variety…" autocomplete="off" onchange="onVarietyResolve(this)"><datalist id="rc-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
       </div>
       <div class="fg2">
-        <div class="fgl"><label>Lot / Block #</label><input class="fi" id="rc-lot" placeholder="e.g. 10184 or WSY00Y" oninput="onRecvLot()"></div>
+        <div class="fgl"><label>Lot / Block #</label><input class="fi" id="rc-lot" placeholder="e.g. 10184 or WSY00Y" oninput="onRecvLot()" onchange="onLotResolve(this,onRecvLot)"></div>
         <div class="fgl"><label># of Blocks</label><input class="fi" type="number" min="1" id="rc-bc" placeholder="# blocks received"></div>
         <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="rc-bw" placeholder="e.g. 5.5"></div>
         <div class="fgl"><label>Received By</label><input class="fi" id="rc-by" value="${(S.name||'').replace(/"/g,'&quot;')}" ${NOFILL('tmrcby')}></div>
@@ -4647,7 +4647,7 @@ function rFruiting(el){
       </div>
       <div class="fgl">
         <label>Lot Number <span style="color:var(--text3);font-size:11px;">type to match blocks on hand</span></label>
-        <input class="fi" id="fr-lot" list="fr-lotl" placeholder="Type to search inventory… e.g. WSY00Y or 10162" autocomplete="off" oninput="onLotInput()">
+        <input class="fi" id="fr-lot" list="fr-lotl" placeholder="Type to search inventory… e.g. WSY00Y or 10162" autocomplete="off" oninput="onLotInput()" onchange="onLotResolve(this,onLotInput)">
         <datalist id="fr-lotl">${onHand.map(r=>`<option value="${(r.lotNumber||'').replace(/"/g,'&quot;')}">${r.variety} · ${receivingOnHand(r)} blocks on hand · ${r.vendor||(r.source==='internal'?'Internal':'Vendor')}</option>`).join('')}</datalist>
         <div id="fr-lot-hint" style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);margin-top:4px;letter-spacing:1px;">${onHand.length?onHand.length+' LOT(S) ON HAND · TYPE TO MATCH':'NO BLOCKS ON HAND — LOG A RECEIVING FIRST'}</div>
       </div>
@@ -5180,6 +5180,38 @@ function onVarietyResolve(el){ if(!el) return; const raw=(el.value||'').trim(); 
   if(r.conf==='new'){ clearAF(el); return; }          // genuinely new — leave it; save-time confirm handles it
   if(r.value && r.value!==raw) el.value=r.value;        // snap to the canonical spelling
   markAF(el, r.conf==='fuzzy');                         // fuzzy → green CHECK, exact/alias → gold AUTO
+}
+// ── LOT-NUMBER resolver — references every lot the app knows; exact = GOLD (recognized), near-miss typo = GREEN (snapped, verify) ──
+function knownLotMap(){
+  const m={}; const add=l=>{ l=(l||'').trim(); if(!l) return; const k=_lotKey(l); if(k&&!m[k]) m[k]=l; };
+  (DB.harvests||[]).forEach(h=>add(h.lotNumber));
+  (DB.fruitings||[]).forEach(f=>add(f.lotNumber));
+  (DB.receivings||[]).forEach(r=>add(r.lotNumber));
+  (DB.labBatches||[]).forEach(b=>{ add(b.lotCode); (Array.isArray(b.varieties)?b.varieties:[]).forEach(v=>add(v.lot)); });
+  return m;
+}
+function _editDist(a,b,max){ a=a||''; b=b||''; if(Math.abs(a.length-b.length)>max) return max+1;
+  let dp=Array(b.length+1).fill(0).map((_,i)=>i);
+  for(let i=1;i<=a.length;i++){ let prev=dp[0]; dp[0]=i; let best=dp[0];
+    for(let j=1;j<=b.length;j++){ const tmp=dp[j]; dp[j]=Math.min(dp[j]+1,dp[j-1]+1,prev+(a[i-1]===b[j-1]?0:1)); prev=tmp; if(dp[j]<best)best=dp[j]; }
+    if(best>max) return max+1; }
+  return dp[b.length];
+}
+function resolveLotConf(raw){
+  const disp=canonLot(raw); const k=_lotKey(disp); if(!k) return {value:disp,conf:'new'};
+  const known=knownLotMap();
+  if(known[k]) return {value:known[k],conf:'known'};                    // recognized lot (ignoring punctuation/case)
+  let hit=null, hits=0;                                                  // near-miss: exactly one known lot one edit away
+  for(const kk in known){ if(Math.abs(kk.length-k.length)>1) continue; if(_editDist(kk,k,1)<=1){ hits++; hit=known[kk]; if(hits>1) break; } }
+  if(hits===1 && k.length>=4) return {value:hit,conf:'fuzzy'};          // guard: only for lots ≥4 chars so tiny codes don't false-snap
+  return {value:disp,conf:'new'};
+}
+// Resolve a lot field on change: known → gold, typo snapped → green, new → cleared. Optional cb runs after (e.g. re-decode variety/container).
+function onLotResolve(el, cb){ if(!el) return; const raw=(el.value||'').trim(); if(!raw){ clearAF(el); if(cb)cb(); return; }
+  const r=resolveLotConf(raw);
+  if(r.value && r.value!==raw) el.value=r.value;
+  if(r.conf==='new') clearAF(el); else markAF(el, r.conf==='fuzzy');
+  if(cb) cb();
 }
 // Best variety guess for a lot: decode Wild Spore species from the lot code FIRST (works on a brand-new receipt), then fall back to prior records. Mirrors what Fruiting does.
 // Decode the Wild Spore species from anywhere in a WS lot code (standard: WS + MMDDYY + species code), e.g. WS042623YOOY, WS-042623-1776
@@ -7393,7 +7425,7 @@ function rHarvest(el){
     <div id="hl-farm-info" style="display:none;background:rgba(184,130,10,.05);border:1px solid rgba(184,130,10,.2);border-radius:3px;padding:12px 16px;margin-bottom:18px;"></div>
     <div class="fg2">
       <div class="fgl"><label>Lot Number</label>
-        <input class="fi" id="hl-lot" placeholder="e.g. LOT-001" list="hl-lotl" oninput="onHarvestLot()">
+        <input class="fi" id="hl-lot" placeholder="e.g. LOT-001" list="hl-lotl" oninput="onHarvestLot()" onchange="onLotResolve(this,onHarvestLot)">
         <datalist id="hl-lotl">${knownLots.map(l=>`<option value="${l}">`).join('')}</datalist>
         <div id="hl-lot-hint" style="display:none;font-family:'Syne Mono',monospace;font-size:11px;color:var(--fern);margin-top:4px;letter-spacing:.5px;"></div>
       </div>
