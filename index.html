@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #164</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #165</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -6279,6 +6279,19 @@ function fruitBatchSendPanel(){
 
 // ═════════════ RECEIVING BATCH: one multi-delivery PDF → N receiving records, each logged + its own dated report ═════════════
 let _recvBatch=[]; let _recvBatchReports=[]; let _rbSending=false;
+// per-delivery photo links in the batch review (keyed by sheet index data-si), held until "Log all"
+let _rbDocs={};
+async function rbUploadDoc(input, si, which){
+  const file=input.files&&input.files[0]; if(!file) return;
+  const st=document.getElementById('rb-'+si+'-'+which+'-status'); if(st){ st.style.display='block'; st.innerHTML='⏳ Uploading…'; }
+  try{ const url=await storePhoto(file,'receiving-'+which);
+    const field={temp:'tempLogUrl',temp2:'tempLogUrl2',truck:'truckPhotoUrl',invoice:'invoiceUrl'}[which]||'tempLogUrl';
+    (_rbDocs[si]=_rbDocs[si]||{})[field]=url;
+    const lbl={temp:'Temp log',temp2:'Temp log 2',truck:'Truck cleanliness',invoice:'Invoice'}[which]||'File';
+    if(st) st.innerHTML=`✓ ${lbl} attached — <a href="${url}" target="_blank" style="color:var(--blue);">view</a>`;
+  }catch(e){ if(st) st.innerHTML='⚠ '+e.message; }
+  finally{ input.value=''; }
+}
 async function parseRecvBatch(file){
   const user=firebase.auth().currentUser; if(!user) throw new Error('Not signed in — reload and log in.');
   const tok=await user.getIdToken(); const b64=await _fileToB64(file);
@@ -6294,7 +6307,7 @@ async function snapReceivingBatch(input){
   const st=document.getElementById('rc-snap-status'); const show=h=>{ if(st){ st.style.display='block'; st.innerHTML=h; } };
   show('⏳ Reading multi-delivery receiving PDF — can take a moment for several sheets…');
   try{ const sheets=await parseRecvBatch(file); if(!sheets.length){ show('⚠ No receiving sheets found in that PDF.'); return; }
-    _recvBatch=sheets; show(`✓ Read <b>${sheets.length} delivery sheet(s)</b> — verify &amp; log below.`); reviewRecvBatch();
+    _recvBatch=sheets; _rbDocs={}; show(`✓ Read <b>${sheets.length} delivery sheet(s)</b> — verify &amp; log below.`); reviewRecvBatch();
   }catch(e){ show('⚠ '+e.message); }
   finally{ input.value=''; }
 }
@@ -6319,9 +6332,11 @@ function _readRecvBatchFromDOM(){
       lot:(row.querySelector('.rb-lot')?.value||'').trim(), variety:(row.querySelector('.rb-var')?.value||'').trim(),
       blockCount:parseInt(row.querySelector('.rb-bc')?.value)||0, blockWeightLb:parseFloat(row.querySelector('.rb-bw')?.value)||0
     })).filter(r=>r.lot||r.variety||r.blockCount);
+    const docs=_rbDocs[si]||{};
     out.push({...orig, date:el.querySelector('.rb-date')?.value||orig.date||'', soNum:(el.querySelector('.rb-so')?.value||'').trim(),
       source:(el.querySelector('.rb-source')?.value||'vendor'), vendor:(el.querySelector('.rb-vendor')?.value||'').trim(),
-      notes:(el.querySelector('.rb-notes')?.value||'').trim(), rows });
+      temperature:(el.querySelector('.rb-temp')?.value||'').trim(), notes:(el.querySelector('.rb-notes')?.value||'').trim(),
+      tempLogUrl:docs.tempLogUrl||'', tempLogUrl2:docs.tempLogUrl2||'', truckPhotoUrl:docs.truckPhotoUrl||'', invoiceUrl:docs.invoiceUrl||'', rows });
   });
   return out;
 }
@@ -6332,6 +6347,9 @@ function reviewRecvBatch(){
   const sheetEditor=(s)=>{
     const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.variety||x.blockCount)); const iso=_toISO(s.date)||s.date||'';
     const src=(s.source==='internal')?'internal':'vendor';
+    const si=s.__i; const d=_rbDocs[si]||{};
+    const docStatus=(which,url)=>{ const lbl={temp:'Temp log',temp2:'Temp log 2',truck:'Truck cleanliness',invoice:'Invoice'}[which]; return url?`display:block;">✓ ${lbl} attached — <a href="${url}" target="_blank" style="color:var(--blue);">view</a>`:`display:none;">`; };
+    const docBtn=(icon,label,which,url)=>`<div><label class="btn b-g b-sm" style="cursor:pointer;display:inline-block;">${icon} ${label}<input type="file" accept="image/*,application/pdf,.pdf" style="display:none;" onchange="rbUploadDoc(this,${si},'${which}')"></label><div id="rb-${si}-${which}-status" style="margin-top:5px;font-size:11px;color:var(--text3);${docStatus(which,url)}</div></div>`;
     return `<div class="rb-sheet" data-si="${s.__i}" style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--paper);">
       <div style="display:flex;justify-content:flex-end;"><button type="button" class="btn b-sm b-rustf" onclick="rbRemoveSheet(this)">✕ remove delivery</button></div>
       <div class="fg2">
@@ -6343,7 +6361,17 @@ function reviewRecvBatch(){
       <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin:10px 0 4px;">BLOCKS RECEIVED <span style="text-transform:none;letter-spacing:0;">— lot # · variety · blocks · lb/block</span></div>
       <div class="rb-lots">${(rows.length?rows:[{}]).map(rbLotRow).join('')}</div>
       <button type="button" class="btn b-g b-sm" onclick="rbAddLot(this)">+ lot</button>
-      <div class="fgl" style="margin-top:10px;"><label>Notes</label><input class="fi rb-notes" value="${attrEsc(s.notes||'')}" placeholder="optional"></div>
+      <div class="fg2" style="margin-top:10px;">
+        <div class="fgl"><label>Temperature <span style="color:var(--text3);font-size:11px;">on arrival — goes in the report</span></label><input class="fi rb-temp" value="${attrEsc(s.temperature||'')}" placeholder="e.g. 38°F"></div>
+        <div class="fgl"><label>Notes</label><input class="fi rb-notes" value="${attrEsc(s.notes||'')}" placeholder="optional"></div>
+      </div>
+      <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin:12px 0 6px;">PHOTOS <span style="text-transform:none;letter-spacing:0;">— temp log, truck cleanliness &amp; invoice for this delivery</span></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        ${docBtn('🌡','Temp Log','temp',d.tempLogUrl)}
+        ${docBtn('🌡','Temp Log 2','temp2',d.tempLogUrl2)}
+        ${docBtn('🚚','Truck Cleanliness','truck',d.truckPhotoUrl)}
+        ${docBtn('🧾','Invoice / Slip','invoice',d.invoiceUrl)}
+      </div>
     </div>`;
   };
   const groups=[], gi={};
@@ -6400,7 +6428,7 @@ async function commitRecvBatch(btn){
     if(source!=='internal' && vendor) addSupplier(vendor);
     const createdIds=[];
     for(const r of rows){
-      const rData={date:iso,facility:'Hydes Ferry',source,vendor,soNum,receiptStatus,variety:r.variety,lotNumber:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,placedCount:0,receivedBy,poNum:'',cost:null,notes:(s.notes||'batch scan'),temperature:'',scanUrl:s.pageUrl||'',tempLogUrl:'',invoiceUrl:'',status:'on-hand',createdAt:new Date().toISOString()};
+      const rData={date:iso,facility:'Hydes Ferry',source,vendor,soNum,receiptStatus,variety:r.variety,lotNumber:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb,placedCount:0,receivedBy,poNum:'',cost:null,notes:(s.notes||'batch scan'),temperature:(s.temperature||''),scanUrl:s.pageUrl||'',tempLogUrl:(s.tempLogUrl||''),tempLogUrl2:(s.tempLogUrl2||''),truckPhotoUrl:(s.truckPhotoUrl||''),invoiceUrl:(s.invoiceUrl||''),status:'on-hand',createdAt:new Date().toISOString()};
       const rId=await FS.add('receivings',rData); DB.receivings.push({id:rId,...rData}); createdIds.push(rId);
     }
     const totalBlocks=rows.reduce((a,r)=>a+r.blockCount,0);
@@ -6409,10 +6437,10 @@ async function commitRecvBatch(btn){
       ? notifySubject('receiving',{vendor,source,lot:(rows.length===1?rows[0].lotNumber:''),date:iso})
       : `SO # REQUEST — ${source==='internal'?'IN HOUSE':(vendor||'VENDOR').toUpperCase()} BLOCK RECEIPT — ${_mmddyy(iso)}`;
     prepared.push({subject, vendorKey:(vendor||(source==='internal'?'In-house Production':'Vendor')),
-      data:{date:iso,vendor,source,soNum,poNum:'',temperature:'',imageUrl:s.pageUrl||'',rows:rows.map(r=>({variety:r.variety,lot:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb}))},
+      data:{date:iso,vendor,source,soNum,poNum:'',temperature:(s.temperature||''),tempLogUrl:(s.tempLogUrl||''),tempLogUrl2:(s.tempLogUrl2||''),truckPhotoUrl:(s.truckPhotoUrl||''),invoiceUrl:(s.invoiceUrl||''),imageUrl:s.pageUrl||'',rows:rows.map(r=>({variety:r.variety,lot:r.lotNumber,blockCount:r.blockCount,blockWeightLb:r.blockWeightLb}))},
       pageB64:s.pageB64,pageBytes:s.pageBytes,pageUrl:s.pageUrl||''});
   }
-  _recvBatch=[]; _recvBatchReports=prepared;
+  _recvBatch=[]; _rbDocs={}; _recvBatchReports=prepared;
   toast('rc-t',`✓ Logged ${prepared.length} delivery report(s)`); recvBatchSendPanel();
 }
 async function sendOneRecvReport(i,btn){
