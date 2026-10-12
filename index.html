@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #166</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #167</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -10815,6 +10815,62 @@ function dlTraceCSV(){
 
 // ── CLEANING & CONTAINER FLIP — deep clean, container cycle, spent-block removal ──
 const CLEAN_TYPES=['Deep Clean','Quick Flip','Sanitize'];
+// ── CONTAINER STATUS BOARD — visual at-a-glance of the 12 on-site (greenhouse) grow containers ──
+const CLEAN_AGING_DAYS=21; // blocks fruiting this long → flag as "may need a flip"
+function _contCleanState(code){
+  const lots=(DB.fruitings||[]).filter(f=>f.containerID===code && (f.status==='fruiting'||f.status==='harvested') && (typeof fruitingRemaining==='function'?fruitingRemaining(f):f.blockCount)>0);
+  const onHand=lots.reduce((s,f)=>s+(typeof fruitingRemaining==='function'?fruitingRemaining(f):(f.blockCount||0)),0);
+  const varieties=[...new Set(lots.map(f=>f.variety).filter(Boolean))];
+  const flips=(DB.containerFlips||[]).filter(f=>f.container===code).sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const lastFlip=flips[0]||null;
+  let placedDays=null;
+  if(lots.length){ const earliest=lots.map(f=>f.date).filter(Boolean).sort()[0]; if(earliest){ placedDays=Math.round((Date.now()-new Date(earliest+'T12:00:00').getTime())/86400000); } }
+  let state='empty';
+  if(onHand>0) state=(placedDays!=null&&placedDays>=CLEAN_AGING_DAYS)?'aging':'fruiting';
+  else if(lastFlip) state='clean';
+  return {code,lots,onHand,varieties,lastFlip,placedDays,state};
+}
+const _CLEAN_STATE_META={
+  fruiting:{label:'FRUITING',     color:'var(--blue)', bg:'rgba(46,109,164,.08)', bd:'rgba(46,109,164,.38)'},
+  aging:   {label:'AGING · FLIP?',color:'var(--amber)',bg:'rgba(184,130,10,.09)', bd:'rgba(184,130,10,.45)'},
+  clean:   {label:'CLEAN · READY',color:'var(--fern)', bg:'rgba(58,96,48,.09)',   bd:'rgba(58,96,48,.38)'},
+  empty:   {label:'EMPTY',        color:'var(--text3)',bg:'var(--paper)',         bd:'var(--border)'}
+};
+function cleanBoard(){
+  const cons=getActiveContainers().filter(c=>/^GH-/.test(c.code)).sort((a,b)=>a.code.localeCompare(b.code));
+  if(!cons.length) return '';
+  const states=cons.map(c=>_contCleanState(c.code));
+  const counts={fruiting:0,aging:0,clean:0,empty:0}; states.forEach(s=>{counts[s.state]=(counts[s.state]||0)+1;});
+  const box=(c,st)=>{ const m=_CLEAN_STATE_META[st.state];
+    const detail = st.onHand>0
+      ? `<div style="font-size:12px;color:var(--text2);margin-top:5px;"><strong style="color:${m.color};font-size:15px;">${st.onHand}</strong> block${st.onHand===1?'':'s'}</div>
+         <div style="font-size:10px;color:var(--text3);margin-top:2px;line-height:1.3;min-height:13px;">${st.varieties.slice(0,2).join(', ')}${st.varieties.length>2?' +'+(st.varieties.length-2):''}</div>
+         ${st.placedDays!=null?`<div style="font-size:10px;color:${st.state==='aging'?'var(--amber)':'var(--text3)'};margin-top:2px;">placed ${st.placedDays}d ago</div>`:'<div style="min-height:13px;"></div>'}`
+      : (st.lastFlip?`<div style="font-size:11px;color:var(--fern);margin-top:5px;">✓ ready</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">cleaned ${fDate(st.lastFlip.date)}</div><div style="min-height:13px;"></div>`:`<div style="font-size:11px;color:var(--text3);margin-top:5px;">no blocks on hand</div><div style="min-height:28px;"></div>`);
+    return `<button type="button" onclick="cfPick('${c.code}')" title="${c.code} · ${(c.farm||'').replace(/"/g,'&quot;')} — click to clean / flip" style="text-align:left;cursor:pointer;background:${m.bg};border:1px solid ${m.bd};border-left:5px solid ${m.color};border-radius:9px;padding:12px 13px;transition:transform .08s ease,box-shadow .08s ease;font:inherit;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,.08)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
+      <div style="font-family:'Syne Mono',monospace;font-weight:700;font-size:15px;color:var(--text);">${c.code}</div>
+      <div style="font-family:'Syne Mono',monospace;font-size:9px;letter-spacing:1px;color:${m.color};font-weight:700;margin-top:4px;">● ${m.label}</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.farm||''}</div>
+      ${detail}
+    </button>`;
+  };
+  const legend=[['fruiting',counts.fruiting],['aging',counts.aging],['clean',counts.clean],['empty',counts.empty]]
+    .map(([k,n])=>{const m=_CLEAN_STATE_META[k];return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);"><span style="width:10px;height:10px;border-radius:2px;background:${m.color};display:inline-block;"></span>${m.label.split(' · ')[0]} <strong>${n}</strong></span>`;}).join('');
+  return `
+    <div class="sh" style="margin-bottom:12px;"><span>🗺 Container Board — on site</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">${cons.length} containers · tap one to clean / flip</span></div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px;padding:8px 12px;background:var(--paper);border:1px solid var(--border);border-radius:6px;">${legend}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:26px;">
+      ${cons.map((c,i)=>box(c,states[i])).join('')}
+    </div>`;
+}
+function cfPick(code){
+  const sel=document.getElementById('cf-con');
+  if(!sel){ toast('cf-t','ℹ View only — logging is admin/staff'); return; }
+  sel.value=code; if(typeof onFlipContainer==='function') onFlipContainer();
+  const card=document.getElementById('cf-form-card');
+  if(card){ try{ card.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){ card.scrollIntoView(); }
+    card.style.boxShadow='0 0 0 2px var(--gold)'; setTimeout(()=>{ card.style.boxShadow=''; },1300); }
+}
 function rCleaning(el){
   const activeC=getActiveContainers();
   const flips=[...(DB.containerFlips||[])].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||''));
@@ -10836,7 +10892,8 @@ function rCleaning(el){
       <div class="sc g"><div class="sc-l">Flips / Cleans</div><div class="sc-v">${flips.length}</div><div class="sc-n">logged</div></div>
       <div class="sc"><div class="sc-l">Disposal Records</div><div class="sc-v">${disp.length}</div><div class="sc-n">ledger entries</div></div>
     </div>
-    ${canEdit()?`<div class="card" style="border-color:rgba(184,76,32,.28);">
+    ${cleanBoard()}
+    ${canEdit()?`<div class="card" id="cf-form-card" style="border-color:rgba(184,76,32,.28);">
       <div class="card-t">Log Clean · Flip · Waste</div>
       <div style="font-size:12px;color:var(--text3);margin-bottom:12px;">Pick a container, set how many blocks to remove per lot (or snap the sheet's waste column), choose a clean type, add crew — one submit deducts inventory, records the clean, and emails the waste report.</div>
       <div style="background:rgba(58,96,48,.05);border:1px solid rgba(58,96,48,.25);border-radius:6px;padding:11px 13px;margin-bottom:14px;">
