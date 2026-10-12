@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #168</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #169</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -10836,46 +10836,53 @@ const _CLEAN_STATE_META={
   clean:   {label:'CLEAN · READY',color:'var(--fern)', bg:'rgba(58,96,48,.09)',   bd:'rgba(58,96,48,.38)'},
   empty:   {label:'EMPTY',        color:'var(--text3)',bg:'var(--paper)',         bd:'var(--border)'}
 };
-// Physical floor plan of the grow room (from Allen's site map) — walking position + code, grouped into pods of 3 with an aisle between.
+// Physical floor plan of the grow room (from Allen's site map) — each pod of 3 is a BANK (A/B/C/D), with walking positions 1–12.
 const SITE_MAP={
-  top:[ {door:'D', pods:[{pos:12,code:'GH-03-01'},{pos:11,code:'GH-04-01'},{pos:10,code:'GH-10-01'}]},
-        {door:'C', pods:[{pos:9,code:'GH-09-01'},{pos:8,code:'GH-04-02'},{pos:7,code:'GH-08-01'}]} ],
-  bottom:[ {door:'B', pods:[{pos:6,code:'GH-02-02'},{pos:5,code:'GH-02-01'},{pos:4,code:'GH-05-01'}]},
-           {door:'A', pods:[{pos:3,code:'GH-06-01'},{pos:2,code:'GH-01-01'},{pos:1,code:'GH-07-01'}]} ]
+  top:[ {bank:'D', pods:[{pos:12,code:'GH-03-01'},{pos:11,code:'GH-04-01'},{pos:10,code:'GH-10-01'}]},
+        {bank:'C', pods:[{pos:9,code:'GH-09-01'},{pos:8,code:'GH-04-02'},{pos:7,code:'GH-08-01'}]} ],
+  bottom:[ {bank:'B', pods:[{pos:6,code:'GH-02-02'},{pos:5,code:'GH-02-01'},{pos:4,code:'GH-05-01'}]},
+           {bank:'A', pods:[{pos:3,code:'GH-06-01'},{pos:2,code:'GH-01-01'},{pos:1,code:'GH-07-01'}]} ]
 };
+const OPRY_CONTAINERS=['MO-02-01','MO-02-02']; // off-site at Opryland
+function _cleanBox(code,opts){ opts=opts||{}; const c=CONTAINERS.find(x=>x.code===code)||{code}; const st=_contCleanState(code); const m=_CLEAN_STATE_META[st.state];
+  const detail = st.onHand>0
+    ? `<div style="font-size:11px;color:var(--text2);"><strong style="color:${m.color};font-size:16px;">${st.onHand}</strong> blk</div>
+       <div style="font-size:9px;color:var(--text3);margin-top:1px;line-height:1.2;height:22px;overflow:hidden;">${st.varieties.slice(0,2).join(', ')}${st.varieties.length>2?' +'+(st.varieties.length-2):''}</div>
+       <div style="font-size:9px;color:${st.state==='aging'?'var(--amber)':'var(--text3)'};">${st.placedDays!=null?('placed '+st.placedDays+'d ago'):''}</div>`
+    : (st.lastFlip?`<div style="font-size:11px;color:var(--fern);font-weight:600;">✓ ready</div><div style="font-size:9px;color:var(--text3);height:22px;">cleaned ${fDate(st.lastFlip.date)}</div><div style="height:12px;"></div>`:`<div style="font-size:10px;color:var(--text3);">empty</div><div style="height:22px;"></div><div style="height:12px;"></div>`);
+  const bankBadge = opts.bank?`<span style="position:absolute;top:5px;left:7px;font-family:'Syne Mono',monospace;font-size:9px;font-weight:700;color:#fff;background:${m.color};border-radius:3px;padding:1px 5px;">${opts.bank}</span>`:'';
+  const posBadge = (opts.pos!=null)?`<span style="position:absolute;top:5px;right:7px;font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--text3);">#${opts.pos}</span>`:'';
+  const codeMt = opts.bank?'14px':'0';
+  return `<button type="button" onclick="cfPick('${code}')" title="${code} · ${(c.farm||'').replace(/"/g,'&quot;')}${opts.bank?' · Bank '+opts.bank:''} — tap to clean / flip" style="position:relative;flex:1;min-width:104px;min-height:150px;display:flex;flex-direction:column;text-align:left;cursor:pointer;background:${m.bg};border:1px solid ${m.bd};border-top:6px solid ${m.color};border-radius:8px;padding:9px 9px 10px;font:inherit;transition:transform .08s ease,box-shadow .08s ease;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,.09)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
+    ${bankBadge}${posBadge}
+    <div style="font-family:'Syne Mono',monospace;font-weight:700;font-size:13px;color:var(--text);margin-top:${codeMt};">${code}</div>
+    <div style="font-family:'Syne Mono',monospace;font-size:8px;letter-spacing:.5px;color:${m.color};font-weight:700;margin-top:3px;">● ${m.label}</div>
+    <div style="font-size:9px;color:var(--text3);margin:3px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.farm||''}</div>
+    <div style="margin-top:auto;">${detail}</div>
+  </button>`;
+}
 function cleanBoard(){
-  const allCodes=[...SITE_MAP.top,...SITE_MAP.bottom].flatMap(g=>g.pods.map(p=>p.code));
+  const allCodes=[...[...SITE_MAP.top,...SITE_MAP.bottom].flatMap(g=>g.pods.map(p=>p.code)),...OPRY_CONTAINERS];
   const counts={fruiting:0,aging:0,clean:0,empty:0};
   allCodes.forEach(code=>{ const s=_contCleanState(code); counts[s.state]=(counts[s.state]||0)+1; });
-  const box=(pos,code)=>{ const c=CONTAINERS.find(x=>x.code===code)||{code}; const st=_contCleanState(code); const m=_CLEAN_STATE_META[st.state];
-    const detail = st.onHand>0
-      ? `<div style="font-size:11px;color:var(--text2);"><strong style="color:${m.color};font-size:16px;">${st.onHand}</strong> blk</div>
-         <div style="font-size:9px;color:var(--text3);margin-top:1px;line-height:1.2;height:22px;overflow:hidden;">${st.varieties.slice(0,2).join(', ')}${st.varieties.length>2?' +'+(st.varieties.length-2):''}</div>
-         <div style="font-size:9px;color:${st.state==='aging'?'var(--amber)':'var(--text3)'};">${st.placedDays!=null?('placed '+st.placedDays+'d ago'):''}</div>`
-      : (st.lastFlip?`<div style="font-size:11px;color:var(--fern);font-weight:600;">✓ ready</div><div style="font-size:9px;color:var(--text3);height:22px;">cleaned ${fDate(st.lastFlip.date)}</div><div style="height:12px;"></div>`:`<div style="font-size:10px;color:var(--text3);">empty</div><div style="height:22px;"></div><div style="height:12px;"></div>`);
-    return `<button type="button" onclick="cfPick('${code}')" title="${code} · ${(c.farm||'').replace(/"/g,'&quot;')} — tap to clean / flip" style="position:relative;flex:1;min-width:104px;min-height:150px;display:flex;flex-direction:column;text-align:left;cursor:pointer;background:${m.bg};border:1px solid ${m.bd};border-top:6px solid ${m.color};border-radius:8px;padding:9px 9px 10px;font:inherit;transition:transform .08s ease,box-shadow .08s ease;" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(0,0,0,.09)';" onmouseout="this.style.transform='';this.style.boxShadow='';">
-      <span style="position:absolute;top:5px;right:7px;font-family:'Syne Mono',monospace;font-size:10px;font-weight:700;color:var(--text3);">#${pos}</span>
-      <div style="font-family:'Syne Mono',monospace;font-weight:700;font-size:13px;color:var(--text);">${code}</div>
-      <div style="font-family:'Syne Mono',monospace;font-size:8px;letter-spacing:.5px;color:${m.color};font-weight:700;margin-top:3px;">● ${m.label}</div>
-      <div style="font-size:9px;color:var(--text3);margin:3px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${c.farm||''}</div>
-      <div style="margin-top:auto;">${detail}</div>
-    </button>`;
-  };
-  const doorChip=l=>`<div style="align-self:center;font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:var(--text2);background:var(--white);border:1px solid var(--border);border-radius:5px;padding:2px 12px;">${l}</div>`;
+  const bankChip=(l,n)=>`<div style="align-self:center;display:flex;align-items:center;gap:6px;font-family:'Syne Mono',monospace;font-size:11px;font-weight:700;color:var(--text2);background:var(--white);border:1px solid var(--border);border-radius:5px;padding:3px 12px;">BANK ${l}<span style="font-weight:400;color:var(--text3);">· ${n}</span></div>`;
   const cooler=`<div style="width:116px;min-height:150px;align-self:flex-end;display:flex;align-items:center;justify-content:center;background:rgba(46,109,164,.06);border:1px dashed rgba(46,109,164,.4);border-radius:8px;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--blue);">COOLER</div>`;
-  const topPod=g=>`<div style="display:flex;flex-direction:column;gap:6px;">${doorChip(g.door)}<div style="display:flex;gap:7px;">${g.pods.map(p=>box(p.pos,p.code)).join('')}</div></div>`;
-  const botPod=g=>`<div style="display:flex;flex-direction:column;gap:6px;"><div style="display:flex;gap:7px;">${g.pods.map(p=>box(p.pos,p.code)).join('')}</div>${doorChip(g.door)}</div>`;
+  const topPod=g=>`<div style="display:flex;flex-direction:column;gap:6px;">${bankChip(g.bank,g.pods.length)}<div style="display:flex;gap:7px;">${g.pods.map(p=>_cleanBox(p.code,{pos:p.pos,bank:g.bank})).join('')}</div></div>`;
+  const botPod=g=>`<div style="display:flex;flex-direction:column;gap:6px;"><div style="display:flex;gap:7px;">${g.pods.map(p=>_cleanBox(p.code,{pos:p.pos,bank:g.bank})).join('')}</div>${bankChip(g.bank,g.pods.length)}</div>`;
   const legend=[['fruiting',counts.fruiting],['aging',counts.aging],['clean',counts.clean],['empty',counts.empty]]
     .map(([k,n])=>{const m=_CLEAN_STATE_META[k];return `<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--text2);"><span style="width:10px;height:10px;border-radius:2px;background:${m.color};display:inline-block;"></span>${m.label.split(' · ')[0]} <strong>${n}</strong></span>`;}).join('');
+  const opry=OPRY_CONTAINERS.map(code=>_cleanBox(code,{})).join('');
   return `
-    <div class="sh" style="margin-bottom:12px;"><span>🗺 Grow Room — on site</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">12 containers · tap one to clean / flip</span></div>
+    <div class="sh" style="margin-bottom:12px;"><span>🗺 Grow Room — on site</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">4 banks · 12 containers · tap one to clean / flip</span></div>
     <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px;padding:8px 12px;background:var(--paper);border:1px solid var(--border);border-radius:6px;">${legend}</div>
-    <div style="overflow-x:auto;margin-bottom:26px;-webkit-overflow-scrolling:touch;">
+    <div style="overflow-x:auto;margin-bottom:22px;-webkit-overflow-scrolling:touch;">
       <div style="display:flex;flex-direction:column;gap:20px;min-width:760px;padding:4px;">
         <div style="display:flex;gap:40px;align-items:flex-start;">${topPod(SITE_MAP.top[0])}${topPod(SITE_MAP.top[1])}${cooler}</div>
         <div style="display:flex;gap:40px;align-items:flex-start;">${botPod(SITE_MAP.bottom[0])}${botPod(SITE_MAP.bottom[1])}</div>
       </div>
-    </div>`;
+    </div>
+    <div class="sh" style="margin:0 0 10px;"><span>📍 Opryland — off-site</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">${OPRY_CONTAINERS.length} containers</span></div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:26px;max-width:340px;">${opry}</div>`;
 }
 function cfPick(code){
   const sel=document.getElementById('cf-con');
