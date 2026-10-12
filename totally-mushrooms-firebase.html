@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #165</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #166</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -4921,7 +4921,7 @@ async function subFruiting(){
 async function _doFruitingCommit(rows, crew){
   const snapUrl=(_lastSnap&&_lastSnap.kind==='fruiting')?_lastSnap.url:'';
   const _frSession='frs-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); // one session id for this whole submit
-  let n=0; const _frCreatedIds=[];
+  let n=0; const _frCreatedIds=[]; const _wasteRows=[];
   for(const r of rows){
     if(r.variety) addVariety(r.variety);
     if(r.source==='supplier' && r.vendor) addSupplier(r.vendor); // remember the supplier
@@ -4936,6 +4936,7 @@ async function _doFruitingCommit(rows, crew){
       const dData={date:r.date,stage:'pre-fruiting',container:r.containerID,cookLot:'',labBatchId:'',lotNumber:r.lotNumber||'',variety:r.variety,source:r.source,supplier:r.vendor,blockCount:r.unusable,reason:'spoiled',notes:`Spoiled/unusable at fruiting — lot ${r.lotNumber}${r.notes?(' · '+r.notes):''}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
       const dId=await FS.add('blockDisposals',dData); dData.id=dId; DB.blockDisposals.push(dData);
       logAudit('blocks_removed',`${r.unusable} spoiled/unusable blocks at fruiting — lot ${r.lotNumber} — ${r.containerID}`);
+      _wasteRows.push({variety:r.variety,lotNumber:r.lotNumber,container:r.containerID,blockCount:r.unusable,reason:'spoiled'});
     }
     n++;
   }
@@ -4947,9 +4948,11 @@ async function _doFruitingCommit(rows, crew){
   toast('fr-t', n>1?`✓ ${n} lots placed`:'✓ Fruiting block logged');
   clrFruiting(); renderC();
   // fire the auto-email dispatcher (same as harvest/packing) → Katherine + crew
+  const _wasteTotal=_wasteRows.reduce((a,w)=>a+(w.blockCount||0),0);
   openEmailDispatch('fruiting', notifySubject('fruiting',{container:prime.containerID,facility,date:prime.date}), {label:'Fruiting '+(prime.containerID||''),
     edit:{kind:'fruiting',col:'fruitings',containerField:'containerID',ids:_frCreatedIds,container:prime.containerID,date:prime.date,facility},
-    data:{prime:{container:prime.containerID,date:prime.date},rows:emailRows,crew:crew||[],imageUrl:snapUrl}, image:(_lastSnap&&_lastSnap.kind==='fruiting'&&_lastSnap.b64)?_lastSnap:null});
+    data:{prime:{container:prime.containerID,date:prime.date},rows:emailRows,crew:crew||[],imageUrl:snapUrl}, image:(_lastSnap&&_lastSnap.kind==='fruiting'&&_lastSnap.b64)?_lastSnap:null,
+    also:_wasteRows.length?[{kind:'waste',label:`Unusable / Spoiled Blocks (${_wasteTotal} blk) — manufacturer credit`,subject:notifySubject('waste',{date:prime.date}),data:{date:prime.date,rows:_wasteRows}}]:[]});
   _lastSnap=null;
 }
 
@@ -6086,7 +6089,8 @@ function fbLotRow(r){ r=r||{};
   return `<div class="fb-lotrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
     <input class="fi fb-lot" list="fb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:110px;" autocomplete="off" oninput="fbFillVar(this)" onchange="onLotResolve(this,()=>{fbFillVar(this);fbLearnLot(this);})">
     <input class="fi fb-var" list="fb-var-dl" value="${attrEsc(r.strain||r.variety||'')}" placeholder="Variety" style="flex:1;min-width:120px;" autocomplete="off" onchange="onVarietyResolve(this)">
-    <input class="fi fb-bc" type="number" min="0" value="${(r.blocksUsed!=null&&r.blocksUsed!=='')?r.blocksUsed:((r.blockCount!=null&&r.blockCount!=='')?r.blockCount:'')}" placeholder="blocks" style="max-width:96px;">
+    <input class="fi fb-bc" type="number" min="0" value="${(r.blocksUsed!=null&&r.blocksUsed!=='')?r.blocksUsed:((r.blockCount!=null&&r.blockCount!=='')?r.blockCount:'')}" placeholder="blocks" style="max-width:88px;" title="Blocks placed to fruit">
+    <input class="fi fb-un" type="number" min="0" value="${(()=>{const u=(r.unusable!=null?r.unusable:(r.spoiled!=null?r.spoiled:r.unusableBlocks));return (u!=null&&u!=='')?u:'';})()}" placeholder="unusable" style="max-width:92px;border-color:var(--border-gold);" title="Spoiled / unusable blocks → waste log (manufacturer credit)">
     <button type="button" class="btn b-r b-sm" title="Remove lot" onclick="this.closest('.fb-lotrow').remove()">✕</button>
   </div>`;
 }
@@ -6109,8 +6113,8 @@ function _readFruitBatchFromDOM(){
     const si=parseInt(el.getAttribute('data-si')); const orig=(_fruitBatch[si])||{};
     const rows=[...el.querySelectorAll('.fb-lotrow')].map(row=>({
       lot:(row.querySelector('.fb-lot')?.value||'').trim(), strain:(row.querySelector('.fb-var')?.value||'').trim(),
-      blocksUsed:parseInt(row.querySelector('.fb-bc')?.value)||0
-    })).filter(r=>r.lot||r.strain||r.blocksUsed);
+      blocksUsed:parseInt(row.querySelector('.fb-bc')?.value)||0, unusable:parseInt(row.querySelector('.fb-un')?.value)||0
+    })).filter(r=>r.lot||r.strain||r.blocksUsed||r.unusable);
     const crew=[...el.querySelectorAll('.fb-crewrow')].map(row=>({
       name:(row.querySelector('.fb-cname')?.value||'').trim(), minutes:parseInt(row.querySelector('.fb-cmin')?.value)||0
     })).filter(c=>c.name&&c.minutes>0);
@@ -6134,7 +6138,7 @@ function reviewFruitBatch(){
         <div class="fgl"><label>Location <span style="color:var(--text3);font-size:11px;">OHF/OPRY</span></label><input class="fi fb-loc" value="${attrEsc(s.location||'')}" placeholder="OHF"></div>
         <div class="fgl"><label>Employee</label><input class="fi fb-emp" value="${attrEsc(s.employee||'')}"></div>
       </div>
-      <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin:10px 0 4px;">LOTS PLACED <span style="text-transform:none;letter-spacing:0;">— lot # · variety · blocks placed</span></div>
+      <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin:10px 0 4px;">LOTS PLACED <span style="text-transform:none;letter-spacing:0;">— lot # · variety · blocks placed · <b style="color:var(--rust);">unusable</b> (the paper log's spoiled column → waste report)</span></div>
       <div class="fb-lots">${(rows.length?rows:[{}]).map(fbLotRow).join('')}</div>
       <button type="button" class="btn b-g b-sm" onclick="fbAddLot(this)">+ lot</button>
       <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--text3);margin:12px 0 4px;">CREW · LABOR</div>
@@ -6183,8 +6187,8 @@ async function commitFruitBatch(btn){
   const groups=[]; const allRows=[];
   for(const s of sheets){
     const iso=_toISO(s.date)||tday(); const con=(s.container||'').trim(); const fac=_sheetFacility(con);
-    const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.strain||x.blocksUsed))
-      .map(r=>({date:iso,container:con,facility:fac,lotNumber:(r.lot||'').trim(),variety:(r.strain||'').trim(),blockCount:parseInt(r.blocksUsed)||0}));
+    const rows=(Array.isArray(s.rows)?s.rows:[]).filter(x=>x&&(x.lot||x.strain||x.blocksUsed||x.unusable))
+      .map(r=>({date:iso,container:con,facility:fac,lotNumber:(r.lot||'').trim(),variety:(r.strain||'').trim(),blockCount:parseInt(r.blocksUsed)||0,unusable:parseInt(r.unusable)||0}));
     if(!rows.length) continue;
     groups.push({s,iso,con,fac,rows}); rows.forEach(r=>allRows.push(r));
   }
@@ -6195,6 +6199,7 @@ async function commitFruitBatch(btn){
   for(const g of groups){
     const {s,iso,con,fac,rows}=g;
     const sess='frs-'+Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+    const _wasteRows=[];
     for(const r of rows){ if(r.variety) addVariety(r.variety);
       const rec=(DB.receivings||[]).find(x=>_lotKey(x.lotNumber)===_lotKey(r.lotNumber) && receivingOnHand(x)>0.001)
         || (DB.receivings||[]).find(x=>_lotKey(x.lotNumber)===_lotKey(r.lotNumber));
@@ -6203,13 +6208,21 @@ async function commitFruitBatch(btn){
       // HARD-DRAW from on-hand inventory for this lot (unified key, FIFO across repeated receipts)
       const dd=await drawDownReceivings(r.lotNumber, r.blockCount, rec&&rec.id);
       if(dd.ids.length){ fData.receivingId=dd.ids[0]; try{ await FS.update('fruitings',fId,{receivingId:dd.ids[0]}); }catch(e){} }
+      // Unusable / spoiled blocks logged on the paper sheet → waste stream + collated waste report
+      if(r.unusable>0){
+        const dData={date:iso,stage:'pre-fruiting',container:con,cookLot:'',labBatchId:'',lotNumber:r.lotNumber||'',variety:r.variety,source:rec?rec.source:'',supplier:rec?rec.vendor:'',blockCount:r.unusable,reason:'spoiled',notes:`Spoiled/unusable at fruiting (batch scan) — lot ${r.lotNumber}`,loggedBy:S.name||S.role,timestamp:new Date().toISOString()};
+        try{ const dId=await FS.add('blockDisposals',dData); dData.id=dId; DB.blockDisposals.push(dData); }catch(e){ console.warn('batch disposal',e); }
+        _wasteRows.push({variety:r.variety,lotNumber:r.lotNumber,container:con,blockCount:r.unusable,reason:'spoiled'});
+      }
     }
     const crew=(Array.isArray(s.crew)?s.crew:[]).map(c=>({emp:(c.name||'').trim(),min:parseInt(c.minutes)||0})).filter(c=>c.emp&&c.min>0);
     for(const c of crew){ try{ await logManualTime(con,'Fruiting',c.min,iso,'Fruiting session (batch)',c.emp); }catch(e){ console.warn(e); } }
-    logAudit('fruiting_logged',`Batch fruiting — ${rows.length} lot(s) @ ${con} ${iso} (${crew.length} crew)`);
+    const _wasteTot=_wasteRows.reduce((a,w)=>a+(w.blockCount||0),0);
+    logAudit('fruiting_logged',`Batch fruiting — ${rows.length} lot(s) @ ${con} ${iso} (${crew.length} crew)${_wasteTot?` · ${_wasteTot} unusable→waste`:''}`);
     const prime={container:con,facility:fac,date:iso,location:s.location||''};
     const subject=notifySubject('fruiting',{container:con,facility:fac,location:s.location,date:iso});
-    prepared.push({prime,rows:rows.map(r=>({lotNumber:r.lotNumber,variety:r.variety,blockCount:r.blockCount})),crew,pageB64:s.pageB64,pageBytes:s.pageBytes,pageUrl:s.pageUrl||'',subject});
+    prepared.push({prime,rows:rows.map(r=>({lotNumber:r.lotNumber,variety:r.variety,blockCount:r.blockCount})),crew,pageB64:s.pageB64,pageBytes:s.pageBytes,pageUrl:s.pageUrl||'',subject,
+      wasteRows:_wasteRows, wasteTot:_wasteTot, wasteSubject:notifySubject('waste',{date:iso})});
   }
   _fruitBatch=[]; _fruitBatchReports=prepared;
   toast('fr-t',`✓ Logged ${prepared.length} dated session(s)`); fruitBatchSendPanel();
@@ -6224,8 +6237,19 @@ async function sendOneFruitReport(i,btn){
   const report=notifyReport('fruiting', subj, {prime:r.prime, rows:r.rows, crew:r.crew, imageUrl:r.pageUrl});
   const image=r.pageB64?{b64:r.pageB64,mime:'application/pdf',bytes:r.pageBytes}:null;
   const ok=await sendNotify(subj,to,report,image);
-  if(ok){ r._sent=true; if(btn) btn.textContent='✓ sent'; } else if(btn){ btn.disabled=false; btn.style.opacity=''; }
-  if(stat){ stat.textContent = ok?(ok==='link-only'?'✓ sent (link in body)':'✓ sent'):'⚠ failed'; stat.style.color=ok?'var(--fern)':'var(--rust)'; }
+  // separate waste/spoilage email for this session's unusable blocks (same time, own email)
+  let wasteNote='';
+  if(ok && r.wasteRows && r.wasteRows.length && !r._wasteSent){
+    const wsubj=(document.getElementById('fbwsubj-'+i)?.value||r.wasteSubject).trim();
+    const wto=[...document.querySelectorAll('.fbwr-'+i+':checked')].map(c=>c.value);
+    if(wsubj && wto.length){
+      const wreport=notifyReport('waste', wsubj, {date:r.prime.date, rows:r.wasteRows});
+      const wok=await sendNotify(wsubj,wto,wreport,null);
+      if(wok){ r._wasteSent=true; wasteNote=' + waste'; } else wasteNote=' (waste failed)';
+    }
+  }
+  if(ok){ r._sent=true; if(btn) btn.textContent='✓ sent'+wasteNote; } else if(btn){ btn.disabled=false; btn.style.opacity=''; }
+  if(stat){ stat.textContent = ok?(ok==='link-only'?'✓ sent (link in body)'+wasteNote:'✓ sent'+wasteNote):'⚠ failed'; stat.style.color=ok?'var(--fern)':'var(--rust)'; }
   return ok;
 }
 async function sendAllFruitReports(btn){
@@ -6243,11 +6267,19 @@ function fruitBatchSendPanel(){
   const reps=_fruitBatchReports; if(!reps.length){ rFruiting(document.getElementById('main-views')); return; }
   const recips=notifyRecips('fruiting');
   const master=DB.notify.enabled!==false; const ready=master&&DB.notify.templateId&&DB.emailjs.serviceId&&DB.emailjs.publicKey;
+  const wasteRecips=notifyRecips('waste');
   const repCard=(r,i)=>`
     <div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;background:var(--paper);">
       <div class="fgl"><label style="font-size:10px;">Subject — ${fDate(r.prime.date)}</label><input class="fi" id="fbsubj-${i}" value="${attrEsc(r.subject)}" style="font-family:'Syne Mono',monospace;font-size:11px;"></div>
       <div style="font-size:10px;color:var(--text3);margin-top:4px;">${r.rows.length} lot(s) · ${r.rows.reduce((a,x)=>a+(x.blockCount||0),0)} blocks${r.pageB64?` · 📎 ${_safeFile(r.subject)}.pdf`:''}</div>
-      <div style="margin-top:6px;"><button class="btn b-g b-sm" onclick="sendOneFruitReport(${i},this)" ${ready?'':'disabled style="opacity:.5"'}>✉ Send this one</button> <span id="fbstat-${i}" style="font-size:11px;color:var(--text3);margin-left:6px;"></span></div>
+      ${(r.wasteRows&&r.wasteRows.length)?`
+      <div style="margin-top:8px;padding:8px 10px;border:1px solid var(--border-gold);border-radius:5px;background:var(--gold-lt);">
+        <div style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--rust);margin-bottom:5px;">➕ WASTE LOG — SEPARATE EMAIL · ${r.wasteTot} unusable blk</div>
+        <div class="fgl"><label style="font-size:10px;">Waste subject</label><input class="fi" id="fbwsubj-${i}" value="${attrEsc(r.wasteSubject)}" style="font-family:'Syne Mono',monospace;font-size:11px;"></div>
+        <div style="font-size:10px;color:var(--text3);margin:5px 0 3px;">Waste report → </div>
+        <div id="fbwr-recips-${i}" style="display:flex;flex-wrap:wrap;gap:4px 12px;">${wasteRecips.map(e=>`<label style="display:flex;align-items:center;gap:5px;font-size:11px;"><input type="checkbox" class="fbwr-${i}" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}</div>
+      </div>`:''}
+      <div style="margin-top:6px;"><button class="btn b-g b-sm" onclick="sendOneFruitReport(${i},this)" ${ready?'':'disabled style="opacity:.5"'}>✉ Send this one${(r.wasteRows&&r.wasteRows.length)?' + waste':''}</button> <span id="fbstat-${i}" style="font-size:11px;color:var(--text3);margin-left:6px;"></span></div>
     </div>`;
   const grp=[], ggi={};
   reps.forEach((r,i)=>{ const con=r.prime.container||'—'; if(ggi[con]==null){ ggi[con]=grp.length; grp.push({con,items:[]}); } grp[ggi[con]].items.push({r,i}); });
@@ -6886,7 +6918,9 @@ function openEmailDispatch(kind, subject, opts){
   const ready=master && DB.notify.templateId && DB.emailjs.serviceId && DB.emailjs.publicKey;
   const report=opts.data?notifyReport(kind, subject, opts.data):(opts.report||'');
   const image=opts.image||null;
-  _dispatch={kind, subject, report, image, data:opts.data||null, edit:opts.edit||null, mark:opts.mark||null};
+  // collated secondary emails (e.g. the waste/spoilage log that rides along with a fruiting report) — sent as their OWN email at the same time
+  const also=(opts.also||[]).map(a=>({kind:a.kind, label:a.label||a.kind, subject:a.subject||notifySubject(a.kind,a.data||{}), report:a.report||(a.data?notifyReport(a.kind,a.subject||'',a.data):''), recips:(a.recips&&a.recips.length)?a.recips:notifyRecips(a.kind)}));
+  _dispatch={kind, subject, report, image, data:opts.data||null, edit:opts.edit||null, mark:opts.mark||null, also};
   document.getElementById('em-title').textContent=(opts.resend?'Re-send Notification — ':'Send Notification — ')+(opts.label||kind);
   document.getElementById('em-body').innerHTML=`
     ${!ready?`<div style="background:rgba(184,76,32,.09);border:1px solid rgba(184,76,32,.3);border-radius:5px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--rust,#b84c20);line-height:1.5;">
@@ -6915,11 +6949,24 @@ function openEmailDispatch(kind, subject, opts){
       ${image.dataUrl?`<img src="${image.dataUrl}" style="height:40px;border-radius:4px;border:1px solid var(--border);margin-left:auto;">`:'<span style="margin-left:auto;"></span>'}
       <span style="font-size:11px;color:var(--text3);">${image.bytes?Math.round(image.bytes/1024)+'kb':''} · fits 500kb plan</span></label>`
       :(image&&image.bytes&&image.bytes>480000?`<div style="font-size:11px;color:var(--text3);margin-top:12px;padding:8px 12px;background:var(--paper);border:1px solid var(--border);border-radius:5px;">📎 File is ${Math.round(image.bytes/1024)}kb — over the 500kb attachment cap, so the <b>download link</b> in the body delivers it instead.</div>`:'')}
+    ${also.map((a,ix)=>`
+      <div style="margin-top:16px;padding:12px 13px;border:1px solid var(--border-gold);border-radius:6px;background:var(--gold-lt);">
+        <div style="font-family:'Syne Mono',monospace;font-size:11px;letter-spacing:1px;color:var(--rust);margin-bottom:8px;">➕ ALSO SENDING — <b>SEPARATE EMAIL</b> · ${attrEsc(a.label)}</div>
+        <div class="fgl"><label>Subject line</label><input class="fi" id="disp2-subj-${ix}" value="${attrEsc(a.subject)}" style="font-family:'Syne Mono',monospace;"></div>
+        <div class="fgl" style="margin-top:8px;"><label>Send to</label>
+          <div id="disp2-recips-${ix}" style="display:flex;flex-direction:column;gap:5px;margin-top:5px;">
+            ${a.recips.map(e=>`<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;"><input type="checkbox" class="disp2-r-${ix}" value="${attrEsc(e)}" checked> ${e}</label>`).join('')}
+          </div>
+          <div style="display:flex;gap:6px;margin-top:8px;"><input class="fi" id="disp2-add-${ix}" placeholder="add another email…" style="flex:1;" onkeydown="if(event.key==='Enter'){event.preventDefault();dispAddRecip2(${ix});}"><button class="btn b-g b-sm" onclick="dispAddRecip2(${ix})">+ Add</button></div>
+        </div>
+        <div class="fgl" style="margin-top:10px;"><label>Email body <span style="color:var(--text3);font-size:11px;">sent as its own email</span></label>
+          <pre style="white-space:pre-wrap;font-family:'Syne Mono',monospace;font-size:11px;line-height:1.55;color:var(--text2);background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:11px 13px;margin-top:5px;max-height:200px;overflow:auto;">${attrEsc(a.report)}</pre></div>
+      </div>`).join('')}
     <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-top:16px;color:var(--text2);padding-top:12px;border-top:1px solid var(--border);">
       <input type="checkbox" id="disp-master" ${master?'checked':''} onchange="toggleNotifyMaster(this.checked)"> <b>Email sending enabled</b> (global — turn off during testing)
     </label>
     <div class="form-acts" style="margin-top:18px;">
-      <button class="btn b-m b-lg" id="disp-send" onclick="dispSend()" ${ready?'':'disabled style="opacity:.45;cursor:not-allowed;"'}>✉ Send now</button>
+      <button class="btn b-m b-lg" id="disp-send" onclick="dispSend()" ${ready?'':'disabled style="opacity:.45;cursor:not-allowed;"'}>✉ Send ${also.length?('both ('+(1+also.length)+' emails)'):'now'}</button>
       <button class="btn b-g" onclick="closeModal()">${opts.resend?'Cancel':"Skip / don't send"}</button>
     </div>
     <div class="toast" id="disp-t">✓ Sent</div>`;
@@ -6962,6 +7009,13 @@ function dispAddRecip(){
   l.innerHTML=`<input type="checkbox" class="disp-r" value="${attrEsc(v)}" checked> ${v}`;
   box.appendChild(l); inp.value=''; inp.focus();
 }
+function dispAddRecip2(ix){
+  const inp=document.getElementById('disp2-add-'+ix); const v=(inp?.value||'').trim(); if(!v) return;
+  const box=document.getElementById('disp2-recips-'+ix); if(!box) return;
+  const l=document.createElement('label'); l.style.cssText='display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;';
+  l.innerHTML=`<input type="checkbox" class="disp2-r-${ix}" value="${attrEsc(v)}" checked> ${v}`;
+  box.appendChild(l); inp.value=''; inp.focus();
+}
 async function toggleNotifyMaster(on){
   DB.notify.enabled=!!on;
   const btn=document.getElementById('disp-send');
@@ -6980,8 +7034,19 @@ async function dispSend(){
   const btn=document.getElementById('disp-send'); if(btn){ btn.disabled=true; btn.textContent='Sending…'; }
   const ok=await sendNotify(subj,to,report,image);
   if(ok) await _dispMarkNotified();
-  if(ok==='link-only'){ toast('disp-t','✓ Sent to '+to.length+' — file is the download link in the body (attachment not accepted)'); setTimeout(closeModal,1400); }
-  else if(ok){ toast('disp-t','✓ Sent to '+to.length+' recipient'+(to.length>1?'s':'')); setTimeout(closeModal,900); }
+  // fire each collated "also" email as its OWN separate email, at the same time
+  const also=(_dispatch&&_dispatch.also)||[]; let alsoSent=0, alsoFail=0;
+  for(let ix=0;ix<also.length;ix++){
+    const a=also[ix];
+    const a_subj=(document.getElementById('disp2-subj-'+ix)?.value||a.subject||'').trim();
+    const a_to=[...document.querySelectorAll('.disp2-r-'+ix+':checked')].map(c=>c.value);
+    if(!a_subj||!a_to.length) continue; // skip a collated email with no subject/recipients
+    const aok=await sendNotify(a_subj,a_to,a.report,null);
+    if(aok) alsoSent++; else alsoFail++;
+  }
+  const alsoNote = also.length? ` · waste log: ${alsoSent} sent${alsoFail?', '+alsoFail+' failed':''}` : '';
+  if(ok==='link-only'){ toast('disp-t','✓ Sent to '+to.length+' — file is the download link in the body'+alsoNote); setTimeout(closeModal,1400); }
+  else if(ok){ toast('disp-t','✓ Sent to '+to.length+' recipient'+(to.length>1?'s':'')+alsoNote); setTimeout(closeModal, also.length?1400:900); }
   else { alert('Send failed — check Admin → Email (Notification Template ID + master toggle).'); if(btn){ btn.disabled=false; btn.textContent='✉ Send now'; } }
 }
 // after a successful send, flag the associated records as notified (drives the "Report" status column)
