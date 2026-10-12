@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #169</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #170</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2173,25 +2173,34 @@ function toggleYield(k){ _yieldExpanded[k]=!_yieldExpanded[k]; (typeof _reDash==
 function setYieldSrc(s){ _yieldSrc=s; (typeof _reDash==='function'?_reDash:renderC)(); }
 function setYieldWin(w){ _yieldWin=w; (typeof _reDash==='function'?_reDash:renderC)(); }
 function daysBetween(a,b){ if(!a||!b) return null; const d1=new Date(a+'T12:00:00'),d2=new Date(b+'T12:00:00'); if(isNaN(d1)||isNaN(d2)) return null; return Math.round((d2-d1)/86400000); }
-// Quoted targets: Wild Spore = 1.0 lb/block; internal blocks 1.25–1.5 across two flushes.
+// Default per-block PROJECTION + YIELD TARGET (lb/block). Single source of truth for forecasts AND color readouts.
+// In-house blocks = 1.25 · Wild Spore blocks = 0.85.
+const RATE_INHOUSE = 1.25;
+const RATE_WILDSPORE = 0.85;
+// Classify a block's origin from its source / vendor / lot → 'ws' | 'internal'.
+function _blockSource(src, vendor, lot){
+  const L=(lot||'').trim();
+  if(src==='internal' || /in[-\s]?house|carthage|hfp|^tm\b/i.test(vendor||'')) return 'internal';
+  if(/wild\s*spore/i.test(vendor||'') || src==='vendor' || src==='supplier' || /^ws/i.test(L)) return 'ws';
+  return 'internal';
+}
 function lotBench(lot){
   const L=(lot||'').trim();
   const key=(typeof _lotKey==='function')?_lotKey(lot):L.toLowerCase();
   const match=arr=>(arr||[]).find(x=>((typeof _lotKey==='function')?_lotKey(x.lotNumber):(x.lotNumber||'').toLowerCase())===key);
   // Block ORIGIN is recorded on the RECEIVING (internal vs vendor); trust that over the sometimes-stale fruiting vendor copy.
   const rec=match(DB.receivings)||match(DB.fruitings);
-  const src=(rec&&rec.source)||'';
-  const vendor=(rec&&rec.vendor)||'';
-  const internal = src==='internal' || /in[-\s]?house|carthage|hfp|^tm\b/i.test(vendor);
-  if(internal) return {label:'Internal',target:1.0,goal:1.25};
-  const isWS = /wild\s*spore/i.test(vendor) || src==='vendor' || src==='supplier' || /^ws/i.test(L);
-  if(isWS) return {label:'Wild Spore',target:0.8};
-  return {label:'Internal',target:1.0,goal:1.25};
+  const cls=_blockSource((rec&&rec.source)||'', (rec&&rec.vendor)||'', L);
+  return cls==='ws' ? {label:'Wild Spore',target:RATE_WILDSPORE} : {label:'Internal',target:RATE_INHOUSE};
 }
+// Projection lb/block for a fruiting record: an explicitly-entered rate wins, else the source default (1.25 / 0.85).
+function projRate(f){ return (f&&f.rateLbPerBlock) ? f.rateLbPerBlock : lotBench(f&&f.lotNumber).target; }
 function yieldColor(ypb,bench){
-  const t=bench.target;
-  if(bench.goal){ if(ypb>=bench.goal) return 'var(--fern)'; if(ypb>=t) return 'var(--moss)'; if(ypb>=t*0.85) return 'var(--amber)'; return 'var(--rust)'; }
-  if(ypb>=t) return 'var(--fern)'; if(ypb>=t*0.85) return 'var(--amber)'; return 'var(--rust)';
+  const t=(bench&&bench.target)||RATE_INHOUSE;
+  if(ypb>=t) return 'var(--fern)';        // meets / beats the projection
+  if(ypb>=t*0.9) return 'var(--moss)';    // just under
+  if(ypb>=t*0.75) return 'var(--amber)';  // well under
+  return 'var(--rust)';                   // failing
 }
 // ── DEAD / EXCLUDED LOTS — keep failed or junk lots out of the yield AVERAGE (still shown in the drill-down, greyed). Auto-suggests anything under the floor; you can exclude/restore any lot by hand. Persisted to appConfig/yield-excludes. ──
 const DEAD_YPB=0.15; // lb/block floor — a lot that produced but under this is treated as dead/failed
@@ -2294,7 +2303,7 @@ function buildYieldAnalysis(){
   const srcBtn=(k,l)=>`<button class="btn ${_yieldSrc===k?'b-m':'b-g'} b-sm" onclick="setYieldSrc('${k}')" style="margin:0 4px 4px 0;">${l}</button>`;
   const winBtn=(k,l)=>`<button class="btn ${_yieldWin===k?'b-m':'b-g'} b-sm" onclick="setYieldWin('${k}')" style="margin:0 4px 4px 0;">${l}</button>`;
   const winLbl={week:'this week',lastweek:'last week',month:'this month',year:'this year',all:'all time',custom:'selected range'}[_dashPeriod]||'period';
-  return `<div class="sh" style="margin-top:18px;"><span>🎯 Yield per Block — Supplier & Internal Performance</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">WS TARGET 0.8 · INTERNAL 1.0–1.25 lb/block · TAP TO DRILL</span></div>
+  return `<div class="sh" style="margin-top:18px;"><span>🎯 Yield per Block — Supplier & Internal Performance</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">WS TARGET 0.85 · IN-HOUSE 1.25 lb/block · TAP TO DRILL</span></div>
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px;">
       <span style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text3);">SOURCE:</span>${srcBtn('all','All')}${srcBtn('ws','Wild Spore')}${srcBtn('internal','In-house')}
       <span style="font-family:'Syne Mono',monospace;font-size:10px;letter-spacing:1px;color:var(--text3);margin-left:10px;">WINDOW:</span>${winBtn('all','All time')}${winBtn('period','Selected ('+winLbl+')')}
@@ -3883,6 +3892,7 @@ function onLotInput(){
     if(hint){ hint.style.color='var(--text3)';
       hint.textContent = typed ? (known?`✓ ${known} (known lot) — not currently on hand`:'⚠ NOT IN INVENTORY — will prompt for an explanation on submit') : 'TYPE TO MATCH BLOCKS ON HAND'; }
   }
+  frAutoRate();
   updateFruitingPreview();
 }
 
@@ -3890,7 +3900,7 @@ function onVarietyInput(){
   updateFruitingPreview();
 }
 
-function onSourceChange(){ updateFruitingPreview(); }
+function onSourceChange(){ frAutoRate(); updateFruitingPreview(); }
 function onFrContainer(){ updateFruitingPreview(); }
 
 // Placing from a received batch: prefill lot/variety/source/vendor/weight from the pool.
@@ -3905,10 +3915,19 @@ function onBatchSelect(){
   const src=document.getElementById('fr-source'); if(src) src.value = (r.source==='internal')?'internal':'supplier';
   const v=document.getElementById('fr-variety'); if(v){ v.value=r.variety; if(typeof onFrVariety==='function') onFrVariety(v); }
   const bc=document.getElementById('fr-bc'); if(bc){ bc.max=receivingOnHand(r); if(!bc.value) bc.value=receivingOnHand(r); }
+  frAutoRate();
   updateFruitingPreview();
 }
 
-const LBSPERBLOCK = 1.5; // standard forecast: 1.5 lb per block
+const LBSPERBLOCK = RATE_INHOUSE; // generic fallback projection = in-house default (1.25); source-specific rates come from projRate()/lotBench() (WS 0.85)
+// Set the Forecast Rate field to the source default (1.25 in-house / 0.85 WS) unless the user has typed a custom value (data-auto="0").
+function frAutoRate(){
+  const el=document.getElementById('fr-rate'); if(!el || el.getAttribute('data-auto')==='0') return;
+  const src=document.getElementById('fr-source')?.value||'';
+  const vendor=document.getElementById('fr-vendor')?.value||'';
+  const lot=document.getElementById('fr-lot')?.value||'';
+  el.value = (_blockSource(src,vendor,lot)==='ws') ? RATE_WILDSPORE : RATE_INHOUSE;
+}
 
 function updateFruitingPreview(){
   const date=document.getElementById('fr-dt')?.value||tday();
@@ -4557,7 +4576,7 @@ function rFruiting(el){
     const harvestMax=new Date(startD); harvestMax.setDate(harvestMax.getDate()+td.max);
     const bc=f.blockCount||0;
     const y=yld[f.variety];
-    const rate=y?y.rate:(f.rateLbPerBlock||LBSPERBLOCK);
+    const rate=y?y.rate:projRate(f);
     const projLbs=bc*rate;
     const projLow=bc*(y?y.low:rate);
     const projHigh=bc*(y?y.high:rate);
@@ -4664,11 +4683,11 @@ function rFruiting(el){
       </div>
     </div>
     <div class="fg2">
-      <div class="fgl"><label>Supplier / Production Company <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="fr-vendor" placeholder="Supplier or in-house production co." list="fr-vendorl" autocomplete="off"><datalist id="fr-vendorl">${allSuppliers().map(s=>`<option value="${s.replace(/"/g,'&quot;')}">`).join('')}<option value="In-house Production"></datalist></div>
+      <div class="fgl"><label>Supplier / Production Company <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="fr-vendor" placeholder="Supplier or in-house production co." list="fr-vendorl" autocomplete="off" onchange="frAutoRate();updateFruitingPreview()"><datalist id="fr-vendorl">${allSuppliers().map(s=>`<option value="${s.replace(/"/g,'&quot;')}">`).join('')}<option value="In-house Production"></datalist></div>
       <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label><input class="fi" id="fr-variety" list="fr-variety-dl" placeholder="Type or pick variety…" autocomplete="off" oninput="updateFruitingPreview()" onchange="onVarietyResolve(this);updateFruitingPreview()"><datalist id="fr-variety-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist></div>
       <div class="fgl"><label>Block Count</label><input class="fi" type="number" min="1" id="fr-bc" placeholder="# of blocks" oninput="updateFruitingPreview()"></div>
       <div class="fgl"><label>Block Weight (lb / block)</label><input class="fi" type="number" min="0" step="0.1" id="fr-bw" placeholder="e.g. 5.5" oninput="updateFruitingPreview()"></div>
-      <div class="fgl"><label>Forecast Rate <span style="color:var(--text3);font-size:11px;">lb / block</span></label><input class="fi" type="number" min="0" step="0.1" id="fr-rate" value="${LBSPERBLOCK}" oninput="updateFruitingPreview()"></div>
+      <div class="fgl"><label>Forecast Rate <span style="color:var(--text3);font-size:11px;">lb / block · auto: in-house 1.25 · WS 0.85</span></label><input class="fi" type="number" min="0" step="0.05" id="fr-rate" value="${RATE_INHOUSE}" data-auto="1" oninput="this.setAttribute('data-auto','0');updateFruitingPreview()"></div>
       <div class="fgl"><label>Spoiled / Unusable Blocks <span style="color:var(--text3);font-size:11px;">→ spoilage report (manufacturer credit)</span></label><input class="fi" type="number" min="0" id="fr-unusable" placeholder="0"></div>
     </div>
     <div id="fr-preview" style="display:none;background:rgba(58,96,48,.07);border:1px solid rgba(58,96,48,.2);border-radius:3px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:var(--text2);line-height:1.6;"></div>
@@ -4757,14 +4776,14 @@ function rFruiting(el){
     <div class="tw" style="margin-bottom:24px;overflow-x:auto;">
       <table>
         <thead><tr>${thS('fruit-done','date','Date In')}${thS('fruit-done','containerID','Container')}${thS('fruit-done','lotNumber','Lot #')}${thS('fruit-done','vendor','Vendor')}${thS('fruit-done','variety','Variety')}${thS('fruit-done','blockCount','Blocks')}${thS('fruit-done','projLbs','Proj. Yield')}${thS('fruit-done','harvestedAt','Harvested')}${canEdit()?'<th>Action</th>':''}</tr></thead>
-        <tbody>${sByKey('fruit-done',[...done].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')),{date:f=>f.date,containerID:f=>f.containerID,lotNumber:f=>f.lotNumber,vendor:f=>f.vendor||'',variety:f=>f.variety,blockCount:f=>f.blockCount||0,projLbs:f=>(f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK),harvestedAt:f=>f.harvestedAt||''}).map(f=>`<tr>
+        <tbody>${sByKey('fruit-done',[...done].sort((a,b)=>(b.date||'').localeCompare(a.date||'')||(b.createdAt||'').localeCompare(a.createdAt||'')),{date:f=>f.date,containerID:f=>f.containerID,lotNumber:f=>f.lotNumber,vendor:f=>f.vendor||'',variety:f=>f.variety,blockCount:f=>f.blockCount||0,projLbs:f=>(f.blockCount||0)*projRate(f),harvestedAt:f=>f.harvestedAt||''}).map(f=>`<tr>
           <td class="mn">${fDate(f.date)}</td>
           <td>${f.containerID}</td>
           <td style="font-family:'Syne Mono',monospace;font-size:11px;">${f.lotNumber}</td>
           <td style="font-size:11px;color:var(--text3);">${(f.source||((f.vendor||'')==='In-house'?'internal':'supplier'))==='internal'?'<span style="font-family:\'Syne Mono\',monospace;font-size:10px;color:var(--fern);">[INT]</span> ':'<span style="font-family:\'Syne Mono\',monospace;font-size:10px;color:var(--blue);">[SUP]</span> '}${f.vendor}</td>
           <td style="font-weight:500;">${f.variety}</td>
           <td class="mn">${f.blockCount}</td>
-          <td class="mn" style="color:var(--fern);">${((f.blockCount||0)*(f.rateLbPerBlock||LBSPERBLOCK)).toFixed(1)} lb</td>
+          <td class="mn" style="color:var(--fern);">${((f.blockCount||0)*projRate(f)).toFixed(1)} lb</td>
           <td class="mn">${f.harvestedAt?fDate(f.harvestedAt):'—'}</td>
           ${canEdit()?`<td><div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn b-sm b-gold" onclick="openEditFruiting('${f.id}')">✎ Edit</button><button class="btn b-sm b-fern" title="Re-send the whole fruiting SESSION report — every lot placed this date + container" onclick="resendFruiting('${f.id}')">✉ session</button>${S.role==='admin'?`<button class="btn b-r b-sm" onclick="delFruiting('${f.id}')">Del</button>`:''}</div></td>`:''}
         </tr>`).join('')}</tbody>
@@ -4810,7 +4829,7 @@ function addFruitingRow(){
   ['fr-lot','fr-bc','fr-bw','fr-notes','fr-unusable'].forEach(id=>{const e=document.getElementById(id);if(e)e.value='';});
   const v=document.getElementById('fr-variety'); if(v) v.value='';
   const b=document.getElementById('fr-batch'); if(b) b.value='';
-  const rt=document.getElementById('fr-rate'); if(rt) rt.value=LBSPERBLOCK;
+  const rt=document.getElementById('fr-rate'); if(rt){ rt.setAttribute('data-auto','1'); rt.value=RATE_INHOUSE; }
   const prev=document.getElementById('fr-preview'); if(prev) prev.style.display='none';
   const lh=document.getElementById('fr-lot'); if(lh) lh.focus();
 }
@@ -4965,7 +4984,7 @@ function frFilter(q){ q=(q||'').toLowerCase().trim(); const wrap=document.getEle
 }
 function clrFruiting(){
   ['fr-lot','fr-cid','fr-bc','fr-bw','fr-notes','fr-unusable'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=''});
-  const rEl=document.getElementById('fr-rate'); if(rEl) rEl.value=LBSPERBLOCK;
+  const rEl=document.getElementById('fr-rate'); if(rEl){ rEl.setAttribute('data-auto','1'); rEl.value=RATE_INHOUSE; }
   const bEl=document.getElementById('fr-batch'); if(bEl) bEl.value='';
   const vEl=document.getElementById('fr-variety'); if(vEl) vEl.value='';
   const dtEl=document.getElementById('fr-dt'); if(dtEl) dtEl.value=tday();
@@ -9814,7 +9833,7 @@ function rDashboard(el){
   const nDeadTot=vList.reduce((s,x)=>s+(x.nDead||0),0);
   // forecast next 7 days
   const yld=(typeof varietyYield==='function')?varietyYield():{}; let fc=0; const t0=new Date(); t0.setHours(0,0,0,0); const t7=new Date(t0); t7.setDate(t0.getDate()+7);
-  DB.fruitings.filter(f=>f.status==='fruiting').forEach(f=>{ const td=(typeof VARIETY_TURNAROUND!=='undefined'&&VARIETY_TURNAROUND[cvv(f.variety)])||{min:7,max:14}; const st=new Date((''+f.date).slice(0,10)+'T12:00:00'); const hm=new Date(st); hm.setDate(hm.getDate()+td.min); if(hm>=t0&&hm<=t7){ const rate=yld[cvv(f.variety)]?yld[cvv(f.variety)].rate:(f.rateLbPerBlock||LBSPERBLOCK); fc+=(f.blockCount||0)*rate; } });
+  DB.fruitings.filter(f=>f.status==='fruiting').forEach(f=>{ const td=(typeof VARIETY_TURNAROUND!=='undefined'&&VARIETY_TURNAROUND[cvv(f.variety)])||{min:7,max:14}; const st=new Date((''+f.date).slice(0,10)+'T12:00:00'); const hm=new Date(st); hm.setDate(hm.getDate()+td.min); if(hm>=t0&&hm<=t7){ const rate=yld[cvv(f.variety)]?yld[cvv(f.variety)].rate:projRate(f); fc+=(f.blockCount||0)*rate; } });
   const dstr=d=>`<span style="color:${d.col};font-weight:700;">${d.arrow} ${d.txt}</span>`;
   const spark=_dashTrend(_dashPeriod);
   const perLbl={week:'this week',lastweek:'last week',month:'this month',year:'this year',all:'all time',custom:'selected range'}[_dashPeriod]||'period';
@@ -9846,12 +9865,13 @@ function rDashboard(el){
   // ── main tables: by variety → lot ── (1) lots active in the selected window, (2) all-time below
   // lb/block is always a lot's TO-DATE yield (all its harvest ÷ its blocks) — a window-only ratio would understate lots still fruiting.
   // Variety Blocks + Harvest-to-date use the SAME lots as its lb/block (produced, not ⚠, not dead) so the row checks out: harvest ÷ blocks = lb/block.
-  const genColor=ypb=>ypb>=1.0?'var(--fern)':ypb>=0.8?'var(--moss)':ypb>=0.6?'var(--amber)':ypb>0?'var(--rust)':'var(--text3)';
   const _varRows=(ls)=>{
     const byV={}; ls.forEach(li=>{ const v=li.variety||'—'; (byV[v]=byV[v]||[]).push(li); });
     return Object.keys(byV).map(v=>{ const vl=byV[v]; const sum=(a,k)=>a.reduce((s,l)=>s+(l[k]||0),0);
       const good=vl.filter(l=>!l.suspect && !l.dead && l.yHarv>0);
-      return {v, lots:vl, harvP:sum(vl,'harvP'), onHand:sum(vl,'onHand'), waste:sum(vl,'waste'), wasteAll:sum(vl,'wasteAll'),
+      // representative lot for this variety's benchmark = its biggest contributor (by blocks)
+      const repLot=(vl.slice().sort((a,b)=>(b.yBlocks||0)-(a.yBlocks||0))[0]||{}).lot;
+      return {v, lots:vl, repLot, harvP:sum(vl,'harvP'), onHand:sum(vl,'onHand'), waste:sum(vl,'waste'), wasteAll:sum(vl,'wasteAll'),
         yBlocks:sum(good,'yBlocks'), yHarv:sum(good,'yHarv'), nSus:vl.filter(l=>l.suspect).length, nDead:vl.filter(l=>l.dead&&!l.suspect).length,
         exclHarv:vl.filter(l=>l.suspect||l.dead).reduce((s,l)=>s+(l.harvAll||0),0)};
     });
@@ -9864,18 +9884,19 @@ function rDashboard(el){
     const rows=vr.map(x=>{
       const key=mode+'|'+x.v; const exp=_dashVarExp[key]; const kEsc=key.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
       const ypb=x.yBlocks>0?x.yHarv/x.yBlocks:0; const wst=isP?x.waste:x.wasteAll;
+      const vbench=(typeof lotBench==='function')?lotBench(x.repLot):{target:RATE_INHOUSE};
       const nEx=x.nSus+x.nDead;
       let out=`<tr style="cursor:pointer;border-top:1px solid var(--border);background:rgba(0,0,0,.015);" onclick="toggleDashVar('${kEsc}')">
         <td style="font-weight:700;"><span style="color:var(--text3);font-size:10px;">${exp?'▾':'▸'}</span> ${x.v} <span style="color:var(--text3);font-weight:400;font-size:11px;">${x.lots.length} lot${x.lots.length!==1?'s':''}</span>${nEx?` <span class="bdg bp" style="font-size:9px;" title="${nEx} lot(s) left out of this variety's blocks / harvest / lb/block (${x.nSus?x.nSus+' impossible >3 lb/block':''}${x.nSus&&x.nDead?', ':''}${x.nDead?x.nDead+' dead/excluded':''}) — ${x.exclHarv.toFixed(1)} lb not counted">${nEx} excl</span>`:''}</td>
         ${isP?`<td class="mn" style="font-weight:700;color:var(--fern);">${x.harvP>0?x.harvP.toFixed(1):'—'}</td>`:''}
         <td class="mn">${x.yBlocks||'—'}</td>
         <td class="mn"${isP?'':' style="font-weight:700;color:var(--fern);"'}>${x.yHarv>0?x.yHarv.toFixed(1):'—'}</td>
-        <td class="mn" style="font-weight:700;color:${genColor(ypb)};">${ypb>0?ypb.toFixed(2):'—'}</td>
+        <td class="mn" style="font-weight:700;color:${ypb>0?yieldColor(ypb,vbench):'var(--text3)'};" title="${ypb>0?('vs '+vbench.label+' target '+vbench.target.toFixed(2)+' lb/block'):''}">${ypb>0?ypb.toFixed(2):'—'}</td>
         <td class="mn" style="font-weight:700;color:var(--gold);">${x.onHand>0?x.onHand.toFixed(1):'—'}</td>
         <td class="mn" style="color:${wst>0?'var(--rust)':'var(--text3)'};">${wst||'—'}</td></tr>`;
       if(exp){ out+=x.lots.slice().sort(isP?((a,b)=>b.harvP-a.harvP||b.harvAll-a.harvAll):((a,b)=>b.harvAll-a.harvAll||b.onHand-a.onHand)).map(l=>{
         const bench=(typeof lotBench==='function')?lotBench(l.lot):{label:'',target:1.25}; const lypb=l.lypb||0;
-        const col=l.suspect?'var(--rust)':l.dead?'var(--text3)':((typeof yieldColor==='function'&&l.yBlocks>0)?yieldColor(lypb,bench):genColor(lypb));
+        const col=l.suspect?'var(--rust)':l.dead?'var(--text3)':((typeof yieldColor==='function'&&l.yBlocks>0&&lypb>0)?yieldColor(lypb,bench):'var(--text3)');
         const lotEsc=(l.lot||'').replace(/'/g,"\\'"); const lw=isP?l.waste:l.wasteAll;
         const blk=l.yBlocks>0?(l.est?l.yBlocks+'*':l.yBlocks):(l.blocksPlaced||'—');
         return `<tr style="background:${l.suspect?'rgba(184,76,32,.06)':'rgba(0,0,0,.02)'};font-size:12px;cursor:pointer;${l.dead&&!l.suspect?'opacity:.6;':''}"${l.suspect?' title="Impossible lb/block (over 3) — check lot labels on harvests/placements. Excluded from yield."':(l.dead?' title="Dead / excluded lot — not counted in the variety totals or averages."':'')} onclick="onAnaLotSelect('${lotEsc}');document.getElementById('dash-lot-lookup')&&document.getElementById('dash-lot-lookup').scrollIntoView({behavior:'smooth',block:'center'});">
@@ -9920,7 +9941,7 @@ function rDashboard(el){
     ${_dashTable('P')}`:''}
     <div class="sh" style="margin-top:18px;"><span>Harvest &amp; Yield — All Time · by Variety → Lot</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">TAP A VARIETY FOR ITS LOTS · TAP A LOT FOR FULL BREAKDOWN</span></div>
     ${_dashTable('A')}
-    <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-bottom:24px;">lb/block color: <span style="color:var(--fern);">■</span> ≥1.0 &nbsp; <span style="color:var(--moss);">■</span> ≥0.8 &nbsp; <span style="color:var(--amber);">■</span> ≥0.6 &nbsp; <span style="color:var(--rust);">■</span> below · WS target 0.8 · internal 1.0–1.25 lb/block<br>lb/block = a lot's total harvest to date ÷ its blocks placed (so lots still fruiting read low until they finish) · variety Blocks / Harvest / lb/block count the same lots, so harvest ÷ blocks = lb/block<br><span style="color:var(--gold);">EST</span> / * = blocks estimated from receiving (no placement logged) · <span style="color:var(--rust);">⚠</span> = over 3 lb/block, impossible — check lot labels · <b>excl</b> = ⚠ or dead/excluded lots, left out of variety totals &amp; averages</div>
+    <div style="font-family:'Syne Mono',monospace;font-size:10px;color:var(--text3);margin-bottom:24px;">lb/block color (vs each lot's target): <span style="color:var(--fern);">■</span> meets target &nbsp; <span style="color:var(--moss);">■</span> ≥90% &nbsp; <span style="color:var(--amber);">■</span> ≥75% &nbsp; <span style="color:var(--rust);">■</span> below · targets: in-house 1.25 · Wild Spore 0.85 lb/block<br>lb/block = a lot's total harvest to date ÷ its blocks placed (so lots still fruiting read low until they finish) · variety Blocks / Harvest / lb/block count the same lots, so harvest ÷ blocks = lb/block<br><span style="color:var(--gold);">EST</span> / * = blocks estimated from receiving (no placement logged) · <span style="color:var(--rust);">⚠</span> = over 3 lb/block, impossible — check lot labels · <b>excl</b> = ⚠ or dead/excluded lots, left out of variety totals &amp; averages</div>
 
     <!-- 2 · TRUSTWORTHY lot-level performance vs target (the deep view) -->
     <details ${_dashOpen.yield?'open':''} ontoggle="_dashOpen.yield=this.open" style="margin-top:6px;"><summary style="cursor:pointer;font-family:'Syne Mono',monospace;font-size:12px;letter-spacing:1px;color:var(--text2);padding:8px 0;">🎯 SUPPLIER &amp; INTERNAL YIELD PERFORMANCE (drill by species → lot → container)</summary>
@@ -14270,7 +14291,7 @@ function rReports(el){
   window.dlFruitingCSV=function(){
     const rows=[['ID','Date','Container','Lot Number','Vendor','Variety','Block Count','Block Wt (lb)','Proj Yield (lb)','Status','Notes']];
     [...DB.fruitings].sort((a,b)=>b.date.localeCompare(a.date)).forEach(f=>{
-      const proj=(f.blockCount*LBSPERBLOCK).toFixed(1);
+      const proj=(f.blockCount*projRate(f)).toFixed(1);
       rows.push([f.id,f.date,f.containerID,f.lotNumber,f.vendor,f.variety,f.blockCount,f.blockWeightLb||'',proj,f.status,f.notes||'']);
     });
     dlCSV('tm-fruiting-'+tday()+'.csv',rows);
