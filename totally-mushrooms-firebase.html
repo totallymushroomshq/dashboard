@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #171</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #172</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2790,7 +2790,7 @@ function buildPackOrderCard(){
         <div style="font-size:11px;color:var(--text3);margin-bottom:8px;line-height:1.5;">🔎 <b>Lot not listed above?</b> If a lot you used was toasted or removed early, add it from the sheet — it'll be tied to this order and <b>back-filled into traceability</b>.</div>
         <div class="fg2" style="align-items:end;">
           <div class="fgl"><label>Lot #</label><input class="fi" id="po-ml-lot" list="po-known-lots" ${NOFILL('po_ml_lot')} placeholder="e.g. WS1776" oninput="onPoManualLot()" onchange="onLotResolve(this,onPoManualLot)"></div>
-          <div class="fgl"><label>Variety</label><input class="fi" id="po-ml-var" list="po-varieties-dl" ${NOFILL('po_ml_var')} placeholder="Variety" onchange="onVarietyResolve(this)"></div>
+          <div class="fgl"><label>Variety</label><input class="fi" id="po-ml-var" list="po-varieties-dl" ${NOFILL('po_ml_var')} placeholder="Variety" onchange="onVarietyResolve(this);wsFixLotFromVar(this,'#po-ml-lot')"></div>
           <div class="fgl"><label>Container</label><input class="fi" id="po-ml-con" list="po-containers-dl" ${NOFILL('po_ml_con')} placeholder="GH-…"></div>
         </div>
         <button type="button" class="btn b-g b-sm" onclick="poAddManualLot()" style="margin-top:8px;">+ Add lot to this order</button>
@@ -5254,6 +5254,32 @@ function bestLotVariety(lot){
   const ws=_wsSpeciesFromLot(lot); if(ws) return cvz(ws);
   const v=(typeof lotToVariety==='function')?lotToVariety(lot):''; return v?cvz(v):'';
 }
+// Rebuild a garbled Wild Spore lot's SPECIES code from the KNOWN variety. The reader turns the odd Shiitake code "$56$"
+// into "4568" / "456" / "568" etc., but it still reads the variety as Shiitake — so if we know the variety we can restore
+// the canonical WS-<MMDDYY>-<code>. Only touches WS lots, and only when the rebuilt code round-trips to the same variety
+// (so alias codes like YOOY can't corrupt a Gold-vs-Blue lot). Internal numeric lots are never touched.
+function canonWSLot(lot, variety){
+  const raw=(lot||'').trim(); if(!raw) return raw;
+  const alnum=raw.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(!/^W[S5]/.test(alnum)) return raw;                       // Wild Spore only (W5 = OCR-mangled WS)
+  const cv=(typeof canonicalVariety==='function')?canonicalVariety(variety||''):(variety||''); if(!cv) return raw;
+  const vk=(typeof varietyKey==='function')?varietyKey(cv):cv.toLowerCase().replace(/[^a-z0-9]/g,'');
+  const code=(typeof _TD_VAR2CODE!=='undefined')?_TD_VAR2CODE[vk]:''; if(!code) return raw;  // variety → canonical WS species code
+  if((typeof _wsSpeciesFromLot==='function') && canonicalVariety(_wsSpeciesFromLot(raw))===cv) return raw; // already decodes right
+  const body=alnum.replace(/^W[S5]/,''); const dm=body.match(/\d{6}/); const date=dm?dm[0]:''; // keep the MMDDYY date if present
+  const rebuilt=date?`WS-${date}-${code}`:`WS-${code}`;
+  if((typeof _wsSpeciesFromLot==='function') && canonicalVariety(_wsSpeciesFromLot(rebuilt))!==cv) return raw; // guard alias codes
+  return rebuilt;
+}
+// In a slip/harvest row: given the (known) variety element and the lot field, restore the WS species+supplier code. Gold-locks the lot.
+function wsFixLotFromVar(varEl, lotSel){
+  if(!varEl||!lotSel) return;
+  const row=varEl.closest('.slb-lotrow,.hb-lotrow,.fse-row,.hse-row');
+  const lotEl = lotSel.charAt(0)==='#' ? document.getElementById(lotSel.slice(1)) : (row?row.querySelector(lotSel):null);
+  if(!lotEl || !(lotEl.value||'').trim()) return;
+  const fixed=canonWSLot(lotEl.value, varEl.value);
+  if(fixed && fixed!==(lotEl.value||'').trim()){ lotEl.value=fixed; if(typeof markAF==='function') markAF(lotEl); }
+}
 // Receiving: reading a lot # auto-fills the variety (+ vendor), highlighted — WS lots decode from the code even on first receipt
 function onRecvLot(){
   const lot=(document.getElementById('rc-lot')?.value||'').trim();
@@ -5406,7 +5432,7 @@ function hbLearnOption(dlId,val){ val=(val||'').trim(); if(!val) return; const d
 function hbLotRow(r){ r=r||{};
   return `<div class="hb-lotrow" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:5px;">
     <input class="fi hb-lot" list="hb-lot-dl" value="${attrEsc(r.lot||'')}" placeholder="Lot #" style="flex:1;min-width:104px;" autocomplete="off" oninput="hbLotVariety(this)" onchange="onLotResolve(this,()=>hbLotVariety(this));hbLearnOption('hb-lot-dl',this.value)">
-    <input class="fi hb-var" list="hb-var-dl" value="${attrEsc(hbResolveVariety(r.strain||r.variety||''))}" placeholder="Variety" style="flex:1;min-width:118px;" autocomplete="off" onchange="onVarietyResolve(this);hbLearnOption('hb-var-dl',this.value)">
+    <input class="fi hb-var" list="hb-var-dl" value="${attrEsc(hbResolveVariety(r.strain||r.variety||''))}" placeholder="Variety" style="flex:1;min-width:118px;" autocomplete="off" onchange="onVarietyResolve(this);hbLearnOption('hb-var-dl',this.value);wsFixLotFromVar(this,'.hb-lot')">
     <select class="fs hb-grade" style="max-width:64px;"><option value="A" ${(r.grade||'A')==='A'?'selected':''}>A</option><option value="B" ${r.grade==='B'?'selected':''}>B</option></select>
     <input class="fi hb-wt" type="number" step="0.01" min="0" value="${r.harvested!=null&&r.harvested!==''?r.harvested:''}" placeholder="lb" style="max-width:86px;">
     <button type="button" class="btn b-r b-sm" title="Remove lot" onclick="this.closest('.hb-lotrow').remove()">✕</button>
@@ -5795,7 +5821,7 @@ function slbItemRow(it){ it=it||{};
 function slbLotRow(l){ l=l||{};
   return `<div class="slb-lotrow" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
     <input class="fi slb-lot" list="slb-lot-dl" value="${attrEsc(l.lot||'')}" placeholder="Lot #" style="flex:1;min-width:100px;" autocomplete="off" oninput="wireLotVarCon(this,'.slb-var','.slb-con')" onchange="onLotResolve(this,()=>wireLotVarCon(this,'.slb-var','.slb-con'))">
-    <input class="fi slb-var" list="slb-var-dl" value="${attrEsc(l.variety||'')}" placeholder="Variety" style="flex:1;min-width:104px;" autocomplete="off" onchange="onVarietyResolve(this)">
+    <input class="fi slb-var" list="slb-var-dl" value="${attrEsc(l.variety||'')}" placeholder="Variety" style="flex:1;min-width:104px;" autocomplete="off" onchange="onVarietyResolve(this);wsFixLotFromVar(this,'.slb-lot')">
     <input class="fi slb-con" list="slb-con-dl" value="${attrEsc(l.container||'')}" placeholder="GH-…" style="flex:1;min-width:120px;" autocomplete="off" oninput="wireConLotVar(this,'.slb-lot','.slb-var')">
     <button type="button" class="btn b-r b-sm" onclick="this.closest('.slb-lotrow').remove()">✕</button>
   </div>`;
@@ -5859,7 +5885,7 @@ function reviewSlipBatch(){
     document.querySelectorAll('#main-views .slb-lotrow').forEach(row=>{
       const lot=row.querySelector('.slb-lot'), vr=row.querySelector('.slb-var');
       if(lot&&(lot.value||'').trim()){ onLotResolve(lot); wireLotVarCon(lot,'.slb-var','.slb-con'); }
-      if(vr&&(vr.value||'').trim()) onVarietyResolve(vr);
+      if(vr&&(vr.value||'').trim()){ onVarietyResolve(vr); wsFixLotFromVar(vr,'.slb-lot'); }
     });
     document.querySelectorAll('#main-views .slb-itemrow .slb-code').forEach(cEl=>{ const raw=(cEl.value||'').trim(); if(!raw) return; const p=_prodFromSlipItem({code:raw}); if(p && p.code.toUpperCase()!==raw.toUpperCase()){ cEl.value=p.code; markAF(cEl); } });
   }catch(e){}
@@ -6005,7 +6031,7 @@ function reviewHarvestBatch(){
   try{ document.querySelectorAll('#main-views .hb-lotrow').forEach(row=>{
     const lot=row.querySelector('.hb-lot'), vr=row.querySelector('.hb-var');
     if(lot&&(lot.value||'').trim()){ onLotResolve(lot); hbLotVariety(lot); }
-    if(vr&&(vr.value||'').trim()) onVarietyResolve(vr);
+    if(vr&&(vr.value||'').trim()){ onVarietyResolve(vr); wsFixLotFromVar(vr,'.hb-lot'); }
   }); }catch(e){}
 }
 function cancelHarvestBatch(){ _harvestBatch=[]; rHarvest(document.getElementById('main-views')); }
@@ -7565,7 +7591,7 @@ function rHarvest(el){
         <div id="hl-lot-hint" style="display:none;font-family:'Syne Mono',monospace;font-size:11px;color:var(--fern);margin-top:4px;letter-spacing:.5px;"></div>
       </div>
       <div class="fgl"><label>Variety <span style="color:var(--text3);font-size:11px;">type or pick</span></label>
-        <input class="fi" id="hl-v" list="hl-v-dl" placeholder="Type or pick variety…" autocomplete="off" onchange="onVarietyResolve(this)">
+        <input class="fi" id="hl-v" list="hl-v-dl" placeholder="Type or pick variety…" autocomplete="off" onchange="onVarietyResolve(this);wsFixLotFromVar(this,'#hl-lot')">
         <datalist id="hl-v-dl">${VARIETIES.map(v=>`<option value="${v}">`).join('')}</datalist>
       </div>
       <div class="fgl"><label>Grade</label>
