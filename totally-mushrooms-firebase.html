@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #172</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #173</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5278,7 +5278,7 @@ function wsFixLotFromVar(varEl, lotSel){
   const lotEl = lotSel.charAt(0)==='#' ? document.getElementById(lotSel.slice(1)) : (row?row.querySelector(lotSel):null);
   if(!lotEl || !(lotEl.value||'').trim()) return;
   const fixed=canonWSLot(lotEl.value, varEl.value);
-  if(fixed && fixed!==(lotEl.value||'').trim()){ lotEl.value=fixed; if(typeof markAF==='function') markAF(lotEl); }
+  if(fixed && fixed!==(lotEl.value||'').trim()){ lotEl.value=fixed; if(typeof markAF==='function') markAF(lotEl,'verify'); } // GREEN "CHECK" — best-guess rebuild, eyeball it
 }
 // Receiving: reading a lot # auto-fills the variety (+ vendor), highlighted — WS lots decode from the code even on first receipt
 function onRecvLot(){
