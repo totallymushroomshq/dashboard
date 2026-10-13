@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #174</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #175</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2006,7 +2006,19 @@ function sw(id){
   renderC();
 }
 function canEdit(){ return S.role!=='accountant' }
-function renderC(){ const el=document.getElementById('main-views'); el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTraceTab,'trace-doctor':rTraceDoctor,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rBilling,'orders-all':rOrdersAll,qb:rQB}; if(r[cv]) r[cv](el); else el.innerHTML='<div class="empty">View not found</div>' }
+function renderC(){ const el=document.getElementById('main-views'); if(!el) return; el.innerHTML=''; const r={today:rToday,week:rDashboard,dashboard:rDashboard,'new-order':rNewOrd,harvest:rHarvest,fruiting:rFruiting,packing:rPacking,receiving:rReceiving,inventory:rInventory,preservation:rPreservation,cleaning:rCleaning,waste:rWaste,trace:rTraceTab,'trace-doctor':rTraceDoctor,lab:rLab,cordyceps:rCordyceps,analytics:rDashboard,admin:rAdmin,security:rSecurity,reports:rBilling,'orders-all':rOrdersAll,qb:rQB};
+  if(!r[cv]){ el.innerHTML='<div class="empty">View not found</div>'; return; }
+  // Safety net: a thrown renderer used to wipe #main-views and leave a blank, unclickable page ("frozen"). Catch it and show a recoverable card instead.
+  try{ r[cv](el); }
+  catch(err){ console.error('render error in view "'+cv+'":',err);
+    el.innerHTML=`<div class="card" style="border-color:rgba(184,76,32,.4);max-width:620px;margin:24px auto;">
+      <div class="card-t" style="color:var(--rust);">⚠ This view hit an error</div>
+      <div style="font-size:13px;color:var(--text2);line-height:1.6;margin:8px 0 14px;">Something in the data for <b>${cv}</b> couldn't render, so the app paused this screen instead of freezing. Your data is safe. Try another tab, or reload.</div>
+      <div style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);background:var(--paper);border:1px solid var(--border);border-radius:5px;padding:8px 11px;margin-bottom:14px;white-space:pre-wrap;word-break:break-word;">${(err&&(err.message||err)||'unknown error').toString().replace(/</g,'&lt;')}</div>
+      <div class="form-acts"><button class="btn b-m" onclick="try{renderC()}catch(e){location.reload()}">↻ Retry</button><button class="btn b-g" onclick="location.reload()">Reload app</button></div>
+    </div>`;
+  }
+}
 
 // ── AUTO-GENERATE STANDING ORDERS ──
 async function autoGenerateStandingOrders(){
@@ -3662,11 +3674,17 @@ async function mergeVariety(fromName, toName){
   if(typeof addVariety==='function') addVariety(to);
   // rewrite existing records (in-memory + Firestore) whose variety collapses to this key
   let n=0;
-  const fix=async(col,arr,field)=>{ for(const rec of (arr||[])){ const cur=rec[field]; if(cur && varietyKey(cur)===fromKey && cur!==to){ rec[field]=to; n++; try{ await FS.update(col,rec.id,{[field]:to}); }catch(e){ console.warn('merge upd',col,rec.id,e); } } } };
-  await fix('harvests',DB.harvests,'variety');
-  await fix('fruitings',DB.fruitings,'variety');
-  await fix('receivings',DB.receivings,'variety');
-  await fix('samples',DB.samples,'variety');
+  // Rewrite matching records. Writes run in parallel (chunked) so merging a common variety across hundreds of
+  // records doesn't lock the UI for minutes — the old sequential await-per-record made the app feel frozen.
+  const pending=[];
+  const fix=(col,arr,field)=>{ for(const rec of (arr||[])){ const cur=rec[field]; if(cur && varietyKey(cur)===fromKey && cur!==to){ rec[field]=to; n++; pending.push([col,rec.id,{[field]:to}]); } } };
+  fix('harvests',DB.harvests,'variety');
+  fix('fruitings',DB.fruitings,'variety');
+  fix('receivings',DB.receivings,'variety');
+  fix('samples',DB.samples,'variety');
+  for(let i=0;i<pending.length;i+=25){
+    await Promise.all(pending.slice(i,i+25).map(([col,id,data])=>FS.update(col,id,data).catch(e=>console.warn('merge upd',col,id,e))));
+  }
   return n;
 }
 // Snap a typed name to its existing canonical spelling; new names get Title Case.
@@ -13337,8 +13355,8 @@ async function clearDemoData(){
 }
 
 function buildSuggestionsManager(){
-  const vars=[...customVarieties].sort((a,b)=>a.localeCompare(b));
-  const sups=[...customSuppliers].sort((a,b)=>a.localeCompare(b));
+  const vars=[...(customVarieties||[])].map(x=>String(x==null?'':x)).filter(Boolean).sort((a,b)=>a.localeCompare(b));
+  const sups=[...(customSuppliers||[])].map(x=>String(x==null?'':x)).filter(Boolean).sort((a,b)=>a.localeCompare(b));
   const chip=(val,fn)=>`<span style="display:inline-flex;align-items:center;gap:4px;background:var(--paper);border:1px solid var(--border);border-radius:14px;padding:3px 4px 3px 12px;font-size:12px;margin:0 6px 6px 0;">${val}<button class="btn b-r b-sm" style="padding:1px 7px;border-radius:12px;" title="Remove suggestion" onclick="${fn}(this.getAttribute('data-v'))" data-v="${(val||'').replace(/"/g,'&quot;')}">\u2715</button></span>`;
   return `<div style="margin-bottom:28px;">
     <div class="sh"><span>\u{1F3F7} Manage Suggestions</span><span style="font-family:'Syne Mono',monospace;font-size:11px;color:var(--text3);">learned autocomplete values</span></div>
