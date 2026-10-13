@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #175</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #176</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -13443,11 +13443,15 @@ async function ensureAdminData(){
   _adminLoading=true;
   try{ const [au,rev,lh]=await Promise.all([FS.getAll('auditLog'),FS.getAll('revisions'),FS.getAll('loginHistory')]);
     DB.auditLog=au||[]; DB.revisions=rev||[]; DB.loginHistory=lh||[]; DB._adminLoaded={all:true};
-  }catch(e){ console.warn('ensureAdminData',e); }
+  }catch(e){ console.warn('ensureAdminData',e);
+    // Mark terminal even on failure — otherwise rAdmin/rSecurity re-render → re-fetch forever and hang the browser.
+    DB.auditLog=DB.auditLog||[]; DB.revisions=DB.revisions||[]; DB.loginHistory=DB.loginHistory||[]; DB._adminLoaded={all:true,failed:true};
+  }
   _adminLoading=false; return true;
 }
 function rAdmin(el){
-  if(!(DB._adminLoaded&&DB._adminLoaded.all)) ensureAdminData().then(()=>{ if(cv==='admin') rAdmin(document.getElementById('main-views')); }); // recent logins fill in when ready
+  // Only kick off the load when it's neither loaded NOR already in flight — re-scheduling during the load was a tight busy-loop that froze the whole browser.
+  if(!(DB._adminLoaded&&DB._adminLoaded.all) && !_adminLoading) ensureAdminData().then(()=>{ if(cv==='admin') rAdmin(document.getElementById('main-views')); }); // recent logins fill in when ready
   const pend=DB.orders.filter(o=>o.status==='pending'&&!o.isStanding), cust=DB.orders.filter(o=>o.custom&&!o.isStanding);
   const staffUsers=DB.users.filter(u=>u.active!==false);
   const recentLogins=[...DB.loginHistory].sort((a,b)=>b.timestamp.localeCompare(a.timestamp)).slice(0,5);
@@ -13972,7 +13976,7 @@ let _revQ = '';
 function onRevSearch(v){ _revQ=v; clearTimeout(window._revST); window._revST=setTimeout(()=>{ const mv=document.getElementById('main-views'); if(mv) rSecurity(mv); },250); }
 
 function rSecurity(el){
-  if(!(DB._adminLoaded&&DB._adminLoaded.all)){ el.innerHTML='<div class="ph"><div class="ph-t">🔒 Security</div><div class="ph-s">audit trail · revision history · logins</div></div><div class="card" style="padding:36px;text-align:center;color:var(--text3);">⏳ Loading audit &amp; revision history…</div>'; ensureAdminData().then(()=>{ if(cv==='security') rSecurity(document.getElementById('main-views')); }); return; }
+  if(!(DB._adminLoaded&&DB._adminLoaded.all)){ el.innerHTML='<div class="ph"><div class="ph-t">🔒 Security</div><div class="ph-s">audit trail · revision history · logins</div></div><div class="card" style="padding:36px;text-align:center;color:var(--text3);">⏳ Loading audit &amp; revision history…</div>'; if(!_adminLoading) ensureAdminData().then(()=>{ if(cv==='security') rSecurity(document.getElementById('main-views')); }); return; }
   // #13 — field-level revision history (every create/update/delete, attributed)
   const _rq=(_revQ||'').toLowerCase();
   const _revs=[...(DB.revisions||[])].sort((a,b)=>(b.ts||'').localeCompare(a.ts||''))
