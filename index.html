@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #173</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #174</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -5243,7 +5243,7 @@ function onLotResolve(el, cb){ if(!el) return; const raw=(el.value||'').trim(); 
 // Decode the Wild Spore species from anywhere in a WS lot code (standard: WS + MMDDYY + species code), e.g. WS042623YOOY, WS-042623-1776
 function _wsSpeciesFromLot(lot){ const u=(lot||'').toUpperCase().replace(/[\s-]/g,'');
   if(!/^(WS|W5)/.test(u)) return '';
-  const map={'1776':'Chestnut','2222':'Snow Oyster','4004':'Blue Oyster','4204':'Black Pearl','6969':'Italian Oyster','YOOY':'Blue Oyster','Y00Y':'Blue Oyster','$56$':'Shiitake'};
+  const map={'1776':'Chestnut','2222':'Snow Oyster','4004':'Blue Oyster','4204':'Black Pearl','6969':'Italian Oyster','1111':'Gold Oyster','YOOY':'Blue Oyster','Y00Y':'Blue Oyster','$56$':'Shiitake'};
   for(const code in map){ if(u.indexOf(code)>=0) return map[code]; }
   return '';
 }
@@ -11183,8 +11183,8 @@ function showTraceReport(q){
 let _tdHeal=null;   // {lotKey, lot, variety, first, recs:[{col,id}], suspect, suggest}
 let _tdMode='recv'; // recv | cook | fix
 let _tdSlipUrl=''; let _tdInvUrl='';
-const _TD_CODES={'1776':'Chestnut','2222':'Snow Oyster','4004':'Blue Oyster','4204':'Black Pearl','6969':'Italian Oyster'};
-const _TD_VAR2CODE={'chestnut':'1776','snowoyster':'2222','blueoyster':'YOOY','goldoyster':'YOOY','blackpearl':'4204','italianoyster':'6969','shiitake':'$56$'};
+const _TD_CODES={'1776':'Chestnut','2222':'Snow Oyster','4004':'Blue Oyster','4204':'Black Pearl','6969':'Italian Oyster','1111':'Gold Oyster'};
+const _TD_VAR2CODE={'chestnut':'1776','snowoyster':'2222','blueoyster':'YOOY','goldoyster':'1111','blackpearl':'4204','italianoyster':'6969','shiitake':'$56$'};
 function _tdCanon(v){ return (typeof canonicalVariety==='function')?canonicalVariety(v):v; }
 function _tdUpstreamIndex(){
   const keys=new Set(), stems=new Set();
