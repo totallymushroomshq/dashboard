@@ -383,7 +383,7 @@ td.mn{font-family:'Syne Mono',monospace;font-size:11px;color:var(--text2)}
 </style>
 </head>
 <body>
-<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #177</div>
+<div id="build-badge" style="position:fixed;bottom:3px;right:5px;z-index:99998;font-family:monospace;font-size:10px;color:rgba(90,80,60,.45);pointer-events:none;">build 2026-07-22 #178</div>
 <!-- LOADING SCREEN -->
 <div id="app-loader" style="position:fixed;inset:0;background:#f5f2ec;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;">
   <div style="font-family:'Cormorant Garamond',serif;font-size:32px;font-weight:700;color:#2c4a2e;letter-spacing:2px;margin-bottom:16px;">TOTALLY MUSHROOMS</div>
@@ -2292,7 +2292,7 @@ function buildYieldAnalysis(){
     if(spExp) lots.sort((a,b)=>b.ypb-a.ypb).forEach(l=>{
       const col=yieldColor(l.ypb,l.bench); const meets=l.ypb>=l.bench.target;
       const lotExp=_yieldExpanded['lot:'+l.lot]; const lotEsc=l.lot.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-      const bT=l.bench.goal?`${l.bench.target}–${l.bench.goal}`:l.bench.target.toFixed(2);
+      const bT=(l.bench.target||RATE_INHOUSE).toFixed(2);
       const dMax=(()=>{const ds=l.cons.map(c=>c.days).filter(x=>x!=null);return ds.length?Math.max(...ds):null;})();
       const fl=l.cons.reduce((s,c)=>s+(c.flushes||0),0);
       const susTitle=l.suspect?`Check data — ${(l.orphanHarv>0.5*(l.totalHarv||l.harv))?(l.orphanHarv.toFixed(1)+' lb harvested in container(s) this lot was never placed in (mislabeled / cross-container)'):'more harvested than the placed blocks can yield'}. Excluded from the species average.`:'';
@@ -5219,11 +5219,14 @@ function markAF(el, mode){ if(!el) return; clearAF(el);
 }
 function clearAF(el){ if(!el) return; el.classList.remove('af','afg'); const p=el.parentElement; if(p){ p.querySelectorAll(':scope > .af-tag, :scope > .afg-tag').forEach(t=>t.remove()); p.classList.remove('af-wrap'); } }
 // Shared variety-field handler: snap a typed variety to canonical and flag it — GOLD if confident, GREEN if a fuzzy guess.
-function onVarietyResolve(el){ if(!el) return; const raw=(el.value||'').trim(); if(!raw){ clearAF(el); return; }
+function onVarietyResolve(el){ if(!el) return; const raw=(el.value||'').trim(); if(!raw){ clearAF(el); el._afVal=null; return; }
+  // If the user edited a value the app auto-filled, their correction wins — stop snapping it back to the guess.
+  if(el._afVal!=null && raw!==el._afVal){ clearAF(el); el._afVal=null; return; }
   const r=resolveVarietyConf(raw);
-  if(r.conf==='new'){ clearAF(el); return; }          // genuinely new — leave it; save-time confirm handles it
+  if(r.conf==='new'){ clearAF(el); el._afVal=null; return; }  // genuinely new — leave it; save-time confirm handles it
   if(r.value && r.value!==raw) el.value=r.value;        // snap to the canonical spelling
   markAF(el, r.conf==='fuzzy');                         // fuzzy → green CHECK, exact/alias → gold AUTO
+  el._afVal=el.value;                                   // remember what we auto-set, so a later edit is recognized as the user's
 }
 // ── LOT-NUMBER resolver — references every lot the app knows; exact = GOLD (recognized), near-miss typo = GREEN (snapped, verify) ──
 function knownLotMap(){
@@ -5251,10 +5254,12 @@ function resolveLotConf(raw){
   return {value:disp,conf:'new'};
 }
 // Resolve a lot field on change: known → gold, typo snapped → green, new → cleared. Optional cb runs after (e.g. re-decode variety/container).
-function onLotResolve(el, cb){ if(!el) return; const raw=(el.value||'').trim(); if(!raw){ clearAF(el); if(cb)cb(); return; }
+function onLotResolve(el, cb){ if(!el) return; const raw=(el.value||'').trim(); if(!raw){ clearAF(el); el._afVal=null; if(cb)cb(); return; }
+  // If the user edited a value the app auto-filled, their correction wins — don't snap it back to the guess.
+  if(el._afVal!=null && raw!==el._afVal){ clearAF(el); el._afVal=null; if(cb)cb(); return; }
   const r=resolveLotConf(raw);
   if(r.value && r.value!==raw) el.value=r.value;
-  if(r.conf==='new') clearAF(el); else markAF(el, r.conf==='fuzzy');
+  if(r.conf==='new'){ clearAF(el); el._afVal=null; } else { markAF(el, r.conf==='fuzzy'); el._afVal=el.value; }
   if(cb) cb();
 }
 // Best variety guess for a lot: decode Wild Spore species from the lot code FIRST (works on a brand-new receipt), then fall back to prior records. Mirrors what Fruiting does.
@@ -5295,8 +5300,10 @@ function wsFixLotFromVar(varEl, lotSel){
   const row=varEl.closest('.slb-lotrow,.hb-lotrow,.fse-row,.hse-row');
   const lotEl = lotSel.charAt(0)==='#' ? document.getElementById(lotSel.slice(1)) : (row?row.querySelector(lotSel):null);
   if(!lotEl || !(lotEl.value||'').trim()) return;
+  // Only rebuild a lot that's still in an auto-filled state (gold/green bar) — if the user has manually corrected it (bar cleared), leave their value alone.
+  if(!(lotEl.classList.contains('af')||lotEl.classList.contains('afg'))) return;
   const fixed=canonWSLot(lotEl.value, varEl.value);
-  if(fixed && fixed!==(lotEl.value||'').trim()){ lotEl.value=fixed; if(typeof markAF==='function') markAF(lotEl,'verify'); } // GREEN "CHECK" — best-guess rebuild, eyeball it
+  if(fixed && fixed!==(lotEl.value||'').trim()){ lotEl.value=fixed; if(typeof markAF==='function') markAF(lotEl,'verify'); lotEl._afVal=fixed; } // GREEN "CHECK" — best-guess rebuild, eyeball it
 }
 // Receiving: reading a lot # auto-fills the variety (+ vendor), highlighted — WS lots decode from the code even on first receipt
 function onRecvLot(){
@@ -14026,7 +14033,7 @@ function rSecurity(el){
     }).join('');
 
   // ── Audit log — group by session, newest first ──
-  const auditEntries=[...(DB.auditLog||[])].sort((a,b)=>(''+(b&&b.ts||'')).localeCompare(''+(a&&a.ts||'')));
+  const auditEntries=[...(DB.auditLog||[])].sort((a,b)=>(''+(b&&b.ts||'')).localeCompare(''+(a&&a.ts||''))).slice(0,500); // cap: audit log grows on every action; render only the most recent 500 so Security can't freeze at scale (revisions/logins are already capped)
   // Build session map: { sessionId -> { entries:[], firstTs, lastTs, user, role } }
   const sessionMap={};
   auditEntries.forEach(e=>{
